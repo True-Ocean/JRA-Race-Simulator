@@ -34,6 +34,23 @@ const COLLISION_EPS = 0.001;
 const START_DELAY_BASE_RATE = 0.022;
 const STUMBLE_BASE_RATE = 0.008;
 const STUMBLE_PHASE_MAX = 0.55;
+const GOAL_FURLONG_METERS = 200;
+const GOAL_ANIM_FURLONGS = 2;
+const GOAL_SECONDS_PER_FURLONG = 12;
+const GOAL_TIME_SCALE = 1.0;
+const GOAL_DISTANCE_METERS = GOAL_FURLONG_METERS * GOAL_ANIM_FURLONGS;
+const GOAL_BASE_MPS = GOAL_FURLONG_METERS / GOAL_SECONDS_PER_FURLONG;
+const GOAL_X_PER_METER = 0.28;
+const GOAL_LANE_CHANGE_PER_SEC = 2.8;
+const GOAL_BLOCK_X_GAP = 10;
+const GOAL_NEAR_LANE_GAP = 0.85;
+const STAMINA_LANE_CHANGE_COST = 0.85;
+const STAMINA_ACCEL_COST = 1.25;
+const STAMINA_EARLY_ACCEL_MULT = 1.35;
+const STAMINA_BATTLE_BASE_COST = 1.6;
+const STAMINA_BATTLE_LOSER_EXTRA = 3.4;
+const STAMINA_BATTLE_TRACKER_GAIN = 0.7;
+const STAMINA_CORNER_OUTER_PER_LANE = 0.75;
 
 // =====================
 //  シミュレーション（全フェーズ一括計算）
@@ -54,6 +71,14 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
 
   const globalLogs = [];
   const snapshots  = [];
+  horses.forEach(horse => {
+    horse.lastAdvance = 0;
+    horse.staminaLaneCost = 0;
+    horse.staminaAccelCost = 0;
+    horse.staminaBattleCost = 0;
+    horse.staminaCornerCost = 0;
+    horse.battleFatigue = 0;
+  });
 
   for (const phase of phases) {
     const xValues = horses.map(h => h.x);
@@ -77,6 +102,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
       if (engagedHorseIds.has(a.id) || engagedHorseIds.has(b.id)) continue;
       if (!shouldBattle(rng, horses, a, b)) continue;
       const result = resolveBattle(rng, a, b, phase);
+      applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
       const log = `[バトル:進路争い] ${result.winner.name} vs ${result.loser.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
       globalLogs.push(log);
       phaseEventLogs.push(log);
@@ -144,6 +170,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
         : calcTargetLane(horse, phase, horses);
       const laneChangeRate = getLaneChangeRate(phase);
       const desiredY   = horse.y + (horse.targetLane - horse.y) * laneChangeRate;
+      const prevLaneY = horse.y;
       const laneCheck  = resolveLaneMovement(
         rng,
         horse,
@@ -155,6 +182,12 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
         engagedHorseIds,
       );
       horse.y          = laneCheck.nextY;
+      const laneShift = Math.abs(horse.y - prevLaneY);
+      if (laneShift > 0.001) {
+        const laneDrain = laneShift * STAMINA_LANE_CHANGE_COST;
+        horse.stamina = Math.max(0, horse.stamina - laneDrain);
+        horse.staminaLaneCost += laneDrain;
+      }
 
       // 前方間隔チェック（前が塞がれていて仕掛ける場合はバトル）
       const forwardCheck = resolveForwardMovement(
@@ -170,7 +203,24 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
       );
       horse.x += forwardCheck.advance;
 
+      const accelAmount = Math.max(0, forwardCheck.advance - (horse.lastAdvance ?? 0));
+      if (accelAmount > 0.001) {
+        const earlyMult = horse.style === '逃げ' && phase.ratio <= 0.35 ? STAMINA_EARLY_ACCEL_MULT : 1.0;
+        const accelDrain = accelAmount * STAMINA_ACCEL_COST * earlyMult;
+        horse.stamina = Math.max(0, horse.stamina - accelDrain);
+        horse.staminaAccelCost += accelDrain;
+      }
+      horse.lastAdvance = forwardCheck.advance;
+
       applyCornerLoss(phase, horse);
+      if (phase.isCorner) {
+        const lane = laneIndex(horse.y);
+        const outerDrain = Math.max(0, lane - 3) * STAMINA_CORNER_OUTER_PER_LANE;
+        if (outerDrain > 0) {
+          horse.stamina = Math.max(0, horse.stamina - outerDrain);
+          horse.staminaCornerCost += outerDrain;
+        }
+      }
 
       const cons    = calcStaminaCons(phase, horse, trackMod);
       horse.stamina = Math.max(0, horse.stamina - cons);
@@ -343,6 +393,7 @@ function resolveLaneMovement(rng, horse, desiredY, allHorses, phase, phaseEventL
   if (!engagedHorseIds.has(horse.id) && !engagedHorseIds.has(laneBlocker.id) &&
       shouldBattle(rng, allHorses, horse, laneBlocker)) {
     const result = resolveBattle(rng, horse, laneBlocker, phase);
+    applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
     const log = `[バトル:進路争い] ${horse.name} が ${laneBlocker.name} に進路争い → 勝者: ${result.winner.name}`;
     globalLogs.push(log);
     phaseEventLogs.push(log);
@@ -451,6 +502,7 @@ function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, minForwar
       !engagedHorseIds.has(horse.id) && !engagedHorseIds.has(front.id) &&
       shouldBattle(rng, allHorses, horse, front)) {
     const result = resolveBattle(rng, horse, front, phase);
+    applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
     const laneGap = Math.abs(front.y - horse.y).toFixed(2);
     const frontGap = Math.max(0, front.x - horse.x).toFixed(1);
     const log = `[バトル:同レーン争い] ${horse.name} が ${front.name} を交わしに行く (前方差:${frontGap}, レーン差:${laneGap}) → 勝者: ${result.winner.name}`;
@@ -697,14 +749,31 @@ function resolveWeightedBattle(rng, a, b, weights, styleBonusFn = () => 0) {
   const loser  = eA > eB ? b : a;
   loser.battlePenalty = CONFIG.BATTLE_PENALTY;
   loser.battleLosses += 1;
-  loser.stamina -= CONFIG.BATTLE_STAMINA_COST;
-  if (loser.stamina < 0) loser.stamina = 0;
+  applyBattleStaminaImpact(winner, loser, { loserAlreadyPenalized: false });
   return {
     winner,
     loser,
     eA: Math.round(eA * 10) / 10,
     eB: Math.round(eB * 10) / 10,
   };
+}
+
+function applyBattleStaminaImpact(winner, loser, options = {}) {
+  const loserAlreadyPenalized = Boolean(options.loserAlreadyPenalized);
+  const winnerDrain = STAMINA_BATTLE_BASE_COST;
+  const loserExtraDrain = loserAlreadyPenalized
+    ? Math.max(0, STAMINA_BATTLE_LOSER_EXTRA - CONFIG.BATTLE_STAMINA_COST * 0.55)
+    : STAMINA_BATTLE_LOSER_EXTRA;
+
+  winner.stamina = Math.max(0, winner.stamina - winnerDrain);
+  loser.stamina = Math.max(0, loser.stamina - loserExtraDrain);
+
+  winner.staminaBattleCost = (winner.staminaBattleCost ?? 0) + winnerDrain;
+  loser.staminaBattleCost = (loser.staminaBattleCost ?? 0) + loserExtraDrain;
+  winner.battleLosses = (winner.battleLosses ?? 0) + STAMINA_BATTLE_TRACKER_GAIN;
+  loser.battleLosses = (loser.battleLosses ?? 0) + STAMINA_BATTLE_TRACKER_GAIN;
+  winner.battleFatigue = (winner.battleFatigue ?? 0) + winnerDrain * 0.35;
+  loser.battleFatigue = (loser.battleFatigue ?? 0) + loserExtraDrain * 0.45;
 }
 
 function battleScore(rng, horse, weights, styleBonusFn) {
@@ -894,10 +963,18 @@ function renderPhaseRanking(horses) {
 //  フェーズ手動進行コントローラー（ステップバイステップ）
 // =====================
 class PhaseController {
-  constructor(snapshots, phases, renderer, initialHorses = [], horseMetaByName = new Map()) {
+  constructor(
+    snapshots,
+    phases,
+    renderer,
+    initialHorses = [],
+    horseMetaByName = new Map(),
+    simResults = null,
+  ) {
     this.snapshots   = snapshots;
     this.phases      = phases;
     this.renderer    = renderer;
+    this.simResults  = simResults;
     this.initialHorses = initialHorses.map(h => ({ ...h }));
     this.horseMetaByName = horseMetaByName;
     this.currentIdx  = 0;
@@ -1061,12 +1138,250 @@ class PhaseController {
     this._logTimer = setTimeout(() => this._flushNextLog(), 80);
   }
 
+  _playGoalApproach(onDone) {
+    if (!Array.isArray(this.simResults) || this.simResults.length === 0) {
+      onDone?.();
+      return;
+    }
+
+    const lastIdx = this.snapshots.length - 1;
+    const finalSnap = this.snapshots[lastIdx];
+    const phase = this.phases[lastIdx];
+    const baseHorses = (this.lastRenderedHorses ?? finalSnap.horses).map(h => ({ ...h }));
+
+    const arrivalTimes = this.simResults.map(h => h.arrivalTime).filter(v => Number.isFinite(v));
+    if (arrivalTimes.length === 0) {
+      onDone?.();
+      return;
+    }
+    const minArrival = Math.min(...arrivalTimes);
+    const maxArrival = Math.max(...arrivalTimes);
+    const arrivalSpan = Math.max(1e-9, maxArrival - minArrival);
+    const fastWeightById = new Map(
+      this.simResults.map(horse => {
+        const fastness = (maxArrival - horse.arrivalTime) / arrivalSpan;
+        return [horse.id, Math.max(0, Math.min(1, fastness))];
+      }),
+    );
+
+    const resultsById = new Map(this.simResults.map(h => [h.id, h]));
+    const last3fValues = this.simResults
+      .map(h => h.last3f)
+      .filter(v => Number.isFinite(v));
+    const minLast3f = last3fValues.length ? Math.min(...last3fValues) : 33;
+    const maxLast3f = last3fValues.length ? Math.max(...last3fValues) : minLast3f + 1;
+    const last3fSpan = Math.max(0.001, maxLast3f - minLast3f);
+
+    const xValues = baseHorses.map(h => h.x);
+    const minX = Math.min(...xValues);
+    const maxX = Math.max(...xValues);
+    const xSpan = Math.max(1, maxX - minX);
+    const simHorses = baseHorses.map(h => {
+      const rel = (h.x - minX) / xSpan;
+      const staminaRatio = h.initialStamina > 0 ? h.stamina / h.initialStamina : 0.5;
+      return {
+        ...h,
+        goalMeters: 0,
+        goalFinished: false,
+        targetLane: h.y,
+        goalStartProgress: 0.20 + rel * 0.36,
+        goalCurrentMps: GOAL_BASE_MPS * (0.72 + staminaRatio * 0.30),
+        goalAccelState: 0,
+        goalLaneCost: 0,
+      };
+    });
+
+    const durationMs = GOAL_DISTANCE_METERS / GOAL_BASE_MPS * 1000 * GOAL_TIME_SCALE;
+    const startedAt = performance.now();
+    let lastTs = startedAt;
+
+    this.isAnimating = true;
+    this.btnAdvance.disabled = true;
+    this.indicator.textContent = `最終直線→ゴール（1F=${GOAL_SECONDS_PER_FURLONG.toFixed(0)}秒）`;
+
+    const step = (ts) => {
+      const dt = Math.max(0.001, Math.min(0.12, (ts - lastTs) / 1000));
+      lastTs = ts;
+      const elapsed = ts - startedAt;
+      const t = Math.max(0, Math.min(1, elapsed / durationMs));
+
+      simHorses.sort((a, b) => b.x - a.x);
+      simHorses.forEach(horse => {
+        if (horse.goalFinished) return;
+        const result = resultsById.get(horse.id) ?? horse;
+        const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0.5;
+        const fastWeight = fastWeightById.get(horse.id) ?? 0.5;
+        const last3fWeight = Number.isFinite(result.last3f)
+          ? (maxLast3f - result.last3f) / last3fSpan
+          : 0.5;
+        const styleBoost = horse.style === '追込' ? 0.16
+          : horse.style === '差し' ? 0.13
+            : horse.style === '先行' ? 0.04
+              : 0;
+        const styleTop = horse.style === '追込' ? 1.12
+          : horse.style === '差し' ? 1.08
+            : horse.style === '先行' ? 1.02
+              : 0.98;
+        const battleFatigue = Math.min(0.38, (horse.battleFatigue ?? 0) * 0.035);
+
+        const laneChoice = this._chooseGoalLane(simHorses, horse);
+        const laneImprovement = laneChoice.score - laneChoice.currentScore;
+        const frontGapNow = this._goalFrontGap(simHorses, horse, horse.y);
+        const shouldSwitch = laneImprovement > 6 || frontGapNow < GOAL_BLOCK_X_GAP * 1.05;
+        horse.targetLane = shouldSwitch ? laneChoice.lane : horse.y;
+        const laneDelta = horse.targetLane - horse.y;
+        let laneShift = 0;
+        if (Math.abs(laneDelta) > 0.01) {
+          const laneStep = Math.sign(laneDelta) * Math.min(Math.abs(laneDelta), GOAL_LANE_CHANGE_PER_SEC * dt);
+          laneShift = Math.abs(laneStep);
+          horse.y = clampLane(horse.y + laneStep);
+        }
+        if (laneShift > 0) {
+          const laneDrain = laneShift * STAMINA_LANE_CHANGE_COST * 0.70;
+          horse.goalLaneCost += laneDrain;
+          horse.stamina = Math.max(0, horse.stamina - laneDrain);
+        }
+
+        const frontGapAfterLane = this._goalFrontGap(simHorses, horse, horse.y);
+        const trafficPenalty = frontGapAfterLane < GOAL_BLOCK_X_GAP
+          ? Math.max(0.36, frontGapAfterLane / GOAL_BLOCK_X_GAP)
+          : 1.0;
+        const lateBoost = 0.86 + t * 0.30;
+        const staminaBoost = 0.56 + staminaRatio * 0.54;
+        const surge = 0.72 + last3fWeight * 0.30 + fastWeight * 0.18 + styleBoost;
+        const closingKick = 1 + Math.pow(t, 1.75) * (
+          (horse.style === '追込' ? 0.16 : 0) +
+          (horse.style === '差し' ? 0.11 : 0) +
+          last3fWeight * 0.09
+        );
+        const fatiguePenalty = Math.max(0.52, 1 - battleFatigue - (1 - staminaRatio) * 0.32);
+        const targetMps = GOAL_BASE_MPS * lateBoost * staminaBoost * surge * styleTop * closingKick * trafficPenalty * fatiguePenalty;
+        const accelBase = 2.3 + last3fWeight * 1.9 + (horse.style === '追込' || horse.style === '差し' ? 1.1 : 0.2);
+        const accel = Math.max(0.5, accelBase * (0.62 + staminaRatio * 0.72));
+        const mpsDiff = targetMps - horse.goalCurrentMps;
+        const deltaV = Math.sign(mpsDiff) * Math.min(Math.abs(mpsDiff), accel * dt);
+        horse.goalCurrentMps = Math.max(GOAL_BASE_MPS * 0.52, horse.goalCurrentMps + deltaV);
+
+        const accelDrain = Math.max(0, deltaV) * (1.2 + (horse.style === '追込' || horse.style === '差し' ? 0.45 : 0.15));
+        const speedDrain = horse.goalCurrentMps * (0.010 + (horse.style === '逃げ' ? 0.003 : 0));
+        const trafficDrain = (1 - trafficPenalty) * 0.85;
+        const goalDrain = (accelDrain + speedDrain + trafficDrain) * dt;
+        horse.stamina = Math.max(0, horse.stamina - goalDrain);
+
+        const deltaMeters = horse.goalCurrentMps * dt;
+        horse.goalMeters = Math.min(GOAL_DISTANCE_METERS + GOAL_FURLONG_METERS * 0.25, horse.goalMeters + deltaMeters);
+        horse.x += deltaMeters * GOAL_X_PER_METER;
+        if (horse.goalMeters >= GOAL_DISTANCE_METERS) {
+          horse.goalFinished = true;
+        }
+      });
+
+      resolveHorseOverlaps(simHorses, {
+        minXGap: 7.5,
+        minYGap: 0.52,
+        iterations: 2,
+        keepOrder: true,
+        freezeY: false,
+      });
+
+      const markerT = Math.min(t, 2 / 3);
+      this.renderer.draw(simHorses, phase, 1, {
+        furlong: { t: markerT },
+        goalLine: t,
+        goalRun: {
+          distanceMeters: GOAL_DISTANCE_METERS,
+          progressSpan: 0.58,
+        },
+      });
+      this.lastRenderedHorses = simHorses.map(h => ({ ...h }));
+      updateEntryStaminaBars(simHorses);
+      renderPhaseRanking(simHorses);
+
+      const allFinished = simHorses.every(h => h.goalMeters >= GOAL_DISTANCE_METERS);
+      const hardLimitReached = elapsed >= durationMs * 1.9;
+      if (hardLimitReached && !allFinished) {
+        simHorses.forEach(h => {
+          if (h.goalMeters < GOAL_DISTANCE_METERS) {
+            h.goalMeters = GOAL_DISTANCE_METERS;
+          }
+        });
+      }
+      const canFinish = (t >= 1 && allFinished) || hardLimitReached;
+      if (canFinish) {
+        this.isAnimating = false;
+        this.lastRenderedHorses = simHorses.map(h => ({ ...h }));
+        onDone?.();
+        return;
+      }
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  _goalFrontGap(horses, horse, lane) {
+    const front = horses
+      .filter(h =>
+        h.id !== horse.id &&
+        h.x > horse.x &&
+        Math.abs(h.y - lane) < GOAL_NEAR_LANE_GAP
+      )
+      .sort((a, b) => a.x - b.x)[0];
+    if (!front) return 999;
+    return front.x - horse.x;
+  }
+
+  _goalLaneDensity(horses, horse, lane) {
+    return horses.filter(h =>
+      h.id !== horse.id &&
+      Math.abs(h.y - lane) < 0.95 &&
+      Math.abs(h.x - horse.x) < 22
+    ).length;
+  }
+
+  _chooseGoalLane(horses, horse) {
+    const currentLane = clampLane(horse.y);
+    const candidates = [
+      currentLane,
+      currentLane - 1,
+      currentLane + 1,
+      currentLane - 2,
+      currentLane + 2,
+      currentLane - 3,
+      currentLane + 3,
+    ]
+      .map(v => clampLane(v))
+      .filter((v, i, arr) => arr.indexOf(v) === i);
+
+    let bestLane = currentLane;
+    let bestScore = -Infinity;
+    let currentScore = -Infinity;
+    candidates.forEach(lane => {
+      const frontGap = this._goalFrontGap(horses, horse, lane);
+      const density = this._goalLaneDensity(horses, horse, lane);
+      const moveCost = Math.abs(lane - currentLane) * 1.8;
+      const outsideBias = (horse.style === '差し' || horse.style === '追込')
+        ? lane * 0.55
+        : 0;
+      // ゴール前は内外の拘束を外し、純粋に空いている進路を選ぶ
+      const immediateLaneBonus = Math.abs(lane - currentLane) <= 1 ? 1.2 : 0;
+      const score = Math.min(frontGap, 70) * 1.28 - density * 6.2 - moveCost + outsideBias + immediateLaneBonus;
+      if (Math.abs(lane - currentLane) < 0.01) {
+        currentScore = score;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestLane = lane;
+      }
+    });
+    return { lane: bestLane, score: bestScore, currentScore };
+  }
+
   next(onFinish) {
     if (this.isAnimating) return;
     this.currentIdx++;
     if (this.currentIdx >= this.snapshots.length) {
       this.btnAdvance.disabled = true;
-      onFinish();
+      this._playGoalApproach(() => onFinish());
       return;
     }
     this._renderPhase(this.currentIdx);
@@ -1174,7 +1489,14 @@ Promise.all([
           if (entry) horse.jockeyName = entry.jockey.name;
         });
 
-        controller = new PhaseController(sim.snapshots, phases, renderer, initialHorses, horseMetaByName);
+        controller = new PhaseController(
+          sim.snapshots,
+          phases,
+          renderer,
+          initialHorses,
+          horseMetaByName,
+          sim.results,
+        );
         controller.start();
         return;
       }

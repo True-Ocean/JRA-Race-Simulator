@@ -54,7 +54,8 @@ export class Renderer {
     this.canvas.width  = this.W;
     this.canvas.height = this.H;
 
-    this.RAIL_MARGIN = Math.max(10, this.W * 0.02);
+    // 内外ラチの外側に余白を確保し、ラチ外演出を見切れにくくする
+    this.RAIL_MARGIN = Math.max(26, this.W * 0.06);
     this.trackW      = this.W - this.RAIL_MARGIN * 2;
     this.laneW       = this.trackW / CONFIG.LANE_COUNT;
 
@@ -82,6 +83,13 @@ export class Renderer {
     const bottomMargin = 20;
     const usableH      = this.H - topMargin - bottomMargin;
     return this.H - bottomMargin - progress * usableH;
+  }
+
+  yToProgress(y) {
+    const topMargin    = 20;
+    const bottomMargin = 20;
+    const usableH      = this.H - topMargin - bottomMargin;
+    return (this.H - bottomMargin - y) / Math.max(1, usableH);
   }
 
   /**
@@ -140,8 +148,17 @@ export class Renderer {
     } else {
       this._drawStartingGate(phase, gateOpenProgress, 'full', gateYOffset, gateOpacity);
     }
-    // GOALライン・GOALテキストは描画しない
-    this._drawHorses(horses, phase, phaseProgress, forceStartLineup);
+    const furlongLayout = options.furlong
+      ? this._drawFurlongMarkers(options.furlong.t ?? 0)
+      : null;
+    const drawOptions = { ...options };
+    if (drawOptions.goalRun && furlongLayout) {
+      drawOptions.goalRun = { ...drawOptions.goalRun, ...furlongLayout };
+    }
+    this._drawHorses(horses, phase, phaseProgress, forceStartLineup, drawOptions);
+    if (options.goalLine !== undefined) {
+      this._drawGoalBandAtTop(options.goalLine, furlongLayout);
+    }
     if (inGateView) {
       this._drawStartingGate(phase, gateOpenProgress, 'front', gateYOffset, gateOpacity);
     }
@@ -236,6 +253,78 @@ export class Renderer {
     });
   }
 
+  _drawFurlongMarkers(t) {
+    const clamped = Math.max(0, Math.min(1, t));
+    // GOAL出現以降は標識スクロールを止める
+    const markerT = Math.min(clamped, 2 / 3);
+    // 2 -> 1 -> GOAL を段階的に同速スクロールさせる。
+    // 2が最下端に到達した時点で1を最上端に出し、
+    // 1が最下端に到達した時点でGOALを最上端に出す。
+    const yTop = -this.H * 0.08;
+    const yBottom = this.H * 1.08;
+    const laneDistance = yBottom - yTop;
+    const totalDistance = laneDistance * 3;
+    const travel = totalDistance * markerT;
+
+    const y2 = yTop + travel;
+    const y1 = yTop + (travel - laneDistance);
+    const goalY = yTop + (travel - laneDistance * 2);
+
+    this._drawSingleFurlongMarker(2, y2);
+    if (travel >= laneDistance) {
+      this._drawSingleFurlongMarker(1, y1);
+    }
+
+    return { y2, y1, goalY, travel, laneDistance, markerT };
+  }
+
+  _drawSingleFurlongMarker(num, y) {
+    if (y < -48 || y > this.H + 48) return;
+    const ctx = this.ctx;
+    // 内ラチの外側に置きつつ、キャンバス外へ見切れない位置に収める
+    const x = Math.min(this.W - 16, this.W - this.RAIL_MARGIN + 16);
+    const radius = 12;
+
+    ctx.save();
+    ctx.fillStyle = '#c81e1e';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${Math.max(11, this.W * 0.013)}px 'Courier New'`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(num), x, y);
+    ctx.restore();
+  }
+
+  _drawGoalBandAtTop(t, furlongLayout = null) {
+    const clamped = Math.max(0, Math.min(1, t));
+    const alpha = clamped < 0.15 ? clamped / 0.15 : 1;
+    const ctx = this.ctx;
+    let y = null;
+    if (furlongLayout?.goalY != null && furlongLayout.travel >= furlongLayout.laneDistance * 2) {
+      // GOALは上端に出したら固定（スクロールさせない）
+      y = 22;
+    } else if (!furlongLayout) {
+      const startY = -this.H * 0.10;
+      const endY = this.H * 0.92;
+      y = startY + (endY - startY) * clamped;
+    }
+    if (y == null || y < -18) return;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = 'rgba(59,130,246,0.98)';
+    ctx.lineWidth = 4.5;
+    ctx.beginPath();
+    ctx.moveTo(this.RAIL_MARGIN, y);
+    ctx.lineTo(this.W - this.RAIL_MARGIN, y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // フェーズ名ラベル（DOMの#phase-indicatorとは別に盤面内に薄く1つだけ描画）
   _drawPhaseLabel(phase) {
     const ctx  = this.ctx;
@@ -248,7 +337,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  _drawHorses(horses, phase, phaseProgress, forceStartLineup = false) {
+  _drawHorses(horses, phase, phaseProgress, forceStartLineup = false, options = {}) {
     const inStartLineup = phaseProgress === 0 || forceStartLineup;
 
     const xValues = horses.map(h => h.x);
@@ -273,8 +362,33 @@ export class Renderer {
         const lane = Math.max(1, Math.min(CONFIG.LANE_COUNT, horse.y));
         const normalized = Math.max(0, Math.min(1, (horse.x - minX) / span));
         const easedProgress = Math.pow(normalized, 0.82);
-        const progress = easedProgress * phaseProgress;
-        const baseY = this.progressToY(Math.min(0.93, progress * 0.88 + 0.06));
+        let progress = easedProgress * phaseProgress;
+        if (options.goalRun) {
+          const distanceMeters = Math.max(1, options.goalRun.distanceMeters ?? 400);
+          const advanceRatio = Math.max(0, Math.min(1.25, (horse.goalMeters ?? 0) / distanceMeters));
+          const startProgress = Number.isFinite(horse.goalStartProgress)
+            ? horse.goalStartProgress
+            : Math.min(0.82, progress * 0.88 + 0.06);
+          const span = options.goalRun.progressSpan ?? 0.55;
+          progress = startProgress + advanceRatio * span;
+
+          if (Number.isFinite(options.goalRun.goalY) && options.goalRun.travel >= options.goalRun.laneDistance * 2) {
+            const goalProgress = this.yToProgress(options.goalRun.goalY);
+            const towardGoal = goalProgress - 0.01;
+            progress = Math.min(progress, towardGoal + 0.24);
+          }
+        } else if (options.goalClimb) {
+          const t = Math.max(0, Math.min(1, options.goalClimb.t ?? 0));
+          const fastWeight = Math.max(
+            0,
+            Math.min(1, options.goalClimb.byId?.get(horse.id) ?? 0.5),
+          );
+          progress = Math.min(0.99, progress + t * 0.35 * (0.40 + fastWeight * 0.60));
+        }
+        const mappedProgress = options.goalRun
+          ? Math.max(0.05, Math.min(1.14, progress))
+          : Math.min(0.93, progress * 0.88 + 0.06);
+        const baseY = this.progressToY(mappedProgress);
         // スタート直後はゲートから真っ直ぐ進ませ、余白押し出しは徐々に有効化する。
         const spacingActivation =
           phase.index === 0
