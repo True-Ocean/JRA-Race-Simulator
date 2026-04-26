@@ -36,7 +36,7 @@ const STUMBLE_PHASE_MAX = 0.55;
 // =====================
 //  シミュレーション（全フェーズ一括計算）
 // =====================
-function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}) {
+function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, renderer = null) {
   const seedBase = options.seed ?? raceData.race_id;
   const rng      = createRng(seedBase);
   const horses    = calcAllParams(raceData, userTweaks, marks);
@@ -54,6 +54,13 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}) {
   const snapshots  = [];
 
   for (const phase of phases) {
+    const xValues = horses.map(h => h.x);
+    const maxX = Math.max(...xValues, 1);
+    const xSpan = Math.max(140, maxX);
+    const collisionMetrics = renderer
+      ? renderer.getCollisionMetrics(xSpan)
+      : { minXGap: MIN_FORWARD_GAP, minYGap: COLLISION_MIN_Y_GAP };
+
     // ① フェーズ特化バトル判定
     const threshold      = phase.distance * 0.8;
     const contacts       = detectContacts(horses, threshold);
@@ -153,6 +160,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}) {
         horse,
         adjustedAdvance,
         horses,
+        collisionMetrics.minXGap,
         phase,
         phaseEventLogs,
         globalLogs,
@@ -173,8 +181,8 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}) {
 
     // ③ 全馬の最終位置を解消して重なりを防ぐ（非接触保証）
     resolveHorseOverlaps(horses, {
-      minXGap: MIN_FORWARD_GAP,
-      minYGap: COLLISION_MIN_Y_GAP,
+      minXGap: collisionMetrics.minXGap,
+      minYGap: collisionMetrics.minYGap,
       iterations: COLLISION_ITERATIONS,
       keepOrder: true,
       freezeY: phase.ratio < 0.18,
@@ -241,6 +249,17 @@ function resolveCourseDef(raceData, courseCatalog) {
     if (fallback) return fallback;
   }
   return null;
+}
+
+function applyStartSlowMotion(progress) {
+  const p = Math.max(0, Math.min(1, progress));
+  const slowZone = 0.36;
+  const slowFactor = 0.58;
+  if (p <= slowZone) return p * slowFactor;
+  const slowOut = slowZone * slowFactor;
+  const remainIn = 1 - slowZone;
+  const remainOut = 1 - slowOut;
+  return slowOut + ((p - slowZone) / remainIn) * remainOut;
 }
 
 function resolveLaneMovement(rng, horse, desiredY, allHorses, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
@@ -335,7 +354,7 @@ function calcStumbleRate(horse) {
   return Math.max(0.002, Math.min(0.03, rate));
 }
 
-function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
+function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, minForwardGap, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
   const nextX = horse.x + desiredAdvance;
   const frontCandidates = allHorses
     .filter(h =>
@@ -351,12 +370,12 @@ function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, phase, ph
   }
 
   const currentGap = front.x - horse.x;
-  const maxAdvanceWithoutContact = Math.max(0, currentGap - MIN_FORWARD_GAP);
+  const maxAdvanceWithoutContact = Math.max(0, currentGap - minForwardGap);
   if (desiredAdvance <= maxAdvanceWithoutContact) {
     return { advance: desiredAdvance };
   }
 
-  const wantsOvertake = nextX > front.x - MIN_FORWARD_GAP;
+  const wantsOvertake = nextX > front.x - minForwardGap;
   if (wantsOvertake &&
       !engagedHorseIds.has(horse.id) && !engagedHorseIds.has(front.id) &&
       shouldBattle(rng, allHorses, horse, front)) {
@@ -826,6 +845,7 @@ class PhaseController {
 
   start() {
     this.currentIdx = 0;
+    this.renderer.resetHorseRenderState();
     this._renderPhase(0);
     this.btnNext.disabled = false;
     this.btnNext.textContent = '▶▶ 次のフェーズ';
@@ -871,7 +891,8 @@ class PhaseController {
       const stepFirst = () => {
         frame++;
         const holdProgress = Math.min(1, frame / holdFrames);
-        const moveProgress = Math.max(0, Math.min(1, (frame - holdFrames) / moveFrames));
+        const rawMoveProgress = Math.max(0, Math.min(1, (frame - holdFrames) / moveFrames));
+        const moveProgress = applyStartSlowMotion(rawMoveProgress);
         const gateOpenProgress = moveProgress <= 0.12
           ? 0
           : Math.max(0, Math.min(1, (moveProgress - 0.12) / 0.42));
@@ -1017,6 +1038,7 @@ Promise.all([
     renderPhaseRanking(initialHorses);
 
     // 初期盤面
+    renderer.resetHorseRenderState();
     renderer.draw(initialHorses, phases[0], 0);
 
     let controller = null;
@@ -1063,7 +1085,7 @@ Promise.all([
 
       const simOptions = currentOptions();
       refreshRaceInfo(simOptions);
-      const sim  = runSimulation(runtimeRaceData, simOptions);
+      const sim  = runSimulation(runtimeRaceData, simOptions, {}, {}, renderer);
       simResults = sim.results;
       simLogs    = sim.logs;
 
@@ -1107,6 +1129,7 @@ Promise.all([
       document.getElementById('log-panel').innerHTML =
         '<div class="log-entry" style="color:#334;">待機中...</div>';
 
+      renderer.resetHorseRenderState();
       renderer.draw(initialHorses, phases[0], 0);
       updateEntryStaminaBars(initialHorses);
       renderPhaseRanking(initialHorses);
