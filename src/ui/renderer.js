@@ -255,8 +255,6 @@ export class Renderer {
 
   _drawFurlongMarkers(t) {
     const clamped = Math.max(0, Math.min(1, t));
-    // GOAL出現以降は標識スクロールを止める
-    const markerT = Math.min(clamped, 2 / 3);
     // 2 -> 1 -> GOAL を段階的に同速スクロールさせる。
     // 2が最下端に到達した時点で1を最上端に出し、
     // 1が最下端に到達した時点でGOALを最上端に出す。
@@ -264,7 +262,7 @@ export class Renderer {
     const yBottom = this.H * 1.08;
     const laneDistance = yBottom - yTop;
     const totalDistance = laneDistance * 3;
-    const travel = totalDistance * markerT;
+    const travel = totalDistance * clamped;
 
     const y2 = yTop + travel;
     const y1 = yTop + (travel - laneDistance);
@@ -275,7 +273,7 @@ export class Renderer {
       this._drawSingleFurlongMarker(1, y1);
     }
 
-    return { y2, y1, goalY, travel, laneDistance, markerT };
+    return { y2, y1, goalY, travel, laneDistance };
   }
 
   _drawSingleFurlongMarker(num, y) {
@@ -300,19 +298,16 @@ export class Renderer {
   }
 
   _drawGoalBandAtTop(t, furlongLayout = null) {
-    const clamped = Math.max(0, Math.min(1, t));
-    const alpha = clamped < 0.15 ? clamped / 0.15 : 1;
+    const raw = Number.isFinite(t) ? t : 0;
+    const goalProgress = (raw - 2 / 3) * 3;
+    if (goalProgress < 0) return;
+
+    const alpha = goalProgress < 0.14 ? goalProgress / 0.14 : 1;
     const ctx = this.ctx;
-    let y = null;
-    if (furlongLayout?.goalY != null && furlongLayout.travel >= furlongLayout.laneDistance * 2) {
-      // GOALは上端に出したら固定（スクロールさせない）
-      y = 22;
-    } else if (!furlongLayout) {
-      const startY = -this.H * 0.10;
-      const endY = this.H * 0.92;
-      y = startY + (endY - startY) * clamped;
-    }
-    if (y == null || y < -18) return;
+    const yTop = -this.H * 0.08;
+    const yBottom = this.H * 1.08;
+    const y = yTop + (yBottom - yTop) * goalProgress;
+    if (y < -20 || y > this.H + 26) return;
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -371,12 +366,6 @@ export class Renderer {
             : Math.min(0.82, progress * 0.88 + 0.06);
           const span = options.goalRun.progressSpan ?? 0.55;
           progress = startProgress + advanceRatio * span;
-
-          if (Number.isFinite(options.goalRun.goalY) && options.goalRun.travel >= options.goalRun.laneDistance * 2) {
-            const goalProgress = this.yToProgress(options.goalRun.goalY);
-            const towardGoal = goalProgress - 0.01;
-            progress = Math.min(progress, towardGoal + 0.24);
-          }
         } else if (options.goalClimb) {
           const t = Math.max(0, Math.min(1, options.goalClimb.t ?? 0));
           const fastWeight = Math.max(
