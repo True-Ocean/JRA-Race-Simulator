@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JRA CARD SIMULATOR</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1b2a;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      padding: 14px 12px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #f0c040;
+      font-size: 1.2rem;
+      letter-spacing: 0.25em;
+      margin-bottom: 12px;
+      text-shadow: 0 0 12px rgba(240,192,64,0.5);
+    }
+
+    /* ===== コントロール ===== */
+    #controls {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    button {
+      background: #1e3a5f;
+      color: #f0c040;
+      border: 1px solid #f0c040;
+      border-radius: 6px;
+      padding: 8px 22px;
+      font-family: inherit;
+      font-size: 0.85rem;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover  { background: #2a4f80; }
+    button:active { background: #f0c040; color: #0d1b2a; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ===== 3カラムメインレイアウト：左右を広く、中央を縦長に ===== */
+    #main-layout {
+      display: grid;
+      grid-template-columns: 300px 1fr 320px;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .section-title {
+      font-size: 0.68rem;
+      letter-spacing: 0.15em;
+      color: #7eb8d4;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      border-bottom: 1px solid #1e3a5f;
+      padding-bottom: 4px;
+    }
+
+    /* ===== 左カラム：出馬表（充実版） ===== */
+    #entry-panel {
+      background: #06111e;
+      border: 1px solid #1e3a5f;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    #entry-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      max-height: calc(100vh - 160px);
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .entry-row {
+      display: grid;
+      grid-template-columns: 26px 1fr;
+      gap: 6px;
+      align-items: start;
+      background: #0f1e30;
+      border-radius: 5px;
+      padding: 6px 7px;
+      font-size: 0.7rem;
+    }
+
+    .entry-gate {
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      text-align: center;
+      line-height: 26px;
+      font-weight: bold;
+      font-size: 0.82rem;
+      flex-shrink: 0;
+    }
+
+    .entry-info { display: flex; flex-direction: column; gap: 2px; }
+    .entry-name { color: #fff; font-size: 0.74rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .entry-jockey { color: #7eb8d4; font-size: 0.60rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* パラメータバー */
+    .entry-params { margin-top: 3px; display: flex; flex-direction: column; gap: 2px; }
+    .param-row {
+      display: grid;
+      grid-template-columns: 22px 1fr 24px;
+      align-items: center;
+      gap: 3px;
+    }
+    .param-label { font-size: 0.58rem; color: #556677; text-align: right; }
+    .param-bar-bg {
+      height: 5px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .param-bar {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    .speed-bar   { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+    .maneuv-bar  { background: linear-gradient(90deg, #a855f7, #c084fc); }
+    .sustain-bar { background: linear-gradient(90deg, #22c55e, #4ade80); }
+    .param-val { font-size: 0.58rem; color: #7eb8d4; text-align: right; }
+
+    /* 着順バッジ */
+    .entry-rank-badge {
+      display: inline-block;
+      min-width: 16px;
+      padding: 1px 3px;
+      border-radius: 3px;
+      background: #1e3a5f;
+      color: #7eb8d4;
+      font-size: 0.6rem;
+      text-align: center;
+      margin-top: 2px;
+    }
+    .entry-rank-badge.rank-1 { background: #f0c040; color: #0d1b2a; font-weight: bold; }
+    .entry-rank-badge.rank-2 { background: #b0b8c8; color: #0d1b2a; }
+    .entry-rank-badge.rank-3 { background: #cd7f32; color: #fff; }
+
+    /* ===== 中央カラム：盤面（縦長） ===== */
+    #field-wrap {
+      position: relative;
+      background: #06111e;
+      border: 1px solid #1e3a5f;
+      border-radius: 10px;
+      overflow: hidden;
+      height: calc(100vh - 100px);
+      min-height: 520px;
+    }
+
+    #field-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+    }
+
+    /* フェーズ表示（DOM側テキスト）：Canvas内に描画するため非表示 */
+    #phase-indicator {
+      display: none;
+    }
+
+    /* ===== 右カラム：レースログ ===== */
+    #log-panel-wrap {
+      background: #06111e;
+      border: 1px solid #1e3a5f;
+      border-radius: 8px;
+      padding: 10px;
+      height: calc(100vh - 100px);
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #log-panel {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .log-entry {
+      font-size: 0.75rem;
+      padding: 3px 0;
+      border-bottom: 1px solid #0a1825;
+      color: #556677;
+      line-height: 1.55;
+    }
+    .log-entry.battle { color: #f0a040; font-weight: bold; }
+
+    /* ===== 着順パネル（盤面下） ===== */
+    #result-area {
+      grid-column: 1 / -1;
+      margin-top: 10px;
+    }
+
+    #ranking { display: flex; flex-direction: column; gap: 5px; }
+
+    .horse-card {
+      display: grid;
+      grid-template-columns: 40px 24px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      background: #0f3460;
+      border-radius: 7px;
+      padding: 8px 12px;
+      border-left: 4px solid #1e3a5f;
+      opacity: 0;
+      transform: translateX(-10px);
+      transition: opacity 0.4s, transform 0.4s;
+    }
+    .horse-card.visible { opacity: 1; transform: translateX(0); }
+    .horse-card:hover   { background: #143d6e; }
+    .horse-card.rank-1 { border-left-color: #f0c040; background: #1a2d50; }
+    .horse-card.rank-2 { border-left-color: #b0b8c8; }
+    .horse-card.rank-3 { border-left-color: #cd7f32; }
+
+    .rank-num { font-size: 1.2rem; font-weight: bold; text-align: center; color: #7eb8d4; }
+    .rank-1 .rank-num { color: #f0c040; }
+    .rank-2 .rank-num { color: #c0c8d0; }
+    .rank-3 .rank-num { color: #cd7f32; }
+
+    .horse-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); }
+    .horse-name { font-size: 0.9rem; font-weight: bold; color: #fff; }
+    .horse-meta { font-size: 0.65rem; color: #7eb8d4; margin-top: 2px; }
+    .arrival-time { font-size: 0.85rem; color: #f0c040; font-weight: bold; text-align:right; }
+    .stat-detail  { font-size: 0.62rem; color: #445566; margin-top: 2px; text-align:right; }
+  </style>
+</head>
+<body>
+  <h1>🏇 JRA CARD SIMULATOR</h1>
+
+  <!-- コントロール -->
+  <div id="controls">
+    <button id="btn-run">▶ レース開始</button>
+    <button id="btn-next" disabled>▶▶ 次のフェーズ</button>
+    <button id="btn-reset" disabled>↺ リセット</button>
+  </div>
+
+  <!-- 3カラムレイアウト -->
+  <div id="main-layout">
+
+    <!-- 左：出馬表 -->
+    <div id="entry-panel">
+      <p class="section-title">📋 出馬表</p>
+      <div id="entry-list"></div>
+    </div>
+
+    <!-- 中央：盤面 -->
+    <div id="field-wrap">
+      <canvas id="field-canvas"></canvas>
+      <div id="phase-indicator">スタート</div>
+    </div>
+
+    <!-- 右：レースログ -->
+    <div id="log-panel-wrap">
+      <p class="section-title">📝 レースログ</p>
+      <div id="log-panel">
+        <div class="log-entry" style="color:#334;">待機中...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 最終着順（3カラム下に全幅表示） -->
+  <div id="result-area" style="display:none;">
+    <p class="section-title" style="margin-top:14px;">🏆 最終着順</p>
+    <div id="ranking"></div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
