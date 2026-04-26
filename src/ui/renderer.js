@@ -115,9 +115,9 @@ export class Renderer {
   }
 
   getPhaseName(phase) {
+    if (phase.isFinal)    return PHASE_NAMES.final;
     if (phase.segmentLabel) return phase.segmentLabel;
     if (phase.index === 0) return PHASE_NAMES.start;
-    if (phase.isFinal)    return PHASE_NAMES.final;
     if (phase.isCorner) {
       const r = phase.ratio;
       if (r < 0.3)  return PHASE_NAMES.corner1;
@@ -359,13 +359,18 @@ export class Renderer {
         const easedProgress = Math.pow(normalized, 0.82);
         let progress = easedProgress * phaseProgress;
         if (options.goalRun) {
-          const distanceMeters = Math.max(1, options.goalRun.distanceMeters ?? 400);
-          const advanceRatio = Math.max(0, Math.min(1.25, (horse.goalMeters ?? 0) / distanceMeters));
-          const startProgress = Number.isFinite(horse.goalStartProgress)
-            ? horse.goalStartProgress
-            : Math.min(0.82, progress * 0.88 + 0.06);
-          const span = options.goalRun.progressSpan ?? 0.55;
-          progress = startProgress + advanceRatio * span;
+          const forcedProgress = options.goalRun.progressById?.get(horse.id);
+          if (Number.isFinite(forcedProgress)) {
+            progress = forcedProgress;
+          } else {
+            const distanceMeters = Math.max(1, options.goalRun.distanceMeters ?? 400);
+            const advanceRatio = Math.max(0, Math.min(1.25, (horse.goalMeters ?? 0) / distanceMeters));
+            const startProgress = Number.isFinite(horse.goalStartProgress)
+              ? horse.goalStartProgress
+              : Math.min(0.82, progress * 0.88 + 0.06);
+            const span = options.goalRun.progressSpan ?? 0.55;
+            progress = startProgress + advanceRatio * span;
+          }
         } else if (options.goalClimb) {
           const t = Math.max(0, Math.min(1, options.goalClimb.t ?? 0));
           const fastWeight = Math.max(

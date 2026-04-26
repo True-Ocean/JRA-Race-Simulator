@@ -47,6 +47,11 @@ const GOAL_NEAR_LANE_GAP = 0.85;
 const GOAL_MIN_SPEED_RATIO = 0.58;
 const GOAL_MAX_SPEED_RATIO = 1.95;
 const GOAL_POST_SCROLL_MS = 1800;
+const GOAL_LEADER_ANCHOR_PROGRESS = 0.88;
+const GOAL_ANCHOR_FOLLOW_SCALE = 0.92;
+const GOAL_CAMERA_LERP = 0.085;
+const GOAL_CAMERA_LERP_MAX = 0.16;
+const GOAL_ANCHOR_DYNAMIC_BOOST = 0.12;
 const STAMINA_LANE_CHANGE_COST = 0.85;
 const STAMINA_ACCEL_COST = 1.25;
 const STAMINA_EARLY_ACCEL_MULT = 1.35;
@@ -268,6 +273,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
 }
 
 function getBattleLogClass(logLine) {
+  if (logLine === '＝＝＝＝＝＝＝＝[着順]＝＝＝＝＝＝＝＝') return 'log-entry placing';
   if (logLine.startsWith('[出遅れ]')) return 'log-entry irregular irregular-start';
   if (logLine.startsWith('[好スタート]')) return 'log-entry irregular irregular-start';
   if (logLine.startsWith('[つまずき]')) return 'log-entry irregular irregular-stumble';
@@ -967,8 +973,10 @@ class PhaseController {
     this._logTimer   = null;
     this._goalRankLogged = new Set();
     this._goalRankOrder = [];
+    this._goalPlacingHeaderLogged = false;
     this._goalLineDiffById = new Map();
     this._goalAllFinishedAtMs = null;
+    this._goalCameraRawProgress = null;
 
     this.btnAdvance = document.getElementById('btn-run');
     this.btnReset  = document.getElementById('btn-reset');
@@ -1162,18 +1170,22 @@ class PhaseController {
     const last3fSpan = Math.max(0.001, maxLast3f - minLast3f);
 
     const xValues = baseHorses.map(h => h.x);
-    const minX = Math.min(...xValues);
-    const maxX = Math.max(...xValues);
-    const xSpan = Math.max(1, maxX - minX);
+    const maxX = Math.max(...xValues, 1);
+    // 最終直線フェーズの描画式と揃えて、ゴール演出開始時の座標ジャンプを防ぐ。
+    const drawSpan = Math.max(140, maxX);
+    const calcFinalMappedProgress = (x) => {
+      const normalized = Math.max(0, Math.min(1, x / drawSpan));
+      const easedProgress = Math.pow(normalized, 0.82);
+      return Math.min(0.93, easedProgress * 0.88 + 0.06);
+    };
     const simHorses = baseHorses.map(h => {
-      const rel = (h.x - minX) / xSpan;
       const staminaRatio = h.initialStamina > 0 ? h.stamina / h.initialStamina : 0.5;
       return {
         ...h,
         goalMeters: 0,
         goalFinished: false,
         targetLane: h.y,
-        goalStartProgress: 0.20 + rel * 0.36,
+        goalStartProgress: calcFinalMappedProgress(h.x),
         goalCurrentMps: GOAL_BASE_MPS * (0.72 + staminaRatio * 0.30),
         goalAccelState: 0,
         goalLaneCost: 0,
@@ -1186,11 +1198,13 @@ class PhaseController {
 
     this.isAnimating = true;
     this.btnAdvance.disabled = true;
-    this.indicator.textContent = `最終直線→ゴール（1F=${GOAL_SECONDS_PER_FURLONG.toFixed(0)}秒）`;
+    this.indicator.textContent = 'ゴールシーン';
     this._goalRankLogged = new Set();
     this._goalRankOrder = [];
+    this._goalPlacingHeaderLogged = false;
     this._goalLineDiffById = new Map();
     this._goalAllFinishedAtMs = null;
+    this._goalCameraRawProgress = null;
     this._appendLog('[ゴール前] 最終直線の攻防、ゴール到達順を表示します');
 
     const step = (ts) => {
@@ -1286,11 +1300,22 @@ class PhaseController {
         horse.x += progressedMeters * GOAL_X_PER_METER;
       });
 
+      const goalRenderProgressById = this._buildGoalRenderProgressMap(
+        simHorses,
+        GOAL_DISTANCE_METERS,
+        0.58,
+        t,
+      );
       const goalLineY = this._getScrollingGoalLineY(rawT);
       if (goalLineY != null) {
         simHorses.forEach(horse => {
           if (horse.goalFinished) return;
-          const noseY = this._estimateGoalNoseY(horse, GOAL_DISTANCE_METERS, 0.58);
+          const noseY = this._estimateGoalNoseY(
+            horse,
+            GOAL_DISTANCE_METERS,
+            0.58,
+            goalRenderProgressById,
+          );
           const diff = noseY - goalLineY;
           const prevDiff = this._goalLineDiffById.get(horse.id);
           this._goalLineDiffById.set(horse.id, diff);
@@ -1308,6 +1333,7 @@ class PhaseController {
         goalRun: {
           distanceMeters: GOAL_DISTANCE_METERS,
           progressSpan: 0.58,
+          progressById: goalRenderProgressById,
         },
       });
       this.lastRenderedHorses = simHorses.map(h => ({ ...h }));
@@ -1329,6 +1355,7 @@ class PhaseController {
           goalRun: {
             distanceMeters: GOAL_DISTANCE_METERS,
             progressSpan: 0.58,
+            progressById: goalRenderProgressById,
           },
         });
         this.lastRenderedHorses = simHorses.map(h => ({ ...h }));
@@ -1379,15 +1406,60 @@ class PhaseController {
     return yTop + (yBottom - yTop) * goalProgress;
   }
 
-  _estimateGoalNoseY(horse, distanceMeters, progressSpan) {
+  _estimateGoalNoseY(horse, distanceMeters, progressSpan, progressById = null) {
+    const mappedProgress = this._resolveGoalMappedProgress(
+      horse,
+      distanceMeters,
+      progressSpan,
+      progressById,
+    );
+    const cy = this.renderer.progressToY(mappedProgress);
+    return cy - this.renderer.cardH * 0.49;
+  }
+
+  _resolveGoalMappedProgress(horse, distanceMeters, progressSpan, progressById = null) {
+    const forced = progressById?.get(horse.id);
+    if (Number.isFinite(forced)) {
+      return Math.max(0.05, Math.min(1.14, forced));
+    }
     const advanceRatio = Math.max(0, Math.min(1.25, (horse.goalMeters ?? 0) / Math.max(1, distanceMeters)));
     const startProgress = Number.isFinite(horse.goalStartProgress)
       ? horse.goalStartProgress
       : 0.20;
     const progress = startProgress + advanceRatio * progressSpan;
-    const mappedProgress = Math.max(0.05, Math.min(1.14, progress));
-    const cy = this.renderer.progressToY(mappedProgress);
-    return cy - this.renderer.cardH * 0.49;
+    return Math.max(0.05, Math.min(1.14, progress));
+  }
+
+  _buildGoalRenderProgressMap(horses, distanceMeters, progressSpan, t = 0) {
+    const rawById = new Map();
+    let leaderRaw = -Infinity;
+    horses.forEach(horse => {
+      const raw = this._resolveGoalMappedProgress(horse, distanceMeters, progressSpan, null);
+      rawById.set(horse.id, raw);
+      if (raw > leaderRaw) leaderRaw = raw;
+    });
+    if (!Number.isFinite(leaderRaw)) leaderRaw = GOAL_LEADER_ANCHOR_PROGRESS;
+
+    if (!Number.isFinite(this._goalCameraRawProgress)) {
+      this._goalCameraRawProgress = leaderRaw;
+    } else {
+      const tClamped = Math.max(0, Math.min(1, t));
+      const followLerp = GOAL_CAMERA_LERP + (GOAL_CAMERA_LERP_MAX - GOAL_CAMERA_LERP) * tClamped;
+      this._goalCameraRawProgress += (leaderRaw - this._goalCameraRawProgress) * followLerp;
+    }
+
+    const tClamped = Math.max(0, Math.min(1, t));
+    const dynamicScale =
+      GOAL_ANCHOR_FOLLOW_SCALE + GOAL_ANCHOR_DYNAMIC_BOOST * (1 - tClamped);
+
+    const anchoredById = new Map();
+    horses.forEach(horse => {
+      const raw = rawById.get(horse.id) ?? GOAL_LEADER_ANCHOR_PROGRESS;
+      const anchored =
+        GOAL_LEADER_ANCHOR_PROGRESS + (raw - this._goalCameraRawProgress) * dynamicScale;
+      anchoredById.set(horse.id, Math.max(0.05, Math.min(GOAL_LEADER_ANCHOR_PROGRESS, anchored)));
+    });
+    return anchoredById;
   }
 
   _markHorseGoalFinished(horse) {
@@ -1396,8 +1468,12 @@ class PhaseController {
     if (!this._goalRankLogged.has(horse.id)) {
       this._goalRankLogged.add(horse.id);
       this._goalRankOrder.push(horse.id);
+      if (!this._goalPlacingHeaderLogged) {
+        this._goalPlacingHeaderLogged = true;
+        this._appendLog('＝＝＝＝＝＝＝＝[着順]＝＝＝＝＝＝＝＝');
+      }
       const placing = this._goalRankOrder.length;
-      this._appendLog(`[着順] ${placing}着 ${horse.name} がゴール`);
+      this._appendLog(`${placing}着 ${horse.name}`);
     }
   }
 
