@@ -94,7 +94,7 @@ export class Renderer {
     const usableH = this.H - topMargin - bottomMargin;
     const pxPerXUnit = usableH / Math.max(1, xSpan);
 
-    const safeForwardPx = this.cardH * 1.06;
+    const safeForwardPx = this.cardH * 1.24 + 8;
     const safeLateralPx = this.cardW * 1.12;
 
     return {
@@ -102,7 +102,7 @@ export class Renderer {
       minYGap: safeLateralPx / Math.max(0.001, this.laneW),
       drawNearLaneGap: safeLateralPx / Math.max(0.001, this.laneW),
       drawNearXGap: safeForwardPx / Math.max(0.001, pxPerXUnit),
-      drawCardSpacingPx: safeForwardPx + 8,
+      drawCardSpacingPx: safeForwardPx + 14,
     };
   }
 
@@ -275,17 +275,26 @@ export class Renderer {
         const easedProgress = Math.pow(normalized, 0.82);
         const progress = easedProgress * phaseProgress;
         const baseY = this.progressToY(Math.min(0.93, progress * 0.88 + 0.06));
-        const cardSpacing = metrics.drawCardSpacingPx;
+        // スタート直後はゲートから真っ直ぐ進ませ、余白押し出しは徐々に有効化する。
+        const spacingActivation =
+          phase.index === 0
+            ? Math.max(0, Math.min(1, (phaseProgress - 0.55) / 0.30))
+            : 1;
+        const cardSpacing = metrics.drawCardSpacingPx * spacingActivation;
         let finalY = baseY;
 
         // レーン境界での丸め誤差を避けるため、連続値レーンの近傍だけ押し出す
         for (const prev of placed) {
           const nearLane = Math.abs(prev.lane - lane) < metrics.drawNearLaneGap;
           const nearX = Math.abs(prev.x - horse.x) < metrics.drawNearXGap;
-          if (!nearLane || !nearX) continue;
+          if (!nearLane || !nearX || cardSpacing <= 0) continue;
           if (Math.abs(finalY - prev.y) < cardSpacing) {
             finalY = prev.y + cardSpacing;
           }
+        }
+        if (phase.index === 0) {
+          // スタートフェーズ中はゲートより後ろへ戻らないようにする。
+          finalY = Math.min(finalY, this._getStartFrontCy());
         }
         horseRenderY.set(horse.id, finalY);
         placed.push({ id: horse.id, lane, x: horse.x, y: finalY });

@@ -22,6 +22,8 @@ const JRA_WAKU_COLORS = {
 const MIN_FORWARD_GAP = 38;
 const LATERAL_BLOCK_X_GAP = 42;
 const LATERAL_BLOCK_LANE_GAP = 1.15;
+const DIAGONAL_REAR_BLOCK_X_GAP = 30;
+const DIAGONAL_REAR_BLOCK_LANE_GAP = 1.05;
 const LANE_WIDTH = CONFIG.LANE_COUNT;
 const LEAD_BATTLE_PHASE_MAX = 0.35;
 const FINAL_DUEL_PHASE_MIN = 0.80;
@@ -75,7 +77,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
       if (engagedHorseIds.has(a.id) || engagedHorseIds.has(b.id)) continue;
       if (!shouldBattle(rng, horses, a, b)) continue;
       const result = resolveBattle(rng, a, b, phase);
-      const log = `[Battle] ${result.winner.name} vs ${result.loser.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
+      const log = `[バトル:進路争い] ${result.winner.name} vs ${result.loser.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
       globalLogs.push(log);
       phaseEventLogs.push(log);
       engagedHorseIds.add(a.id);
@@ -122,7 +124,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
           horse.startBurstFactor = baseMult * randomMult;
           if (horse.startBurstFactor >= 1.22) {
             const gainPct = Math.round((horse.startBurstFactor - 1) * 100);
-            const log = `[Irregular:好発] ${horse.name} がスタートダッシュを決める（+${gainPct}%）`;
+            const log = `[好スタート] ${horse.name} がスタートダッシュを決める（+${gainPct}%）`;
             globalLogs.push(log);
             phaseEventLogs.push(log);
           }
@@ -213,16 +215,71 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
 }
 
 function getBattleLogClass(logLine) {
-  if (logLine.startsWith('[Irregular:出遅れ]')) return 'log-entry irregular irregular-start';
-  if (logLine.startsWith('[Irregular:好発]')) return 'log-entry irregular irregular-start';
-  if (logLine.startsWith('[Irregular:つまづき]')) return 'log-entry irregular irregular-stumble';
-  if (!logLine.startsWith('[Battle')) return 'log-entry';
-  if (logLine.startsWith('[Battle:先頭争い]') || logLine.startsWith('[Battle:先頭集団争い]')) return 'log-entry battle battle-lead';
-  if (logLine.startsWith('[Battle:コーナーポジション]')) return 'log-entry battle battle-corner';
-  if (logLine.startsWith('[Battle:直線叩き合い]')) return 'log-entry battle battle-final';
-  if (logLine.startsWith('[Battle:進路]')) return 'log-entry battle battle-lane';
-  if (logLine.startsWith('[Battle:前詰まり]') || logLine.startsWith('[Battle:同レーン進路競合]')) return 'log-entry battle battle-block';
+  if (logLine.startsWith('[出遅れ]')) return 'log-entry irregular irregular-start';
+  if (logLine.startsWith('[好スタート]')) return 'log-entry irregular irregular-start';
+  if (logLine.startsWith('[つまずき]')) return 'log-entry irregular irregular-stumble';
+  if (!logLine.startsWith('[バトル')) return 'log-entry';
+  if (logLine.startsWith('[バトル:先頭争い]')) return 'log-entry battle battle-lead';
+  if (logLine.startsWith('[バトル:コーナー争い]')) return 'log-entry battle battle-corner';
+  if (logLine.startsWith('[バトル:直線争い]')) return 'log-entry battle battle-final';
+  if (logLine.startsWith('[バトル:進路争い]')) return 'log-entry battle battle-lane';
+  if (logLine.startsWith('[バトル:同レーン争い]')) return 'log-entry battle battle-block';
   return 'log-entry battle battle-default';
+}
+
+function getLogTagClass(logLine) {
+  if (logLine.startsWith('[出遅れ]')) return 'log-tag irregular-start';
+  if (logLine.startsWith('[好スタート]')) return 'log-tag irregular-start';
+  if (logLine.startsWith('[つまずき]')) return 'log-tag irregular-stumble';
+  if (logLine.startsWith('[バトル:先頭争い]')) return 'log-tag battle-lead';
+  if (logLine.startsWith('[バトル:コーナー争い]')) return 'log-tag battle-corner';
+  if (logLine.startsWith('[バトル:直線争い]')) return 'log-tag battle-final';
+  if (logLine.startsWith('[バトル:進路争い]')) return 'log-tag battle-lane';
+  if (logLine.startsWith('[バトル:同レーン争い]')) return 'log-tag battle-block';
+  if (logLine.startsWith('[バトル')) return 'log-tag battle-default';
+  return 'log-tag';
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function decorateHorseNames(text, horseMetaByName) {
+  let html = escapeHtml(text);
+  if (!horseMetaByName || horseMetaByName.size === 0) return html;
+
+  const names = [...horseMetaByName.keys()].sort((a, b) => b.length - a.length);
+  names.forEach(name => {
+    const meta = horseMetaByName.get(name);
+    if (!meta) return;
+    const escapedName = escapeHtml(name);
+    const re = new RegExp(escapeRegExp(escapedName), 'g');
+    const waku = JRA_WAKU_COLORS[meta.waku] ?? { bg: '#888', text: '#fff' };
+    const badge = `<span class="horse-badge" style="background:${waku.bg};color:${waku.text};">${meta.gate}</span>`;
+    html = html.replace(re, `${badge}<span class="horse-name">${escapedName}</span>`);
+  });
+  return html;
+}
+
+function formatLogLineHtml(logLine, horseMetaByName) {
+  const tagMatch = logLine.match(/^\[[^\]]+\]/);
+  if (!tagMatch) return decorateHorseNames(logLine, horseMetaByName);
+
+  const tagText = tagMatch[0];
+  const restText = logLine.slice(tagText.length).trimStart();
+  const tagClass = getLogTagClass(logLine);
+  const tagHtml = `<span class="${tagClass}">${escapeHtml(tagText)}</span>`;
+  const bodyHtml = decorateHorseNames(restText, horseMetaByName);
+  return `${tagHtml} ${bodyHtml}`;
 }
 
 function formatRaceInfo(raceData, courseDef, simOptions) {
@@ -263,6 +320,11 @@ function applyStartSlowMotion(progress) {
 }
 
 function resolveLaneMovement(rng, horse, desiredY, allHorses, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
+  const wantsLaneChange = Math.abs(desiredY - horse.y) > 0.18;
+  if (wantsLaneChange && hasDiagonalRearRisk(horse, desiredY, allHorses)) {
+    return { nextY: clampLane(horse.y) };
+  }
+
   const laneBlocker = allHorses.find(h =>
     h.id !== horse.id &&
     Math.abs(h.x - horse.x) < LATERAL_BLOCK_X_GAP &&
@@ -273,7 +335,6 @@ function resolveLaneMovement(rng, horse, desiredY, allHorses, phase, phaseEventL
     return { nextY: clampLane(desiredY) };
   }
 
-  const wantsLaneChange = Math.abs(desiredY - horse.y) > 0.18;
   if (!wantsLaneChange) {
     return { nextY: clampLane(horse.y) };
   }
@@ -282,7 +343,7 @@ function resolveLaneMovement(rng, horse, desiredY, allHorses, phase, phaseEventL
   if (!engagedHorseIds.has(horse.id) && !engagedHorseIds.has(laneBlocker.id) &&
       shouldBattle(rng, allHorses, horse, laneBlocker)) {
     const result = resolveBattle(rng, horse, laneBlocker, phase);
-    const log = `[Battle:進路] ${horse.name} が ${laneBlocker.name} に進路争い → 勝者: ${result.winner.name}`;
+    const log = `[バトル:進路争い] ${horse.name} が ${laneBlocker.name} に進路争い → 勝者: ${result.winner.name}`;
     globalLogs.push(log);
     phaseEventLogs.push(log);
     engagedHorseIds.add(horse.id);
@@ -293,6 +354,16 @@ function resolveLaneMovement(rng, horse, desiredY, allHorses, phase, phaseEventL
   }
 
   return { nextY: clampLane(horse.y) };
+}
+
+function hasDiagonalRearRisk(horse, desiredY, allHorses) {
+  const targetLane = clampLane(desiredY);
+  return allHorses.some(h => {
+    if (h.id === horse.id) return false;
+    const rearGap = horse.x - h.x;
+    if (rearGap <= 0 || rearGap > DIAGONAL_REAR_BLOCK_X_GAP) return false;
+    return Math.abs(h.y - targetLane) < DIAGONAL_REAR_BLOCK_LANE_GAP;
+  });
 }
 
 function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
@@ -308,7 +379,7 @@ function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
       const lossRatio = 0.22 + rng() * 0.16;
       mult *= (1 - lossRatio);
       const lossPct = Math.round(lossRatio * 100);
-      const log = `[Irregular:出遅れ] ${horse.name} がスタートで遅れる（-${lossPct}%）`;
+      const log = `[出遅れ] ${horse.name} がスタートで遅れる（-${lossPct}%）`;
       globalLogs.push(log);
       phaseEventLogs.push(log);
     }
@@ -327,7 +398,7 @@ function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
       horse.stumbleCooldown = 2;
       horse.stamina = Math.max(0, horse.stamina - (1.0 + rng() * 2.0));
       const lossPct = Math.round(lossRatio * 100);
-      const log = `[Irregular:つまづき] ${horse.name} がつまづく（-${lossPct}%）`;
+      const log = `[つまずき] ${horse.name} がつまずく（-${lossPct}%）`;
       globalLogs.push(log);
       phaseEventLogs.push(log);
     }
@@ -382,7 +453,7 @@ function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, minForwar
     const result = resolveBattle(rng, horse, front, phase);
     const laneGap = Math.abs(front.y - horse.y).toFixed(2);
     const frontGap = Math.max(0, front.x - horse.x).toFixed(1);
-    const log = `[Battle:同レーン進路競合] ${horse.name} が ${front.name} を交わしに行く (前方差:${frontGap}, レーン差:${laneGap}) → 勝者: ${result.winner.name}`;
+    const log = `[バトル:同レーン争い] ${horse.name} が ${front.name} を交わしに行く (前方差:${frontGap}, レーン差:${laneGap}) → 勝者: ${result.winner.name}`;
     globalLogs.push(log);
     phaseEventLogs.push(log);
     engagedHorseIds.add(horse.id);
@@ -546,7 +617,7 @@ function resolveLeadBattle(rng, horses, phase, phaseEventLogs, globalLogs, engag
     sustain: 0.05,
     stamina: 0.15,
   });
-  const log = `[Battle:先頭集団争い] ${a.name} vs ${b.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
+  const log = `[バトル:先頭争い] ${a.name} vs ${b.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
   phaseEventLogs.push(log);
   globalLogs.push(log);
   engagedHorseIds.add(a.id);
@@ -580,7 +651,7 @@ function resolveCornerPositionBattle(rng, horses, phase, phaseEventLogs, globalL
       sustain: 0.05,
       stamina: 0.20,
     });
-    const log = `[Battle:コーナーポジション] ${a.name} vs ${blocker.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
+    const log = `[バトル:コーナー争い] ${a.name} vs ${blocker.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
     phaseEventLogs.push(log);
     globalLogs.push(log);
     engagedHorseIds.add(a.id);
@@ -609,7 +680,7 @@ function resolveFinalStraightDuel(rng, horses, phase, phaseEventLogs, globalLogs
         sustain: 0.45,
         stamina: 0.10,
       }, horse => (horse.style === '差し' || horse.style === '追込') ? 4 : 0);
-      const log = `[Battle:直線叩き合い] ${a.name} vs ${b.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
+      const log = `[バトル:直線争い] ${a.name} vs ${b.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
       phaseEventLogs.push(log);
       globalLogs.push(log);
       engagedHorseIds.add(a.id);
@@ -823,18 +894,18 @@ function renderPhaseRanking(horses) {
 //  フェーズ手動進行コントローラー（ステップバイステップ）
 // =====================
 class PhaseController {
-  constructor(snapshots, phases, renderer, initialHorses = []) {
+  constructor(snapshots, phases, renderer, initialHorses = [], horseMetaByName = new Map()) {
     this.snapshots   = snapshots;
     this.phases      = phases;
     this.renderer    = renderer;
     this.initialHorses = initialHorses.map(h => ({ ...h }));
+    this.horseMetaByName = horseMetaByName;
     this.currentIdx  = 0;
     this.lastRenderedHorses = null;
     this._logQueue   = [];
     this._logTimer   = null;
 
-    this.btnNext   = document.getElementById('btn-next');
-    this.btnRun    = document.getElementById('btn-run');
+    this.btnAdvance = document.getElementById('btn-run');
     this.btnReset  = document.getElementById('btn-reset');
     this.logPanel  = document.getElementById('log-panel');
     this.indicator = document.getElementById('phase-indicator');
@@ -847,8 +918,8 @@ class PhaseController {
     this.currentIdx = 0;
     this.renderer.resetHorseRenderState();
     this._renderPhase(0);
-    this.btnNext.disabled = false;
-    this.btnNext.textContent = '▶▶ 次のフェーズ';
+    this.btnAdvance.disabled = false;
+    this.btnAdvance.textContent = '▶▶ 次のフェーズ';
   }
 
   _renderPhase(idx) {
@@ -872,14 +943,14 @@ class PhaseController {
 
     // 最終フェーズの次は「ゴール判定」
     if (idx === this.snapshots.length - 1) {
-      this.btnNext.textContent = '🏁 ゴール判定';
+      this.btnAdvance.textContent = '🏁 ゴール判定';
     }
   }
 
   // 馬カードをアニメーションで表示（段階的に進行度を上げる）
   _animateHorses(fromHorses, toHorses, phase, isFirstPhase = false) {
     this.isAnimating      = true;
-    this.btnNext.disabled = true;
+    this.btnAdvance.disabled = true;
 
     // 初回のみスタート演出（スタート隊列→第1フェーズ）
     if (isFirstPhase) {
@@ -928,7 +999,7 @@ class PhaseController {
         if (frame >= totalFrames) {
           this.lastRenderedHorses = toHorses.map(h => ({ ...h }));
           this.isAnimating = false;
-          this.btnNext.disabled = false;
+          this.btnAdvance.disabled = false;
           return;
         }
         setTimeout(stepFirst, this.frameMs);
@@ -961,7 +1032,7 @@ class PhaseController {
       if (progress >= 1) {
         this.lastRenderedHorses = toHorses.map(h => ({ ...h }));
         this.isAnimating = false;
-        this.btnNext.disabled = false;
+        this.btnAdvance.disabled = false;
         return;
       }
       setTimeout(step, this.frameMs);
@@ -984,7 +1055,7 @@ class PhaseController {
     const line = this._logQueue.shift();
     const div  = document.createElement('div');
     div.className = getBattleLogClass(line);
-    div.textContent = line;
+    div.innerHTML = formatLogLineHtml(line, this.horseMetaByName);
     this.logPanel.appendChild(div);
     this.logPanel.scrollTop = this.logPanel.scrollHeight;
     this._logTimer = setTimeout(() => this._flushNextLog(), 80);
@@ -994,7 +1065,7 @@ class PhaseController {
     if (this.isAnimating) return;
     this.currentIdx++;
     if (this.currentIdx >= this.snapshots.length) {
-      this.btnNext.disabled = true;
+      this.btnAdvance.disabled = true;
       onFinish();
       return;
     }
@@ -1024,11 +1095,16 @@ Promise.all([
     const condition     = raceData.race_info.condition;
     const renderer      = new Renderer('field-canvas', phases.length, track, condition);
     const initialHorses = calcAllParams(runtimeRaceData);
+    const horseMetaByName = new Map();
 
     // 騎手名をhorseオブジェクトに付与
     runtimeRaceData.entries.forEach((entry, idx) => {
       if (initialHorses[idx]) {
         initialHorses[idx].jockeyName = entry.jockey.name;
+        horseMetaByName.set(initialHorses[idx].name, {
+          gate: initialHorses[idx].gate,
+          waku: initialHorses[idx].waku,
+        });
       }
     });
 
@@ -1046,7 +1122,6 @@ Promise.all([
     let simLogs    = null;
 
     const btnRun   = document.getElementById('btn-run');
-    const btnNext  = document.getElementById('btn-next');
     const btnReset = document.getElementById('btn-reset');
     const reproducibleToggle = document.getElementById('toggle-reproducible');
     const raceInfoEl = document.getElementById('race-info');
@@ -1074,45 +1149,43 @@ Promise.all([
       raceInfoEl.innerHTML = formatRaceInfo(runtimeRaceData, courseDef, opts);
     });
 
-    // レース開始
+    // レース開始／次フェーズ進行（単一ボタン）
     btnRun.addEventListener('click', () => {
-      btnRun.disabled   = true;
-      btnNext.disabled  = false;
-      btnReset.disabled = false;
-      document.getElementById('phase-ranking').innerHTML = '';
-      document.getElementById('log-panel').innerHTML = '';
-      btnNext.textContent = '▶▶ 次のフェーズ';
+      if (!controller) {
+        btnReset.disabled = false;
+        document.getElementById('phase-ranking').innerHTML = '';
+        document.getElementById('log-panel').innerHTML = '';
+        btnRun.textContent = '▶▶ 次のフェーズ';
 
-      const simOptions = currentOptions();
-      refreshRaceInfo(simOptions);
-      const sim  = runSimulation(runtimeRaceData, simOptions, {}, {}, renderer);
-      simResults = sim.results;
-      simLogs    = sim.logs;
+        const simOptions = currentOptions();
+        refreshRaceInfo(simOptions);
+        const sim  = runSimulation(runtimeRaceData, simOptions, {}, {}, renderer);
+        simResults = sim.results;
+        simLogs    = sim.logs;
 
-      // 騎手名をシミュレーション結果にも付与
-      runtimeRaceData.entries.forEach((entry, idx) => {
-        if (simResults[idx]) {
-          // idで対応する結果を探す
-        }
-      });
-      simResults.forEach(horse => {
-        const entry = runtimeRaceData.entries.find((_, i) => i === horse.id);
-        if (entry) horse.jockeyName = entry.jockey.name;
-      });
+        // 騎手名をシミュレーション結果にも付与
+        runtimeRaceData.entries.forEach((entry, idx) => {
+          if (simResults[idx]) {
+            // idで対応する結果を探す
+          }
+        });
+        simResults.forEach(horse => {
+          const entry = runtimeRaceData.entries.find((_, i) => i === horse.id);
+          if (entry) horse.jockeyName = entry.jockey.name;
+        });
 
-      controller = new PhaseController(sim.snapshots, phases, renderer, initialHorses);
-      controller.start();
-    });
+        controller = new PhaseController(sim.snapshots, phases, renderer, initialHorses, horseMetaByName);
+        controller.start();
+        return;
+      }
 
-    // 次のフェーズ／ゴール判定
-    btnNext.addEventListener('click', () => {
-      if (!controller) return;
       controller.next(() => {
         setTimeout(() => {
           showResults(simResults);
-          btnNext.disabled    = true;
-          btnReset.disabled   = false;
-          btnNext.textContent = '▶▶ 次のフェーズ';
+          btnRun.disabled    = true;
+          btnReset.disabled  = false;
+          btnRun.textContent = '✅ レース終了';
+          controller = null;
         }, 300);
       });
     });
@@ -1120,9 +1193,8 @@ Promise.all([
     // リセット
     btnReset.addEventListener('click', () => {
       btnRun.disabled   = false;
-      btnNext.disabled  = true;
       btnReset.disabled = true;
-      btnNext.textContent = '▶▶ 次のフェーズ';
+      btnRun.textContent = '▶ レース開始';
       document.getElementById('phase-indicator').textContent = 'スタート';
       document.getElementById('phase-ranking').innerHTML =
         '<div class="log-entry" style="color:#334;">待機中...</div>';

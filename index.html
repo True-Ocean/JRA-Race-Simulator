@@ -284,19 +284,34 @@
       font-size: 0.75rem;
       padding: 3px 0;
       border-bottom: 1px solid #0a1825;
-      color: #556677;
+      color: #c8d4df;
       line-height: 1.55;
     }
     .log-entry.battle { font-weight: bold; }
-    .log-entry.battle-default { color: #f0a040; }
-    .log-entry.battle-lead { color: #f59e0b; }
-    .log-entry.battle-corner { color: #22d3ee; }
-    .log-entry.battle-final { color: #f472b6; }
-    .log-entry.battle-lane { color: #a78bfa; }
-    .log-entry.battle-block { color: #fb7185; }
     .log-entry.irregular { font-weight: bold; }
-    .log-entry.irregular-start { color: #f97316; }
-    .log-entry.irregular-stumble { color: #facc15; }
+    .log-tag { font-weight: bold; margin-right: 6px; }
+    .log-tag.battle-default { color: #f0a040; }
+    .log-tag.battle-lead { color: #f59e0b; }
+    .log-tag.battle-corner { color: #22d3ee; }
+    .log-tag.battle-final { color: #f472b6; }
+    .log-tag.battle-lane { color: #a78bfa; }
+    .log-tag.battle-block { color: #fb7185; }
+    .log-tag.irregular-start { color: #f97316; }
+    .log-tag.irregular-stumble { color: #facc15; }
+    .horse-badge {
+      display: inline-block;
+      min-width: 1.45em;
+      padding: 0 0.28em;
+      margin-right: 0.28em;
+      border-radius: 3px;
+      border: 1px solid rgba(255,255,255,0.30);
+      text-align: center;
+      font-size: 0.72em;
+      font-weight: bold;
+      line-height: 1.3;
+      vertical-align: baseline;
+    }
+    .horse-name { margin-right: 0.08em; }
 
   </style>
 </head>
@@ -306,7 +321,6 @@
   <!-- コントロール -->
   <div id="controls">
     <button id="btn-run">▶ レース開始</button>
-    <button id="btn-next" disabled>▶▶ 次のフェーズ</button>
     <button id="btn-reset" disabled>↺ リセット</button>
     <label id="sim-options">
       <input id="toggle-reproducible" type="checkbox" checked>
