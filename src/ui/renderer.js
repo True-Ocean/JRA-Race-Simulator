@@ -20,7 +20,7 @@ const PHASE_NAMES = {
   corner3:  '第3コーナー',
   corner4:  '第4コーナー',
   back:     '向正面',
-  final:    'ゴールシーン',
+  final:    '最終直線',
 };
 
 // JRA枠色（枠番1〜8）
@@ -162,7 +162,7 @@ export class Renderer {
     if (inGateView) {
       this._drawStartingGate(phase, gateOpenProgress, 'front', gateYOffset, gateOpacity);
     }
-    this._drawPhaseLabel(phase);
+    this._drawPhaseLabel(phase, options.phaseLabel);
   }
 
   _drawBackground(phase) {
@@ -321,9 +321,9 @@ export class Renderer {
   }
 
   // フェーズ名ラベル（DOMの#phase-indicatorとは別に盤面内に薄く1つだけ描画）
-  _drawPhaseLabel(phase) {
+  _drawPhaseLabel(phase, overrideLabel = null) {
     const ctx  = this.ctx;
-    const name = this.getPhaseName(phase);
+    const name = overrideLabel ?? this.getPhaseName(phase);
     ctx.save();
     ctx.font      = `bold ${Math.max(20, this.W * 0.052)}px 'Courier New'`;
     ctx.fillStyle = 'rgba(240,192,64,0.13)';

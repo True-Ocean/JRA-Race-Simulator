@@ -1340,6 +1340,7 @@ class PhaseController {
       }
 
       this.renderer.draw(simHorses, phase, 1, {
+        phaseLabel: 'ゴールシーン',
         furlong: { t },
         goalLine: rawT,
         goalRun: {
@@ -1362,6 +1363,7 @@ class PhaseController {
           this._markHorseGoalFinished(h);
         });
         this.renderer.draw(simHorses, phase, 1, {
+          phaseLabel: 'ゴールシーン',
           furlong: { t: 1 },
           goalLine: rawT,
           goalRun: {
