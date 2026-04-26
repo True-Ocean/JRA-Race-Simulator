@@ -52,13 +52,14 @@ const GOAL_ANCHOR_FOLLOW_SCALE = 0.92;
 const GOAL_CAMERA_LERP = 0.085;
 const GOAL_CAMERA_LERP_MAX = 0.16;
 const GOAL_ANCHOR_DYNAMIC_BOOST = 0.12;
-const STAMINA_LANE_CHANGE_COST = 0.85;
-const STAMINA_ACCEL_COST = 1.25;
-const STAMINA_EARLY_ACCEL_MULT = 1.35;
-const STAMINA_BATTLE_BASE_COST = 1.6;
-const STAMINA_BATTLE_LOSER_EXTRA = 3.4;
-const STAMINA_BATTLE_TRACKER_GAIN = 0.7;
-const STAMINA_CORNER_OUTER_PER_LANE = 0.75;
+const STAMINA_LANE_CHANGE_COST = 0.45;
+const STAMINA_ACCEL_COST = 0.10;
+const STAMINA_EARLY_ACCEL_MULT = 1.10;
+const STAMINA_BATTLE_BASE_COST = 0.8;
+const STAMINA_BATTLE_LOSER_EXTRA = 1.6;
+const STAMINA_BATTLE_TRACKER_GAIN = 0.2;
+const STAMINA_CORNER_OUTER_PER_LANE = 0.30;
+const GOAL_STAMINA_DRAIN_MULT = 1.35;
 
 // =====================
 //  シミュレーション（全フェーズ一括計算）
@@ -781,7 +782,8 @@ function applyBattleStaminaImpact(winner, loser, options = {}) {
 
   winner.staminaBattleCost = (winner.staminaBattleCost ?? 0) + winnerDrain;
   loser.staminaBattleCost = (loser.staminaBattleCost ?? 0) + loserExtraDrain;
-  winner.battleLosses = (winner.battleLosses ?? 0) + STAMINA_BATTLE_TRACKER_GAIN;
+  // 勝者までフェーズ消費を積み上げると枯渇が早すぎるため、追跡加算は敗者中心にする。
+  winner.battleLosses = (winner.battleLosses ?? 0) + STAMINA_BATTLE_TRACKER_GAIN * 0.25;
   loser.battleLosses = (loser.battleLosses ?? 0) + STAMINA_BATTLE_TRACKER_GAIN;
   winner.battleFatigue = (winner.battleFatigue ?? 0) + winnerDrain * 0.35;
   loser.battleFatigue = (loser.battleFatigue ?? 0) + loserExtraDrain * 0.45;
@@ -904,6 +906,7 @@ function renderEntryList(horses) {
   horses.forEach(horse => {
     const waku = JRA_WAKU_COLORS[horse.waku] ?? { bg: '#888', text: '#fff' };
     const staminaRemainPct = getStaminaRemainPct(horse);
+    const staminaBarClass = getStaminaBarClassName(staminaRemainPct);
 
     const row = document.createElement('div');
     row.className        = 'entry-row';
@@ -921,7 +924,7 @@ function renderEntryList(horses) {
         <div class="entry-params">
           <div class="param-row">
             <span class="param-label">残ST</span>
-            <div class="param-bar-bg"><div class="param-bar stamina-remain-bar" style="width:${staminaRemainPct}%"></div></div>
+            <div class="param-bar-bg"><div class="param-bar ${staminaBarClass}" style="width:${staminaRemainPct}%"></div></div>
             <span class="param-val stamina-remain-val">${staminaRemainPct}</span>
           </div>
         </div>
@@ -937,6 +940,12 @@ function getStaminaRemainPct(horse) {
   return Math.max(0, Math.min(100, Math.round(ratio)));
 }
 
+function getStaminaBarClassName(staminaPct) {
+  if (staminaPct < 25) return 'stamina-remain-bar is-critical';
+  if (staminaPct < 50) return 'stamina-remain-bar is-warning';
+  return 'stamina-remain-bar';
+}
+
 function updateEntryStaminaBars(horses) {
   horses.forEach(horse => {
     const rowEl = document.querySelector(`[data-horse-id="${horse.id}"]`);
@@ -944,7 +953,10 @@ function updateEntryStaminaBars(horses) {
     const pct = getStaminaRemainPct(horse);
     const barEl = rowEl.querySelector('.stamina-remain-bar');
     const valEl = rowEl.querySelector('.stamina-remain-val');
-    if (barEl) barEl.style.width = `${pct}%`;
+    if (barEl) {
+      barEl.style.width = `${pct}%`;
+      barEl.className = `param-bar ${getStaminaBarClassName(pct)}`;
+    }
     if (valEl) valEl.textContent = `${pct}`;
   });
 }
@@ -1288,7 +1300,7 @@ class PhaseController {
         const accelDrain = Math.max(0, deltaV) * (1.2 + (horse.style === '追込' || horse.style === '差し' ? 0.45 : 0.15));
         const speedDrain = horse.goalCurrentMps * (0.010 + (horse.style === '逃げ' ? 0.003 : 0));
         const trafficDrain = (1 - trafficPenalty) * 0.85;
-        const goalDrain = (accelDrain + speedDrain + trafficDrain) * dt;
+        const goalDrain = (accelDrain + speedDrain + trafficDrain) * dt * GOAL_STAMINA_DRAIN_MULT;
         horse.stamina = Math.max(0, horse.stamina - goalDrain);
 
         const deltaMeters = horse.goalCurrentMps * dt;

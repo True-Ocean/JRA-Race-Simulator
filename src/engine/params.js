@@ -90,7 +90,7 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
     const S_sustain = normalize(rawSustain);
 
     // スタミナ初期値
-    const initialStamina = S_sustain * 2.0;
+    const initialStamina = S_sustain * 2.2;
 
     // 枠番・枠色の自動付与
     const total = entries.length;

@@ -75,7 +75,7 @@ export function calcStaminaCons(phase, horse, trackModifier) {
   const battleCost = horse.battleLosses * CONFIG.BATTLE_STAMINA_COST;
   const lane       = laneIndex(horse.y);
   const cornerCost = phase.isCorner && lane >= 4 ? CONFIG.CORNER_STAMINA_COST : 0;
-  return (phase.distance * trackModifier * 0.012) + battleCost + cornerCost;
+  return (phase.distance * trackModifier * 0.009) + battleCost + cornerCost;
 }
 
 export function applyCornerLoss(phase, horse) {
