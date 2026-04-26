@@ -11,8 +11,12 @@
       background: #0d1b2a;
       color: #e0e0e0;
       font-family: 'Courier New', monospace;
-      min-height: 100vh;
+      height: 100dvh;
       padding: 14px 12px;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 0;
+      overflow: hidden;
     }
 
     h1 {
@@ -28,9 +32,25 @@
     #controls {
       display: flex;
       justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
       gap: 10px;
       margin-bottom: 12px;
     }
+
+    #sim-options {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #9ec3d8;
+      font-size: 0.73rem;
+      letter-spacing: 0.03em;
+      border: 1px solid #2c5275;
+      border-radius: 6px;
+      padding: 7px 10px;
+      background: rgba(16, 40, 63, 0.65);
+    }
+    #sim-options input { accent-color: #f0c040; }
 
     button {
       background: #1e3a5f;
@@ -52,8 +72,10 @@
     #main-layout {
       display: grid;
       grid-template-columns: 300px 1fr 320px;
+      grid-template-rows: auto 1fr;
       gap: 10px;
-      align-items: start;
+      align-items: stretch;
+      min-height: 0;
     }
 
     .section-title {
@@ -66,60 +88,82 @@
       padding-bottom: 4px;
     }
 
+    #race-info {
+      grid-column: 1 / -1;
+      background: #06111e;
+      border: 1px solid #1e3a5f;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.72rem;
+      color: #8cb8d1;
+      margin-bottom: 2px;
+    }
+    #race-info b { color: #e7f3fb; font-weight: bold; }
+
     /* ===== 左カラム：出馬表（充実版） ===== */
     #entry-panel {
       background: #06111e;
       border: 1px solid #1e3a5f;
       border-radius: 8px;
-      padding: 10px;
+      padding: 7px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
 
     #entry-list {
       display: flex;
       flex-direction: column;
-      gap: 5px;
-      max-height: calc(100vh - 160px);
+      gap: 3px;
+      flex: 1;
       overflow-y: auto;
-      padding-right: 4px;
+      padding-right: 2px;
+      min-height: 0;
     }
 
     .entry-row {
       display: grid;
-      grid-template-columns: 26px 1fr;
-      gap: 6px;
+      grid-template-columns: 24px 1fr;
+      gap: 5px;
       align-items: start;
       background: #0f1e30;
       border-radius: 5px;
-      padding: 6px 7px;
-      font-size: 0.7rem;
+      padding: 4px 5px;
+      font-size: 0.66rem;
     }
 
     .entry-gate {
-      width: 26px;
-      height: 26px;
+      width: 24px;
+      height: 24px;
       border-radius: 4px;
       text-align: center;
-      line-height: 26px;
+      line-height: 24px;
       font-weight: bold;
-      font-size: 0.82rem;
+      font-size: 0.74rem;
       flex-shrink: 0;
     }
 
-    .entry-info { display: flex; flex-direction: column; gap: 2px; }
-    .entry-name { color: #fff; font-size: 0.74rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .entry-jockey { color: #7eb8d4; font-size: 0.60rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .entry-info { display: flex; flex-direction: column; gap: 1px; }
+    .entry-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      column-gap: 5px;
+    }
+    .entry-name { color: #fff; font-size: 0.72rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .entry-jockey { color: #7eb8d4; font-size: 0.56rem; white-space: nowrap; }
 
     /* パラメータバー */
-    .entry-params { margin-top: 3px; display: flex; flex-direction: column; gap: 2px; }
+    .entry-params { margin-top: 1px; display: flex; flex-direction: column; gap: 1px; }
     .param-row {
       display: grid;
-      grid-template-columns: 22px 1fr 24px;
+      grid-template-columns: 22px 1fr 20px;
       align-items: center;
-      gap: 3px;
+      gap: 2px;
     }
     .param-label { font-size: 0.58rem; color: #556677; text-align: right; }
     .param-bar-bg {
-      height: 5px;
+      height: 4px;
       background: rgba(255,255,255,0.08);
       border-radius: 3px;
       overflow: hidden;
@@ -129,26 +173,8 @@
       border-radius: 3px;
       transition: width 0.4s ease;
     }
-    .speed-bar   { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
-    .maneuv-bar  { background: linear-gradient(90deg, #a855f7, #c084fc); }
-    .sustain-bar { background: linear-gradient(90deg, #22c55e, #4ade80); }
-    .param-val { font-size: 0.58rem; color: #7eb8d4; text-align: right; }
-
-    /* 着順バッジ */
-    .entry-rank-badge {
-      display: inline-block;
-      min-width: 16px;
-      padding: 1px 3px;
-      border-radius: 3px;
-      background: #1e3a5f;
-      color: #7eb8d4;
-      font-size: 0.6rem;
-      text-align: center;
-      margin-top: 2px;
-    }
-    .entry-rank-badge.rank-1 { background: #f0c040; color: #0d1b2a; font-weight: bold; }
-    .entry-rank-badge.rank-2 { background: #b0b8c8; color: #0d1b2a; }
-    .entry-rank-badge.rank-3 { background: #cd7f32; color: #fff; }
+    .stamina-remain-bar { background: linear-gradient(90deg, #22c55e, #4ade80); }
+    .param-val { font-size: 0.56rem; color: #7eb8d4; text-align: right; }
 
     /* ===== 中央カラム：盤面（縦長） ===== */
     #field-wrap {
@@ -157,14 +183,26 @@
       border: 1px solid #1e3a5f;
       border-radius: 10px;
       overflow: hidden;
-      height: calc(100vh - 100px);
-      min-height: 520px;
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+    }
+
+    #field-viewport {
+      position: relative;
+      height: 100%;
+      max-width: 100%;
+      aspect-ratio: 9 / 16;
     }
 
     #field-canvas {
       position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
+      inset: 0;
+      width: 100%;
+      height: 100%;
     }
 
     /* フェーズ表示（DOM側テキスト）：Canvas内に描画するため非表示 */
@@ -172,17 +210,69 @@
       display: none;
     }
 
-    /* ===== 右カラム：レースログ ===== */
-    #log-panel-wrap {
+    /* ===== 右カラム：順位 + レースログ ===== */
+    #right-panel {
       background: #06111e;
       border: 1px solid #1e3a5f;
       border-radius: 8px;
-      padding: 10px;
-      height: calc(100vh - 100px);
-      min-height: 520px;
+      padding: 7px;
+      height: 100%;
+      min-height: 0;
       display: flex;
       flex-direction: column;
+      gap: 6px;
     }
+
+    .right-block {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: #0a1828;
+      border: 1px solid #15324d;
+      border-radius: 6px;
+      padding: 6px;
+    }
+
+    #phase-ranking {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .phase-rank-row {
+      display: grid;
+      grid-template-columns: 26px 20px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+      background: #10263d;
+      border-radius: 5px;
+      padding: 4px 6px;
+      border-left: 3px solid #1e3a5f;
+    }
+    .phase-rank-row.rank-1 { border-left-color: #f0c040; }
+    .phase-rank-row.rank-2 { border-left-color: #b0b8c8; }
+    .phase-rank-row.rank-3 { border-left-color: #cd7f32; }
+    .phase-rank-num { font-size: 0.78rem; color: #7eb8d4; text-align: center; font-weight: bold; }
+    .phase-rank-row.rank-1 .phase-rank-num { color: #f0c040; }
+    .phase-rank-row.rank-2 .phase-rank-num { color: #d0d8e2; }
+    .phase-rank-row.rank-3 .phase-rank-num { color: #cd7f32; }
+    .phase-rank-gate {
+      width: 20px;
+      height: 20px;
+      border-radius: 3px;
+      border: 1px solid rgba(255,255,255,0.28);
+      font-size: 0.6rem;
+      font-weight: bold;
+      line-height: 18px;
+      text-align: center;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);
+    }
+    .phase-rank-name { color: #fff; font-size: 0.68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .phase-rank-meta { color: #7eb8d4; font-size: 0.58rem; white-space: nowrap; }
 
     #log-panel {
       flex: 1;
@@ -197,45 +287,17 @@
       color: #556677;
       line-height: 1.55;
     }
-    .log-entry.battle { color: #f0a040; font-weight: bold; }
+    .log-entry.battle { font-weight: bold; }
+    .log-entry.battle-default { color: #f0a040; }
+    .log-entry.battle-lead { color: #f59e0b; }
+    .log-entry.battle-corner { color: #22d3ee; }
+    .log-entry.battle-final { color: #f472b6; }
+    .log-entry.battle-lane { color: #a78bfa; }
+    .log-entry.battle-block { color: #fb7185; }
+    .log-entry.irregular { font-weight: bold; }
+    .log-entry.irregular-start { color: #f97316; }
+    .log-entry.irregular-stumble { color: #facc15; }
 
-    /* ===== 着順パネル（盤面下） ===== */
-    #result-area {
-      grid-column: 1 / -1;
-      margin-top: 10px;
-    }
-
-    #ranking { display: flex; flex-direction: column; gap: 5px; }
-
-    .horse-card {
-      display: grid;
-      grid-template-columns: 40px 24px 1fr auto;
-      align-items: center;
-      gap: 8px;
-      background: #0f3460;
-      border-radius: 7px;
-      padding: 8px 12px;
-      border-left: 4px solid #1e3a5f;
-      opacity: 0;
-      transform: translateX(-10px);
-      transition: opacity 0.4s, transform 0.4s;
-    }
-    .horse-card.visible { opacity: 1; transform: translateX(0); }
-    .horse-card:hover   { background: #143d6e; }
-    .horse-card.rank-1 { border-left-color: #f0c040; background: #1a2d50; }
-    .horse-card.rank-2 { border-left-color: #b0b8c8; }
-    .horse-card.rank-3 { border-left-color: #cd7f32; }
-
-    .rank-num { font-size: 1.2rem; font-weight: bold; text-align: center; color: #7eb8d4; }
-    .rank-1 .rank-num { color: #f0c040; }
-    .rank-2 .rank-num { color: #c0c8d0; }
-    .rank-3 .rank-num { color: #cd7f32; }
-
-    .horse-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); }
-    .horse-name { font-size: 0.9rem; font-weight: bold; color: #fff; }
-    .horse-meta { font-size: 0.65rem; color: #7eb8d4; margin-top: 2px; }
-    .arrival-time { font-size: 0.85rem; color: #f0c040; font-weight: bold; text-align:right; }
-    .stat-detail  { font-size: 0.62rem; color: #445566; margin-top: 2px; text-align:right; }
   </style>
 </head>
 <body>
@@ -246,10 +308,15 @@
     <button id="btn-run">▶ レース開始</button>
     <button id="btn-next" disabled>▶▶ 次のフェーズ</button>
     <button id="btn-reset" disabled>↺ リセット</button>
+    <label id="sim-options">
+      <input id="toggle-reproducible" type="checkbox" checked>
+      再現性モード（同条件で同結果）
+    </label>
   </div>
 
   <!-- 3カラムレイアウト -->
   <div id="main-layout">
+    <div id="race-info"></div>
 
     <!-- 左：出馬表 -->
     <div id="entry-panel">
@@ -259,24 +326,28 @@
 
     <!-- 中央：盤面 -->
     <div id="field-wrap">
-      <canvas id="field-canvas"></canvas>
+      <div id="field-viewport">
+        <canvas id="field-canvas"></canvas>
+      </div>
       <div id="phase-indicator">スタート</div>
     </div>
 
-    <!-- 右：レースログ -->
-    <div id="log-panel-wrap">
-      <p class="section-title">📝 レースログ</p>
-      <div id="log-panel">
-        <div class="log-entry" style="color:#334;">待機中...</div>
+    <!-- 右：上=順位 / 下=レースログ -->
+    <div id="right-panel">
+      <div class="right-block">
+        <p class="section-title">🏁 フェーズ順位</p>
+        <div id="phase-ranking">
+          <div class="log-entry" style="color:#334;">待機中...</div>
+        </div>
+      </div>
+      <div class="right-block">
+        <p class="section-title">📝 レースログ</p>
+        <div id="log-panel">
+          <div class="log-entry" style="color:#334;">待機中...</div>
+        </div>
       </div>
     </div>
 
-  </div>
-
-  <!-- 最終着順（3カラム下に全幅表示） -->
-  <div id="result-area" style="display:none;">
-    <p class="section-title" style="margin-top:14px;">🏆 最終着順</p>
-    <div id="ranking"></div>
   </div>
 
   <script type="module" src="./main.js"></script>

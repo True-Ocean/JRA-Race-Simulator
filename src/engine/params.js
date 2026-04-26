@@ -104,6 +104,8 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
       color,
       name:           horse.name,
       style:          horse.style,
+      ave3f:          horse.ave_3f,
+      last3f:         horse.last_3f,
       S_cruise,
       M_maneuv,
       S_sustain,
@@ -126,6 +128,11 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
  * ゲート番号をそのままレーン番号にマッピング
  */
 function calcInitialLane(gate, total) {
-  // ゲート1=レーン1(最内), ゲート8=レーン8(大外)
-  return Math.max(1, Math.min(8, gate));
+  // 枠順をコース全レーン幅に線形マッピング
+  // 18頭立てなら 1〜18 をそのまま使い、少頭数は内外へ均等に広げる
+  const laneMax = CONFIG.LANE_COUNT;
+  if (total <= 1) return 1;
+  const ratio = (gate - 1) / (total - 1);
+  const lane = 1 + ratio * (laneMax - 1);
+  return Math.max(1, Math.min(laneMax, Math.round(lane)));
 }

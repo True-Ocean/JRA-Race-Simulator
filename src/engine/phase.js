@@ -4,7 +4,11 @@ export function calcPhaseCount(distance) {
   return Math.max(5, Math.round(distance / 270));
 }
 
-export function buildPhases(distance) {
+export function buildPhases(distance, courseDef = null) {
+  if (courseDef?.segments?.length) {
+    return buildPhasesFromCourse(distance, courseDef);
+  }
+
   const total  = calcPhaseCount(distance);
   const phases = [];
 
@@ -28,6 +32,30 @@ export function buildPhases(distance) {
     });
   }
   return phases;
+}
+
+function buildPhasesFromCourse(distance, courseDef) {
+  const segments = courseDef.segments.filter(s => typeof s.ratio === 'number' && s.ratio > 0);
+  const ratioSum = segments.reduce((acc, s) => acc + s.ratio, 0);
+  const safeRatioSum = ratioSum > 0 ? ratioSum : 1;
+  const lastCornerNo = Math.max(0, ...segments.map(s => s.cornerNo ?? 0));
+
+  return segments.map((segment, index) => {
+    const normRatio = segment.ratio / safeRatioSum;
+    const phaseRatio = segments.length > 1 ? index / (segments.length - 1) : 1;
+    const cornerNo = segment.cornerNo ?? null;
+    return {
+      index,
+      distance: distance * normRatio,
+      ratio: phaseRatio,
+      segmentId: segment.id ?? `segment-${index}`,
+      segmentLabel: segment.label ?? segment.id ?? `Segment ${index + 1}`,
+      kind: segment.kind ?? 'straight',
+      cornerNo,
+      isCorner: segment.kind === 'corner',
+      isFinal: segment.kind === 'final' || (cornerNo !== null && cornerNo === lastCornerNo && index === segments.length - 1),
+    };
+  });
 }
 
 export function laneIndex(y) {

@@ -3,7 +3,8 @@
   "race_info": {
     "track": "芝",
     "distance": 2400,
-    "condition": "良"
+    "condition": "良",
+    "course_id": "long_2400"
   },
   "entries": [
     {
