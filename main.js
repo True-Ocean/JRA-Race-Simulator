@@ -49,9 +49,22 @@ const GOAL_NEAR_LANE_GAP = 0.85;
 const GOAL_MIN_SPEED_RATIO = 0.58;
 const GOAL_MAX_SPEED_RATIO = 1.95;
 const GOAL_POST_SCROLL_MS = 1800;
+// ゴール線到達前は先頭が画面上へ抜けすぎないように抑える
+const GOAL_PROGRESS_MAX_PRE_LINE = 1.00;
+// ゴール線到達後は少しだけ抜けを許容する
+const GOAL_PROGRESS_MAX_POST_LINE = 1.10;
+// ゴールシーン開始時、先頭馬を画面中段付近に置いて隊列を見やすくする
+const GOAL_ENTRY_LEADER_START_PROGRESS = 0.52;
+// 後方馬を必要以上に画面外へ押し出しすぎないための下限（隊列保持用）
+const GOAL_ENTRY_TAIL_MIN_PROGRESS = -0.16;
+// 画面外を含むゴール描画 progress 下限
+const GOAL_PROGRESS_MIN = -0.28;
+// 切替時の短いカット演出（フェード）時間
+const GOAL_SCENE_TRANSITION_MS = 300;
+const GOAL_SCENE_TRANSITION_MAX_ALPHA = 0.72;
 const GOAL_LEADER_ANCHOR_PROGRESS = 0.88;
 // 仮想リーダーが上に抜けた時にYで見せる（旧: 0.88 で上方向が潰れていた）
-const GOAL_ANCHOR_MAX_PROGRESS = 0.96;
+const GOAL_ANCHOR_MAX_PROGRESS = 1.08;
 const GOAL_PROGRESS_SPAN = 0.64;
 // t < 2/3（残2〜1ﾊﾛﾝ相当）の間は相対差を大きく見せる
 const GOAL_EARLY_PHASE_T = 2 / 3;
@@ -1251,7 +1264,14 @@ class PhaseController {
     const finalSnap = this.snapshots[lastIdx];
     const phase = this.phases[lastIdx];
     const baseHorses = (this.lastRenderedHorses ?? finalSnap.horses).map(h => ({ ...h }));
-
+    // 最終直線最後のコマでレンダラーが実際に描いた cy を progress 値に逆算して保持し、
+    // ゴール演出 1 コマ目で同位置から開始できるようにする。
+    const initialRenderProgressById = new Map();
+    this.renderer.horseRenderState.forEach((state, id) => {
+      if (Number.isFinite(state?.cy)) {
+        initialRenderProgressById.set(id, this.renderer.yToProgress(state.cy));
+      }
+    });
     const arrivalTimes = this.simResults.map(h => h.arrivalTime).filter(v => Number.isFinite(v));
     if (arrivalTimes.length === 0) {
       onDone?.();
@@ -1284,6 +1304,30 @@ class PhaseController {
       const easedProgress = Math.pow(normalized, 0.82);
       return Math.min(0.93, easedProgress * 0.88 + 0.06);
     };
+    const baseGoalProgressById = new Map();
+    baseHorses.forEach(horse => {
+      const carried = initialRenderProgressById.get(horse.id);
+      const baseProgress = Number.isFinite(carried)
+        ? carried
+        : calcFinalMappedProgress(horse.x);
+      baseGoalProgressById.set(horse.id, baseProgress);
+    });
+    let baseLeaderProgress = -Infinity;
+    let baseTailProgress = Infinity;
+    baseGoalProgressById.forEach(progress => {
+      if (progress > baseLeaderProgress) baseLeaderProgress = progress;
+      if (progress < baseTailProgress) baseTailProgress = progress;
+    });
+    if (!Number.isFinite(baseLeaderProgress)) {
+      baseLeaderProgress = GOAL_ENTRY_LEADER_START_PROGRESS;
+    }
+    if (!Number.isFinite(baseTailProgress)) {
+      baseTailProgress = GOAL_ENTRY_TAIL_MIN_PROGRESS;
+    }
+    const goalEntryOffsetRaw = GOAL_ENTRY_LEADER_START_PROGRESS - baseLeaderProgress;
+    const goalEntryOffsetMin = GOAL_ENTRY_TAIL_MIN_PROGRESS - baseTailProgress;
+    const goalEntryOffset = Math.max(goalEntryOffsetRaw, goalEntryOffsetMin);
+
     const simHorses = baseHorses.map(h => {
       const staminaRatio = h.initialStamina > 0 ? h.stamina / h.initialStamina : 0.5;
       const res = resultsById.get(h.id) ?? h;
@@ -1306,7 +1350,7 @@ class PhaseController {
         goalMeters: 0,
         goalFinished: false,
         targetLane: h.y,
-        goalStartProgress: calcFinalMappedProgress(h.x),
+        goalStartProgress: (baseGoalProgressById.get(h.id) ?? GOAL_ENTRY_LEADER_START_PROGRESS) + goalEntryOffset,
         goalCurrentMps: GOAL_BASE_MPS * startSpeedMult,
         goalAccelState: 0,
         goalLaneCost: 0,
@@ -1319,6 +1363,7 @@ class PhaseController {
     const durationMs = GOAL_DISTANCE_METERS / GOAL_BASE_MPS * 1000 * GOAL_TIME_SCALE;
     const startedAt = performance.now();
     let lastTs = startedAt;
+    let goalFrameIndex = 0;
 
     this.isAnimating = true;
     this.btnAdvance.disabled = true;
@@ -1332,7 +1377,10 @@ class PhaseController {
     this._appendLog('[ゴール前] 最終直線の攻防、ゴール到達順を表示します');
 
     const step = (ts) => {
-      const dt = Math.max(0.001, Math.min(0.12, (ts - lastTs) / 1000));
+      const isFirstGoalFrame = goalFrameIndex === 0;
+      goalFrameIndex += 1;
+      const rawDt = Math.max(0.001, Math.min(0.12, (ts - lastTs) / 1000));
+      const dt = isFirstGoalFrame ? 0 : rawDt;
       lastTs = ts;
       const elapsed = ts - startedAt;
       const rawT = elapsed / durationMs;
@@ -1486,17 +1534,24 @@ class PhaseController {
         horse.x += progressedMeters * GOAL_X_PER_METER;
       });
 
-      const goalLogicProgressById = this._buildGoalLogicProgressMap(
-        simHorses,
-        GOAL_DISTANCE_METERS,
-        GOAL_PROGRESS_SPAN,
-        t,
-      );
-      const goalRenderProgressById = this._buildGoalVisualProgressMap(
-        simHorses,
-        goalLogicProgressById,
-        t,
-      );
+      // ゴールシーンではカメラ再配置を使わず、各馬の生の進行量から progress を作る。
+      // これで最終直線→ゴールの座標系を連続化し、縦方向の引き延ばし感を防ぐ。
+      const goalProgressCap = rawT < 2 / 3
+        ? GOAL_PROGRESS_MAX_PRE_LINE
+        : GOAL_PROGRESS_MAX_POST_LINE;
+      const goalRenderProgressById = new Map();
+      simHorses.forEach(horse => {
+        const rawProgress = this._resolveGoalMappedProgress(
+          horse,
+          GOAL_DISTANCE_METERS,
+          GOAL_PROGRESS_SPAN,
+          null,
+        );
+        goalRenderProgressById.set(
+          horse.id,
+          Math.max(GOAL_PROGRESS_MIN, Math.min(goalProgressCap, rawProgress)),
+        );
+      });
       const goalLineY = this._getScrollingGoalLineY(rawT);
       if (goalLineY != null) {
         simHorses.forEach(horse => {
@@ -1505,7 +1560,7 @@ class PhaseController {
             horse,
             GOAL_DISTANCE_METERS,
             GOAL_PROGRESS_SPAN,
-            goalLogicProgressById,
+            goalRenderProgressById,
           );
           const diff = noseY - goalLineY;
           const prevDiff = this._goalLineDiffById.get(horse.id);
@@ -1522,6 +1577,10 @@ class PhaseController {
         phaseLabel: 'ゴールシーン',
         furlong: { t },
         goalLine: rawT,
+        sceneTransition: {
+          t: Math.max(0, Math.min(1, elapsed / GOAL_SCENE_TRANSITION_MS)),
+          maxAlpha: GOAL_SCENE_TRANSITION_MAX_ALPHA,
+        },
         goalRun: {
           t,
           distanceMeters: GOAL_DISTANCE_METERS,
@@ -1548,6 +1607,10 @@ class PhaseController {
           phaseLabel: 'ゴールシーン',
           furlong: { t: 1 },
           goalLine: rawT,
+          sceneTransition: {
+            t: Math.max(0, Math.min(1, elapsed / GOAL_SCENE_TRANSITION_MS)),
+            maxAlpha: GOAL_SCENE_TRANSITION_MAX_ALPHA,
+          },
           goalRun: {
             t: 1,
             distanceMeters: GOAL_DISTANCE_METERS,
@@ -1621,14 +1684,14 @@ class PhaseController {
   _resolveGoalMappedProgress(horse, distanceMeters, progressSpan, progressById = null) {
     const forced = progressById?.get(horse.id);
     if (Number.isFinite(forced)) {
-      return Math.max(0.05, Math.min(1.14, forced));
+      return Math.max(GOAL_PROGRESS_MIN, Math.min(1.22, forced));
     }
     const advanceRatio = Math.max(0, Math.min(1.25, (horse.goalMeters ?? 0) / Math.max(1, distanceMeters)));
     const startProgress = Number.isFinite(horse.goalStartProgress)
       ? horse.goalStartProgress
       : 0.20;
     const progress = startProgress + advanceRatio * progressSpan;
-    return Math.max(0.05, Math.min(1.14, progress));
+    return Math.max(GOAL_PROGRESS_MIN, Math.min(1.22, progress));
   }
 
   _buildGoalLogicProgressMap(horses, distanceMeters, progressSpan, t = 0) {
@@ -1673,7 +1736,7 @@ class PhaseController {
     horses.forEach(horse => {
       const logic = logicProgressById.get(horse.id) ?? GOAL_LEADER_ANCHOR_PROGRESS;
       const visual = GOAL_LEADER_ANCHOR_PROGRESS + (logic - GOAL_LEADER_ANCHOR_PROGRESS) * amplify;
-      visualById.set(horse.id, Math.max(0.05, Math.min(1.10, visual)));
+      visualById.set(horse.id, Math.max(0.05, Math.min(1.22, visual)));
     });
     return visualById;
   }
