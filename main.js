@@ -271,6 +271,7 @@ function getBattleLogClass(logLine) {
   if (logLine.startsWith('[出遅れ]')) return 'log-entry irregular irregular-start';
   if (logLine.startsWith('[好スタート]')) return 'log-entry irregular irregular-start';
   if (logLine.startsWith('[つまずき]')) return 'log-entry irregular irregular-stumble';
+  if (logLine.startsWith('[着順]')) return 'log-entry placing';
   if (!logLine.startsWith('[バトル')) return 'log-entry';
   if (logLine.startsWith('[バトル:先頭争い]')) return 'log-entry battle battle-lead';
   if (logLine.startsWith('[バトル:コーナー争い]')) return 'log-entry battle battle-corner';
@@ -284,6 +285,7 @@ function getLogTagClass(logLine) {
   if (logLine.startsWith('[出遅れ]')) return 'log-tag irregular-start';
   if (logLine.startsWith('[好スタート]')) return 'log-tag irregular-start';
   if (logLine.startsWith('[つまずき]')) return 'log-tag irregular-stumble';
+  if (logLine.startsWith('[着順]')) return 'log-tag placing';
   if (logLine.startsWith('[バトル:先頭争い]')) return 'log-tag battle-lead';
   if (logLine.startsWith('[バトル:コーナー争い]')) return 'log-tag battle-corner';
   if (logLine.startsWith('[バトル:直線争い]')) return 'log-tag battle-final';

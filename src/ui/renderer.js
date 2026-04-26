@@ -20,7 +20,7 @@ const PHASE_NAMES = {
   corner3:  '第3コーナー',
   corner4:  '第4コーナー',
   back:     '向正面',
-  final:    '最終直線',
+  final:    'ゴールシーン',
 };
 
 // JRA枠色（枠番1〜8）
