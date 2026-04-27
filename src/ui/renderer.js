@@ -92,18 +92,30 @@ export class Renderer {
     return (this.H - bottomMargin - y) / Math.max(1, usableH);
   }
 
+  _getLateralGapScale(phase = null) {
+    if (!phase) return 1.0;
+    const r = Number.isFinite(phase.ratio) ? phase.ratio : 0;
+    if (phase.isFinal || r >= 0.92) return 1.22;
+    if (r >= 0.80) return 1.10;
+    if (r >= 0.65) return 0.94;
+    if (r >= 0.12) return 0.88;
+    return 0.92;
+  }
+
   /**
    * 描画サイズをもとに、シミュレーション/描画で使う非接触しきい値を返す。
    * @param {number} xSpan - main.js 側と同じ x スパン
+   * @param {object|null} phase - フェーズ情報（横方向間隔の補正に使用）
    */
-  getCollisionMetrics(xSpan = 140) {
+  getCollisionMetrics(xSpan = 140, phase = null) {
     const topMargin = 20;
     const bottomMargin = 20;
     const usableH = this.H - topMargin - bottomMargin;
     const pxPerXUnit = usableH / Math.max(1, xSpan);
 
     const safeForwardPx = this.cardH * 1.24 + 8;
-    const safeLateralPx = this.cardW * 1.12;
+    const lateralScale = this._getLateralGapScale(phase);
+    const safeLateralPx = this.cardW * 1.12 * lateralScale;
 
     return {
       minXGap: safeForwardPx / Math.max(0.001, pxPerXUnit),
@@ -257,26 +269,10 @@ export class Renderer {
   }
 
   _drawFurlongMarkers(t) {
-    const clamped = Math.max(0, Math.min(1, t));
-    // 2 -> 1 -> GOAL を段階的に同速スクロールさせる。
-    // 2が最下端に到達した時点で1を最上端に出し、
-    // 1が最下端に到達した時点でGOALを最上端に出す。
-    const yTop = -this.H * 0.08;
-    const yBottom = this.H * 1.08;
-    const laneDistance = yBottom - yTop;
-    const totalDistance = laneDistance * 3;
-    const travel = totalDistance * clamped;
-
-    const y2 = yTop + travel;
-    const y1 = yTop + (travel - laneDistance);
-    const goalY = yTop + (travel - laneDistance * 2);
-
+    const y2 = this.H - 28;
+    const goalY = this.H * 0.08;
     this._drawSingleFurlongMarker(2, y2);
-    if (travel >= laneDistance) {
-      this._drawSingleFurlongMarker(1, y1);
-    }
-
-    return { y2, y1, goalY, travel, laneDistance };
+    return { y2, goalY };
   }
 
   _drawSingleFurlongMarker(num, y) {
@@ -287,13 +283,16 @@ export class Renderer {
     const radius = 12;
 
     ctx.save();
-    ctx.fillStyle = '#c81e1e';
+    ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
 
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.max(11, this.W * 0.013)}px 'Courier New'`;
+    ctx.fillStyle = '#c81e1e';
+    ctx.font = `bold ${Math.max(12, this.W * 0.014)}px 'Courier New'`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(num), x, y);
@@ -301,19 +300,12 @@ export class Renderer {
   }
 
   _drawGoalBandAtTop(t, furlongLayout = null) {
-    const raw = Number.isFinite(t) ? t : 0;
-    const goalProgress = (raw - 2 / 3) * 3;
-    if (goalProgress < 0) return;
-
-    const alpha = goalProgress < 0.14 ? goalProgress / 0.14 : 1;
     const ctx = this.ctx;
-    const yTop = -this.H * 0.08;
-    const yBottom = this.H * 1.08;
-    const y = yTop + (yBottom - yTop) * goalProgress;
+    // 表示後は最上部付近に固定する（ライン自体は移動しない）。
+    const y = this.H * 0.08;
     if (y < -20 || y > this.H + 26) return;
 
     ctx.save();
-    ctx.globalAlpha = alpha;
     ctx.strokeStyle = 'rgba(59,130,246,0.98)';
     ctx.lineWidth = 4.5;
     ctx.beginPath();
@@ -374,7 +366,7 @@ export class Renderer {
     // フェーズ間の見た目ジャンプを抑えるため、毎フレームの最小値再正規化は行わない。
     const minX = 0;
     const span = Math.max(140, maxX - minX);
-    const metrics = this.getCollisionMetrics(span);
+    const metrics = this.getCollisionMetrics(span, phase);
 
     const targetPose = new Map();
     if (inStartLineup) {
@@ -414,7 +406,13 @@ export class Renderer {
           progress = Math.min(0.99, progress + t * 0.35 * (0.40 + fastWeight * 0.60));
         }
         const mappedProgress = options.goalRun
-          ? Math.max(-0.28, Math.min(1.22, progress))
+          ? Math.max(
+            Number.isFinite(options.goalRun.minProgress) ? options.goalRun.minProgress : -1.2,
+            Math.min(
+              Number.isFinite(options.goalRun.maxProgress) ? options.goalRun.maxProgress : 1.22,
+              progress,
+            ),
+          )
           : Math.min(0.93, progress * 0.88 + 0.06);
         const baseY = this.progressToY(mappedProgress);
         // スタート直後はゲートから真っ直ぐ進ませ、余白押し出しは徐々に有効化する。
@@ -452,7 +450,9 @@ export class Renderer {
 
     const sortedHorses = [...horses].sort((a, b) => a.x - b.x);
     const activeHorseIds = new Set(sortedHorses.map(h => h.id));
-    const smoothing = inStartLineup ? 0.32 : (phase.index === 0 ? 0.26 : 0.40);
+    const smoothing = inStartLineup
+      ? 0.32
+      : (options.goalRun || phase.isFinal ? 0.48 : (phase.index === 0 ? 0.26 : 0.40));
 
     sortedHorses.forEach(horse => {
       const target = targetPose.get(horse.id);

@@ -29,6 +29,7 @@ const LEAD_BATTLE_PHASE_MAX = 0.35;
 const EARLY_LEAD_RATIO_MAX = 0.35;
 const FINAL_DUEL_PHASE_MIN = 0.80;
 const FORMATION_LOCK_PHASE = 0.40;
+const PRE_CORNER_PACK_PHASE_MAX = 0.28;
 const COLLISION_MIN_Y_GAP = 0.9;
 const COLLISION_ITERATIONS = 3;
 const COLLISION_EPS = 0.001;
@@ -45,23 +46,31 @@ const GOAL_BASE_MPS = GOAL_FURLONG_METERS / GOAL_SECONDS_PER_FURLONG;
 const GOAL_X_PER_METER = 0.28;
 const GOAL_LANE_CHANGE_PER_SEC = 4.2;
 const GOAL_BLOCK_X_GAP = 10;
-const GOAL_NEAR_LANE_GAP = 0.85;
+const GOAL_NEAR_LANE_GAP_BASE = 0.95;
+const GOAL_NEAR_LANE_GAP_MAX = 1.26;
+const GOAL_LANE_CHANGE_COOLDOWN_MS = 520;
+const FINAL_LANE_CHANGE_COOLDOWN_PHASES = 2;
+const FINAL_FRONT_BLOCK_EXTRA_GAP = 6;
+const FINAL_STRAIGHT_RATIO = 0.80;
+const LATERAL_SHIFT_SOFT_CAP = 0.42;
+const LATERAL_SHIFT_HARD_CAP = 0.26;
+const START_LATERAL_SHIFT_CAP = 2.40;
 const GOAL_MIN_SPEED_RATIO = 0.58;
 const GOAL_MAX_SPEED_RATIO = 1.95;
 const GOAL_POST_SCROLL_MS = 1800;
+const GOAL_POST_CLEAR_METERS = GOAL_FURLONG_METERS * 1.25;
 // ゴール線到達前は先頭が画面上へ抜けすぎないように抑える
 const GOAL_PROGRESS_MAX_PRE_LINE = 1.00;
-// ゴール線到達後は少しだけ抜けを許容する
-const GOAL_PROGRESS_MAX_POST_LINE = 1.10;
-// ゴールシーン開始時、先頭馬を画面中段付近に置いて隊列を見やすくする
-const GOAL_ENTRY_LEADER_START_PROGRESS = 0.52;
-// 後方馬を必要以上に画面外へ押し出しすぎないための下限（隊列保持用）
-const GOAL_ENTRY_TAIL_MIN_PROGRESS = -0.16;
+// ゴール線到達後は画面上へしっかり抜けるまで許容する
+const GOAL_PROGRESS_MAX_POST_LINE = 1.78;
+// ゴールシーン開始時、先頭馬は画面下辺から出現させる
+const GOAL_ENTRY_LEADER_START_PROGRESS = 0.0;
 // 画面外を含むゴール描画 progress 下限
-const GOAL_PROGRESS_MIN = -0.28;
+const GOAL_PROGRESS_MIN = -1.10;
 // 切替時の短いカット演出（フェード）時間
-const GOAL_SCENE_TRANSITION_MS = 300;
+const GOAL_SCENE_TRANSITION_MS = 800;
 const GOAL_SCENE_TRANSITION_MAX_ALPHA = 0.72;
+const GOAL_PROGRESS_TARGET_AT_FINISH = 1.06;
 const GOAL_LEADER_ANCHOR_PROGRESS = 0.88;
 // 仮想リーダーが上に抜けた時にYで見せる（旧: 0.88 で上方向が潰れていた）
 const GOAL_ANCHOR_MAX_PROGRESS = 1.08;
@@ -130,6 +139,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
   let prevEarlyLeaderId = null;
   horses.forEach(horse => {
     horse.lastAdvance = 0;
+    horse.laneChangeCooldownPhases = 0;
     horse.staminaLaneCost = 0;
     horse.staminaAccelCost = 0;
     horse.staminaBattleCost = 0;
@@ -142,7 +152,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
     const maxX = Math.max(...xValues, 1);
     const xSpan = Math.max(140, maxX);
     const collisionMetrics = renderer
-      ? renderer.getCollisionMetrics(xSpan)
+      ? renderer.getCollisionMetrics(xSpan, phase)
       : { minXGap: MIN_FORWARD_GAP, minYGap: COLLISION_MIN_Y_GAP };
 
     // ① フェーズ特化バトル判定
@@ -222,9 +232,23 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
 
       // スタートフェーズでは「空いていれば内へ詰める」挙動を優先する
       const isStartPhase = phase.index === 0;
+      const isLateStraight = phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO;
+      const currentFrontGap = getFrontGap(horse, clampLane(horse.y), horses);
+      const frontBlocked = currentFrontGap < (collisionMetrics.minXGap + FINAL_FRONT_BLOCK_EXTRA_GAP);
+      if ((horse.laneChangeCooldownPhases ?? 0) > 0) {
+        horse.laneChangeCooldownPhases -= 1;
+      }
+      const isPreCornerPack = isBeforeFirstCornerPhase(phase);
       horse.targetLane = isStartPhase
         ? calcStartPhaseTargetLane(horse, horses)
-        : calcTargetLane(horse, phase, horses);
+        : isPreCornerPack
+          ? calcPreCornerPackTargetLane(horse, phase, horses)
+          : calcTargetLane(horse, phase, horses);
+      if (isLateStraight && !frontBlocked) {
+        horse.targetLane = horse.y;
+      } else if ((horse.laneChangeCooldownPhases ?? 0) > 0) {
+        horse.targetLane = horse.y;
+      }
       const laneChangeRate = getLaneChangeRate(phase);
       const desiredY   = horse.y + (horse.targetLane - horse.y) * laneChangeRate;
       const prevLaneY = horse.y;
@@ -232,18 +256,29 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
         rng,
         horse,
         desiredY,
+        adjustedAdvance,
         horses,
         phase,
+        { frontBlocked, isLateStraight, isStartPhase },
         phaseEventLogs,
         globalLogs,
         engagedHorseIds,
       );
       horse.y          = laneCheck.nextY;
+      if (laneCheck.advanceMult != null) {
+        adjustedAdvance *= laneCheck.advanceMult;
+      }
       const laneShift = Math.abs(horse.y - prevLaneY);
       if (laneShift > 0.001) {
         const laneDrain = laneShift * STAMINA_LANE_CHANGE_COST;
         horse.stamina = Math.max(0, horse.stamina - laneDrain);
         horse.staminaLaneCost += laneDrain;
+        if (isLateStraight && laneShift > 0.12) {
+          horse.laneChangeCooldownPhases = Math.max(
+            horse.laneChangeCooldownPhases ?? 0,
+            FINAL_LANE_CHANGE_COOLDOWN_PHASES,
+          );
+        }
       }
 
       // 前方間隔チェック（前が塞がれていて仕掛ける場合はバトル）
@@ -468,24 +503,82 @@ function applyStartSlowMotion(progress) {
   return slowOut + ((p - slowZone) / remainIn) * remainOut;
 }
 
-function resolveLaneMovement(rng, horse, desiredY, allHorses, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
-  const wantsLaneChange = Math.abs(desiredY - horse.y) > 0.18;
-  if (wantsLaneChange && hasDiagonalRearRisk(horse, desiredY, allHorses)) {
-    return { nextY: clampLane(horse.y) };
+function resolveLaneMovement(
+  rng,
+  horse,
+  desiredY,
+  desiredAdvance,
+  allHorses,
+  phase,
+  context,
+  phaseEventLogs,
+  globalLogs,
+  engagedHorseIds,
+) {
+  const isLateStraight = Boolean(context?.isLateStraight);
+  const frontBlocked = Boolean(context?.frontBlocked);
+  const isStartPhase = Boolean(context?.isStartPhase);
+  const baseY = clampLane(horse.y);
+  const desiredDelta = desiredY - baseY;
+  const absDesiredDelta = Math.abs(desiredDelta);
+  const wantsLaneChange = absDesiredDelta > 0.18;
+  if (!wantsLaneChange) {
+    return { nextY: baseY, advanceMult: 1 };
+  }
+
+  const predictedSpeed = Math.max(0, desiredAdvance);
+  const speedRatio = horse.S_cruise > 0 ? predictedSpeed / horse.S_cruise : 1;
+  const capBase = isStartPhase
+    ? START_LATERAL_SHIFT_CAP
+    : (isLateStraight ? LATERAL_SHIFT_HARD_CAP : LATERAL_SHIFT_SOFT_CAP);
+  const speedPenalty = Math.max(0, Math.min(0.5, (speedRatio - 0.85) * 0.55));
+  const frontBlockBoost = frontBlocked ? 1.30 : 1.0;
+  const maxDelta = capBase * (1 - speedPenalty) * frontBlockBoost;
+  const limitedDelta = Math.sign(desiredDelta) * Math.min(absDesiredDelta, Math.max(0.10, maxDelta));
+  const limitedY = clampLane(baseY + limitedDelta);
+
+  if (isLateStraight && !frontBlocked) {
+    return { nextY: baseY, advanceMult: 1 };
+  }
+
+  const diagonalRearHorse = isStartPhase ? null : findDiagonalRearHorse(horse, limitedY, allHorses);
+  if (diagonalRearHorse) {
+    if (!engagedHorseIds.has(horse.id) && !engagedHorseIds.has(diagonalRearHorse.id) &&
+        shouldBattle(rng, allHorses, horse, diagonalRearHorse)) {
+      const result = resolveBattle(rng, horse, diagonalRearHorse, phase);
+      applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
+      const log = `[バトル:斜め後方割り込み] ${horse.name} が ${diagonalRearHorse.name} の前へ進出 → 勝者: ${result.winner.name}`;
+      globalLogs.push(log);
+      phaseEventLogs.push(log);
+      engagedHorseIds.add(horse.id);
+      engagedHorseIds.add(diagonalRearHorse.id);
+      if (result.winner.id !== horse.id) {
+        return { nextY: baseY, advanceMult: 0.93 };
+      }
+    } else {
+      return { nextY: baseY, advanceMult: 0.96 };
+    }
   }
 
   const laneBlocker = allHorses.find(h =>
     h.id !== horse.id &&
-    Math.abs(h.x - horse.x) < LATERAL_BLOCK_X_GAP &&
-    Math.abs(h.y - desiredY) < LATERAL_BLOCK_LANE_GAP
+    Math.abs(h.x - horse.x) < (isStartPhase ? LATERAL_BLOCK_X_GAP * 0.62 : LATERAL_BLOCK_X_GAP) &&
+    isLaneInShiftPath(h.y, baseY, limitedY, isStartPhase ? 0.62 : LATERAL_BLOCK_LANE_GAP)
   );
 
   if (!laneBlocker) {
-    return { nextY: clampLane(desiredY) };
+    return {
+      nextY: limitedY,
+      advanceMult: absDesiredDelta > Math.abs(limitedDelta) + 0.05 ? 0.98 : 1,
+    };
   }
 
-  if (!wantsLaneChange) {
-    return { nextY: clampLane(horse.y) };
+  if (isStartPhase) {
+    // スタートでは隊列形成を優先し、完全停止させず内へ寄せる。
+    const fallbackInnerY = clampLane(baseY + (limitedY - baseY) * 0.55);
+    if (fallbackInnerY < baseY - 0.05) {
+      return { nextY: fallbackInnerY, advanceMult: 0.99 };
+    }
   }
 
   // 進路変更を強行したいときは既存バトル判定を利用
@@ -499,21 +592,27 @@ function resolveLaneMovement(rng, horse, desiredY, allHorses, phase, phaseEventL
     engagedHorseIds.add(horse.id);
     engagedHorseIds.add(laneBlocker.id);
     if (result.winner.id === horse.id) {
-      return { nextY: clampLane(desiredY) };
+      return { nextY: limitedY, advanceMult: 0.97 };
     }
   }
 
-  return { nextY: clampLane(horse.y) };
+  return { nextY: baseY, advanceMult: 0.95 };
 }
 
-function hasDiagonalRearRisk(horse, desiredY, allHorses) {
+function findDiagonalRearHorse(horse, desiredY, allHorses) {
   const targetLane = clampLane(desiredY);
-  return allHorses.some(h => {
+  return allHorses.find(h => {
     if (h.id === horse.id) return false;
     const rearGap = horse.x - h.x;
     if (rearGap <= 0 || rearGap > DIAGONAL_REAR_BLOCK_X_GAP) return false;
-    return Math.abs(h.y - targetLane) < DIAGONAL_REAR_BLOCK_LANE_GAP;
+    return isLaneInShiftPath(h.y, horse.y, targetLane, DIAGONAL_REAR_BLOCK_LANE_GAP);
   });
+}
+
+function isLaneInShiftPath(lane, fromLane, toLane, margin = 0.9) {
+  const laneMin = Math.min(fromLane, toLane) - margin;
+  const laneMax = Math.max(fromLane, toLane) + margin;
+  return lane >= laneMin && lane <= laneMax;
 }
 
 function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
@@ -693,9 +792,11 @@ function calcTargetLane(horse, phase, allHorses) {
     preferredLane,
     preferredLane - 1,
     preferredLane + 1,
+    ...(phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO ? [preferredLane - 2, preferredLane + 2] : []),
     currentLane,
     currentLane - 1,
     currentLane + 1,
+    ...(phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO ? [currentLane - 2, currentLane + 2, currentLane - 3, currentLane + 3] : []),
   ]
     .map(clampToBand)
     .filter((v, i, arr) => arr.indexOf(v) === i);
@@ -725,19 +826,22 @@ function calcTargetLane(horse, phase, allHorses) {
 
 function calcStartPhaseTargetLane(horse, allHorses) {
   const currentLane = clampLane(horse.y);
-  const styleLaneFloor = horse.style === '逃げ' ? 2
-    : horse.style === '先行' ? 3
-      : 1;
+  const styleLaneFloor = horse.style === '逃げ' ? 1.0
+    : horse.style === '先行' ? 1.4
+      : horse.style === '差し' ? 1.9
+        : 2.3;
 
-  if (currentLane <= styleLaneFloor) return currentLane;
+  if (currentLane <= styleLaneFloor + 0.05) return currentLane;
 
   let bestLane = currentLane;
 
-  // ゲートを出た直後は、進路が確保できる範囲で内へ詰める。
+  // スタート直後は最内寄せを最優先し、複数レーン分の切り込みを許容する。
+  const innerBurstTarget = Math.max(1, styleLaneFloor - 0.35);
   for (let lane = currentLane - 1; lane >= styleLaneFloor; lane--) {
-    if (!isLaneOpenForShift(horse, lane, allHorses)) break;
-    if (!isInnerLaneOpenAhead(horse, lane, allHorses)) break;
+    if (!isEarlyPackShiftOpen(horse, lane, allHorses)) continue;
+    if (!isEarlyPackLaneOpenAhead(horse, lane, allHorses)) continue;
     bestLane = lane;
+    if (bestLane <= innerBurstTarget) break;
   }
 
   // 逃げ馬は内に潜りすぎるより「前の空き」を優先する。
@@ -754,6 +858,34 @@ function calcStartPhaseTargetLane(horse, allHorses) {
   }
 
   return bestLane;
+}
+
+function calcPreCornerPackTargetLane(horse, phase, allHorses) {
+  const currentLane = clampLane(horse.y);
+  const [laneMin, laneMax] = getPhaseLaneBand(phase);
+  const clampToBand = v => Math.max(laneMin, Math.min(laneMax, clampLane(v)));
+  const styleAnchorLane = horse.style === '逃げ' ? 1.9
+    : horse.style === '先行' ? 2.4
+      : horse.style === '差し' ? 2.9
+        : 3.3;
+  const minAllowedLane = clampToBand(styleAnchorLane);
+  let bestLane = currentLane;
+
+  // 第1コーナー手前までは、内が詰まり切っていなければ積極的に内へ寄せる。
+  const targetInner = Math.max(minAllowedLane, currentLane - 3.2);
+  for (let lane = currentLane - 1; lane >= targetInner; lane -= 1) {
+    const candidate = clampToBand(lane);
+    if (candidate >= bestLane - 0.01) continue;
+    if (!isEarlyPackShiftOpen(horse, candidate, allHorses)) break;
+    if (!isEarlyPackLaneOpenAhead(horse, candidate, allHorses)) continue;
+    bestLane = candidate;
+    if (bestLane <= minAllowedLane + 0.15) break;
+  }
+
+  if (bestLane < currentLane - 0.01) return bestLane;
+
+  const fallback = calcTargetLane(horse, phase, allHorses);
+  return Math.min(fallback, clampToBand(currentLane));
 }
 
 function resolveLeadBattle(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
@@ -920,18 +1052,29 @@ function getPreferredLaneByStyle(horse, phase) {
 
 function getLaneChangeRate(phase) {
   // スタート直後はポジション取りを素早く終え、以降は落ち着かせる
-  if (phase.ratio < 0.12) return 0.62;
+  if (phase.ratio < 0.12) return 0.98;
   if (phase.ratio < FORMATION_LOCK_PHASE) return 0.40;
   if (phase.ratio < 0.80) return 0.12;
   return 0.20;
 }
 
 function getPhaseLaneBand(phase) {
+  if (isBeforeFirstCornerPhase(phase)) return [1, 5];
   // スタート直後の過密を避けるため、序盤は横幅を広めに使う。
   if (phase.ratio < 0.10) return [1, 12];
-  if (phase.ratio < 0.80) return [1, 8];
+  if (phase.ratio < 0.65) return [1, 6];
+  if (phase.ratio < 0.80) return [1, 7];
   if (phase.ratio < 0.92) return [1, 10];
   return [1, LANE_WIDTH];
+}
+
+function isBeforeFirstCornerPhase(phase) {
+  if (!phase || phase.isCorner || phase.isFinal) return false;
+  const segmentId = String(phase.segmentId ?? '').toLowerCase();
+  const segmentLabel = String(phase.segmentLabel ?? '');
+  if (segmentId === 'start' || segmentId === 'home') return true;
+  if (segmentLabel.includes('スタート') || segmentLabel.includes('ホーム直線')) return true;
+  return phase.ratio < PRE_CORNER_PACK_PHASE_MAX;
 }
 
 function scoreLaneOption(horse, lane, preferredLane, phase, allHorses, currentLane) {
@@ -971,6 +1114,10 @@ function scoreLaneOption(horse, lane, preferredLane, phase, allHorses, currentLa
   }
 
   if (frontGap < MIN_FORWARD_GAP + 4) score -= 12;
+  if ((phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO) && frontGap > MIN_FORWARD_GAP + 10) {
+    // 最終直線で前が空いている場合は不用意な横移動を抑える
+    score -= Math.abs(lane - currentLane) * 4.2;
+  }
   return score;
 }
 
@@ -987,19 +1134,44 @@ function getFrontGap(horse, lane, allHorses) {
 }
 
 function isLaneOpenForShift(horse, targetLane, allHorses) {
+  const fromLane = clampLane(horse.y);
+  const toLane = clampLane(targetLane);
   return !allHorses.some(h =>
     h.id !== horse.id &&
-    Math.abs(h.y - targetLane) < 0.9 &&
-    Math.abs(h.x - horse.x) < LATERAL_BLOCK_X_GAP
+    Math.abs(h.x - horse.x) < LATERAL_BLOCK_X_GAP &&
+    isLaneInShiftPath(h.y, fromLane, toLane, 0.85)
   );
 }
 
 function isInnerLaneOpenAhead(horse, targetLane, allHorses) {
+  const fromLane = clampLane(horse.y);
+  const toLane = clampLane(targetLane);
   return !allHorses.some(h =>
     h.id !== horse.id &&
-    Math.abs(h.y - targetLane) < 0.9 &&
-    h.x >= horse.x - 6 &&
-    h.x <= horse.x + 30
+    h.x >= horse.x - 10 &&
+    h.x <= horse.x + 34 &&
+    isLaneInShiftPath(h.y, fromLane, toLane, 0.82)
+  );
+}
+
+function isEarlyPackLaneOpenAhead(horse, targetLane, allHorses) {
+  const fromLane = clampLane(horse.y);
+  const toLane = clampLane(targetLane);
+  return !allHorses.some(h =>
+    h.id !== horse.id &&
+    h.x >= horse.x - 8 &&
+    h.x <= horse.x + 26 &&
+    isLaneInShiftPath(h.y, fromLane, toLane, 0.64)
+  );
+}
+
+function isEarlyPackShiftOpen(horse, targetLane, allHorses) {
+  const fromLane = clampLane(horse.y);
+  const toLane = clampLane(targetLane);
+  return !allHorses.some(h =>
+    h.id !== horse.id &&
+    Math.abs(h.x - horse.x) < (LATERAL_BLOCK_X_GAP * 0.70) &&
+    isLaneInShiftPath(h.y, fromLane, toLane, 0.68)
   );
 }
 
@@ -1313,20 +1485,13 @@ class PhaseController {
       baseGoalProgressById.set(horse.id, baseProgress);
     });
     let baseLeaderProgress = -Infinity;
-    let baseTailProgress = Infinity;
     baseGoalProgressById.forEach(progress => {
       if (progress > baseLeaderProgress) baseLeaderProgress = progress;
-      if (progress < baseTailProgress) baseTailProgress = progress;
     });
     if (!Number.isFinite(baseLeaderProgress)) {
       baseLeaderProgress = GOAL_ENTRY_LEADER_START_PROGRESS;
     }
-    if (!Number.isFinite(baseTailProgress)) {
-      baseTailProgress = GOAL_ENTRY_TAIL_MIN_PROGRESS;
-    }
-    const goalEntryOffsetRaw = GOAL_ENTRY_LEADER_START_PROGRESS - baseLeaderProgress;
-    const goalEntryOffsetMin = GOAL_ENTRY_TAIL_MIN_PROGRESS - baseTailProgress;
-    const goalEntryOffset = Math.max(goalEntryOffsetRaw, goalEntryOffsetMin);
+    const goalEntryOffset = GOAL_ENTRY_LEADER_START_PROGRESS - baseLeaderProgress;
 
     const simHorses = baseHorses.map(h => {
       const staminaRatio = h.initialStamina > 0 ? h.stamina / h.initialStamina : 0.5;
@@ -1351,17 +1516,32 @@ class PhaseController {
         goalFinished: false,
         targetLane: h.y,
         goalStartProgress: (baseGoalProgressById.get(h.id) ?? GOAL_ENTRY_LEADER_START_PROGRESS) + goalEntryOffset,
+        // どれだけ下から入ってきても、最終的に全馬がゴール線を通過できるよう個別に進捗倍率を持たせる。
+        goalProgressScale: 1,
         goalCurrentMps: GOAL_BASE_MPS * startSpeedMult,
         goalAccelState: 0,
         goalLaneCost: 0,
         goalCommitUntilMs: 0,
+        goalLaneCooldownUntilMs: 0,
         goalBurstRemainMs: 0,
         goalBurstCooldownUntilMs: 0,
       };
     });
 
+    simHorses.forEach(horse => {
+      const startProgress = Number.isFinite(horse.goalStartProgress)
+        ? horse.goalStartProgress
+        : GOAL_ENTRY_LEADER_START_PROGRESS;
+      const neededSpan = Math.max(
+        GOAL_PROGRESS_SPAN,
+        GOAL_PROGRESS_TARGET_AT_FINISH - startProgress,
+      );
+      horse.goalProgressScale = neededSpan / Math.max(1e-6, GOAL_PROGRESS_SPAN);
+    });
+
     const durationMs = GOAL_DISTANCE_METERS / GOAL_BASE_MPS * 1000 * GOAL_TIME_SCALE;
     const startedAt = performance.now();
+    const goalRng = createRng((this.raceData?.race_id ?? 1) + 7919);
     let lastTs = startedAt;
     let goalFrameIndex = 0;
 
@@ -1385,12 +1565,27 @@ class PhaseController {
       const elapsed = ts - startedAt;
       const rawT = elapsed / durationMs;
       const t = Math.max(0, Math.min(1, rawT));
+      this._goalRawT = t;
       const laneIntentById = new Map();
       const overtakePressureById = new Map();
+      const frameEngaged = new Set();
 
       simHorses.sort((a, b) => b.x - a.x);
       simHorses.forEach(horse => {
-        if (horse.goalFinished) return;
+        if (horse.goalFinished) {
+          // ゴール後も画面上に抜けるまで前進を継続する。
+          laneIntentById.set(horse.id, 0);
+          overtakePressureById.set(horse.id, 0);
+          const postGoalMinMps = GOAL_BASE_MPS * 1.08;
+          horse.goalCurrentMps = Math.max(postGoalMinMps, horse.goalCurrentMps * 0.996);
+          const progressedMeters = Math.max(postGoalMinMps * dt, horse.goalCurrentMps * dt);
+          horse.goalMeters = Math.min(
+            GOAL_DISTANCE_METERS + GOAL_POST_CLEAR_METERS * 3.2,
+            horse.goalMeters + progressedMeters,
+          );
+          horse.x += progressedMeters * GOAL_X_PER_METER;
+          return;
+        }
         const result = resultsById.get(horse.id) ?? horse;
         const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0.5;
         const fastWeight = fastWeightById.get(horse.id) ?? 0.5;
@@ -1410,6 +1605,8 @@ class PhaseController {
         const remainMeters = Math.max(0, GOAL_DISTANCE_METERS - (horse.goalMeters || 0));
         const isCloser = horse.style === '追込' || horse.style === '差し';
         const aggression = this._calcGoalAggression(horse, staminaRatio, last3fWeight, distRatio);
+        const frontGapNow = this._goalFrontGap(simHorses, horse, clampLane(horse.y));
+        const frontBlockedNow = frontGapNow < GOAL_BLOCK_X_GAP * 1.08;
         const lanePlan = this._planGoalRouteV2(simHorses, horse, {
           t,
           dt,
@@ -1417,9 +1614,11 @@ class PhaseController {
           aggression,
           staminaRatio,
           last3fWeight,
+          frontBlocked: frontBlockedNow,
         });
         overtakePressureById.set(horse.id, lanePlan.pressure);
-        const canChangeRoute = elapsed >= (horse.goalCommitUntilMs ?? 0);
+        const canChangeRoute = elapsed >= (horse.goalCommitUntilMs ?? 0) &&
+          elapsed >= (horse.goalLaneCooldownUntilMs ?? 0);
         const adaptiveThreshold = Math.max(
           0.72,
           GOAL_AI.switchThresholdBase
@@ -1427,27 +1626,59 @@ class PhaseController {
             + (1 - distRatio) * 0.18
             + (staminaRatio < 0.24 ? 0.14 : 0),
         );
+        const straightKeepBias = frontBlockedNow ? 0 : 0.95;
         const shouldSwitch = canChangeRoute &&
           lanePlan.lane !== clampLane(horse.y) &&
-          lanePlan.gain > adaptiveThreshold;
+          lanePlan.gain > (adaptiveThreshold + straightKeepBias);
         if (shouldSwitch) {
           horse.targetLane = lanePlan.lane;
           horse.goalCommitUntilMs = elapsed + GOAL_AI.switchCommitSec * 1000;
         } else if (Math.abs((horse.targetLane ?? horse.y) - horse.y) < 0.08) {
           horse.targetLane = horse.y;
         }
+        if (!frontBlockedNow) {
+          horse.targetLane = horse.y;
+        }
         laneIntentById.set(horse.id, Math.max(-1, Math.min(1, (horse.targetLane - horse.y) / 2.2)));
         const laneDelta = horse.targetLane - horse.y;
         let laneShift = 0;
         if (Math.abs(laneDelta) > 0.01) {
-          const laneStep = Math.sign(laneDelta) * Math.min(Math.abs(laneDelta), GOAL_LANE_CHANGE_PER_SEC * dt);
+          const cutInTarget = this._findGoalCutInRival(simHorses, horse, horse.targetLane);
+          if (cutInTarget && !frameEngaged.has(horse.id) && !frameEngaged.has(cutInTarget.id)) {
+            if (shouldBattle(goalRng, simHorses, horse, cutInTarget)) {
+              const result = resolveBattle(goalRng, horse, cutInTarget, phase);
+              applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
+              const log = `[バトル:ゴール割り込み] ${horse.name} が ${cutInTarget.name} の前へ進出 → 勝者: ${result.winner.name}`;
+              this._appendLog(log);
+              frameEngaged.add(horse.id);
+              frameEngaged.add(cutInTarget.id);
+              if (result.winner.id !== horse.id) {
+                horse.targetLane = horse.y;
+                horse.goalCurrentMps *= 0.985;
+              }
+            } else {
+              horse.targetLane = horse.y;
+              horse.goalCurrentMps *= 0.992;
+            }
+          }
+          const speedRatio = horse.goalCurrentMps / Math.max(1e-6, GOAL_BASE_MPS);
+          const speedLimited = speedRatio > 1.15 ? 0.58 : (speedRatio > 1 ? 0.74 : 1.0);
+          const laneRate = GOAL_LANE_CHANGE_PER_SEC * speedLimited * (frontBlockedNow ? 1.0 : 0.65);
+          const laneStep = Math.sign(laneDelta) * Math.min(Math.abs(laneDelta), laneRate * dt);
           laneShift = Math.abs(laneStep);
           horse.y = clampLane(horse.y + laneStep);
         }
         if (laneShift > 0) {
-          const laneDrain = laneShift * STAMINA_LANE_CHANGE_COST * 0.70;
+          const aggressiveShift = Math.max(0, laneShift - 0.14);
+          const laneDrain = laneShift * STAMINA_LANE_CHANGE_COST * 0.70 + aggressiveShift * 0.34;
           horse.goalLaneCost += laneDrain;
           horse.stamina = Math.max(0, horse.stamina - laneDrain);
+          if (laneShift > 0.12) {
+            horse.goalLaneCooldownUntilMs = elapsed + GOAL_LANE_CHANGE_COOLDOWN_MS;
+          }
+          if (!frontBlockedNow && laneShift > 0.08) {
+            horse.goalCurrentMps *= 0.992;
+          }
         }
 
         const frontGapAfterLane = this._goalFrontGap(simHorses, horse, horse.y);
@@ -1530,7 +1761,10 @@ class PhaseController {
           GOAL_BASE_MPS * 0.28 * dt,
           elapsed >= durationMs * 1.55 ? deltaMeters * 1.12 : deltaMeters,
         );
-        horse.goalMeters = Math.min(GOAL_DISTANCE_METERS + GOAL_FURLONG_METERS * 0.30, horse.goalMeters + progressedMeters);
+        horse.goalMeters = Math.min(
+          GOAL_DISTANCE_METERS + GOAL_POST_CLEAR_METERS * 3.2,
+          horse.goalMeters + progressedMeters,
+        );
         horse.x += progressedMeters * GOAL_X_PER_METER;
       });
 
@@ -1552,7 +1786,7 @@ class PhaseController {
           Math.max(GOAL_PROGRESS_MIN, Math.min(goalProgressCap, rawProgress)),
         );
       });
-      const goalLineY = this._getScrollingGoalLineY(rawT);
+      const goalLineY = this._getScrollingGoalLineY();
       if (goalLineY != null) {
         simHorses.forEach(horse => {
           if (horse.goalFinished) return;
@@ -1567,7 +1801,8 @@ class PhaseController {
           this._goalLineDiffById.set(horse.id, diff);
           const crossedLine = (prevDiff == null && diff <= 0) || (prevDiff != null && prevDiff > 0 && diff <= 0);
           const reachedDistance = horse.goalMeters >= GOAL_DISTANCE_METERS;
-          if (crossedLine || reachedDistance) {
+          const isNearLine = diff <= this.renderer.cardH * 0.20;
+          if (crossedLine || (reachedDistance && isNearLine)) {
             this._markHorseGoalFinished(horse);
           }
         });
@@ -1585,6 +1820,8 @@ class PhaseController {
           t,
           distanceMeters: GOAL_DISTANCE_METERS,
           progressSpan: GOAL_PROGRESS_SPAN,
+          maxProgress: GOAL_PROGRESS_MAX_POST_LINE,
+          minProgress: GOAL_PROGRESS_MIN,
           progressById: goalRenderProgressById,
           laneIntentById,
           overtakePressureById,
@@ -1597,10 +1834,19 @@ class PhaseController {
       const hardLimitReached = elapsed >= durationMs * 2.5;
       if (hardLimitReached && !allFinished) {
         simHorses.forEach(h => {
-          if (h.goalMeters >= GOAL_DISTANCE_METERS) return;
-          const remain = GOAL_DISTANCE_METERS - h.goalMeters;
-          h.goalMeters = GOAL_DISTANCE_METERS + GOAL_FURLONG_METERS * 0.08;
-          h.x += remain * GOAL_X_PER_METER;
+          const startProgress = Number.isFinite(h.goalStartProgress)
+            ? h.goalStartProgress
+            : GOAL_ENTRY_LEADER_START_PROGRESS;
+          const progressScale = Number.isFinite(h.goalProgressScale) ? h.goalProgressScale : 1;
+          const neededRatio = (GOAL_PROGRESS_TARGET_AT_FINISH - startProgress) /
+            Math.max(1e-6, GOAL_PROGRESS_SPAN * progressScale);
+          const neededMeters = Math.max(
+            GOAL_DISTANCE_METERS + GOAL_POST_CLEAR_METERS * 0.25,
+            neededRatio * GOAL_DISTANCE_METERS,
+          );
+          const deltaMeters = Math.max(0, neededMeters - (h.goalMeters ?? 0));
+          h.goalMeters = neededMeters;
+          h.x += deltaMeters * GOAL_X_PER_METER;
           this._markHorseGoalFinished(h);
         });
         this.renderer.draw(simHorses, phase, 1, {
@@ -1615,6 +1861,8 @@ class PhaseController {
             t: 1,
             distanceMeters: GOAL_DISTANCE_METERS,
             progressSpan: GOAL_PROGRESS_SPAN,
+            maxProgress: GOAL_PROGRESS_MAX_POST_LINE,
+            minProgress: GOAL_PROGRESS_MIN,
             progressById: goalRenderProgressById,
             laneIntentById,
             overtakePressureById,
@@ -1626,8 +1874,17 @@ class PhaseController {
       if (simHorses.every(h => h.goalFinished) && this._goalAllFinishedAtMs == null) {
         this._goalAllFinishedAtMs = elapsed;
       }
+      // 描画平滑化後の実座標で「馬体が完全に画面外へ抜けたか」を判定する。
+      // 理論 progress だけで判定すると、見た目が残っているのに終了することがある。
+      const allClearedTop = simHorses.every(horse => {
+        const rendered = this.renderer.horseRenderState.get(horse.id);
+        if (!rendered || !Number.isFinite(rendered.cy)) return false;
+        const iconBottomY = rendered.cy + this.renderer.cardH * 0.5;
+        return iconBottomY < -2;
+      });
       const canFinish =
         this._goalAllFinishedAtMs != null &&
+        allClearedTop &&
         elapsed >= this._goalAllFinishedAtMs + GOAL_POST_SCROLL_MS;
       if (canFinish) {
         this.isAnimating = false;
@@ -1641,20 +1898,27 @@ class PhaseController {
   }
 
   _goalFrontGap(horses, horse, lane, atX = horse.x) {
+    const nearLaneGap = this._getGoalNearLaneGap();
     const front = horses
       .filter(h =>
         h.id !== horse.id &&
         h.x > atX &&
-        Math.abs(h.y - lane) < GOAL_NEAR_LANE_GAP
+        Math.abs(h.y - lane) < nearLaneGap
       )
       .sort((a, b) => a.x - b.x)[0];
     if (!front) return 999;
     return front.x - atX;
   }
 
+  _getGoalNearLaneGap() {
+    const t = Math.max(0, Math.min(1, this._goalRawT ?? 0));
+    return GOAL_NEAR_LANE_GAP_BASE + (GOAL_NEAR_LANE_GAP_MAX - GOAL_NEAR_LANE_GAP_BASE) * t;
+  }
+
   _goalLaneDensity(horses, horse, lane, atX = horse.x) {
+    const nearLaneGap = this._getGoalNearLaneGap() + 0.08;
     return horses.reduce((acc, h) => {
-      if (h.id === horse.id || Math.abs(h.y - lane) >= 0.95) return acc;
+      if (h.id === horse.id || Math.abs(h.y - lane) >= nearLaneGap) return acc;
       const dx = h.x - atX;
       if (Math.abs(dx) > 24) return acc;
       if (dx >= 0) return acc + (dx < 12 ? 1.25 : 0.8);
@@ -1662,12 +1926,21 @@ class PhaseController {
     }, 0);
   }
 
-  _getScrollingGoalLineY(rawT) {
-    const goalProgress = (rawT - 2 / 3) * 3;
-    if (goalProgress < 0) return null;
-    const yTop = -this.renderer.H * 0.08;
-    const yBottom = this.renderer.H * 1.08;
-    return yTop + (yBottom - yTop) * goalProgress;
+  _findGoalCutInRival(horses, horse, targetLane) {
+    const laneTo = clampLane(targetLane);
+    const laneFrom = clampLane(horse.y);
+    return horses.find(h => {
+      if (h.id === horse.id) return false;
+      const rearGap = horse.x - h.x;
+      if (rearGap <= 0 || rearGap > DIAGONAL_REAR_BLOCK_X_GAP) return false;
+      if (!isLaneInShiftPath(h.y, laneFrom, laneTo, 0.9)) return false;
+      return Math.abs(h.x - horse.x) < LATERAL_BLOCK_X_GAP * 0.95;
+    });
+  }
+
+  _getScrollingGoalLineY() {
+    // ゴールラインは表示後に固定し、馬だけが上方向へ進んで通過する。
+    return this.renderer.H * 0.08;
   }
 
   _estimateGoalNoseY(horse, distanceMeters, progressSpan, progressById = null) {
@@ -1684,14 +1957,15 @@ class PhaseController {
   _resolveGoalMappedProgress(horse, distanceMeters, progressSpan, progressById = null) {
     const forced = progressById?.get(horse.id);
     if (Number.isFinite(forced)) {
-      return Math.max(GOAL_PROGRESS_MIN, Math.min(1.22, forced));
+      return Math.max(GOAL_PROGRESS_MIN, Math.min(GOAL_PROGRESS_MAX_POST_LINE, forced));
     }
-    const advanceRatio = Math.max(0, Math.min(1.25, (horse.goalMeters ?? 0) / Math.max(1, distanceMeters)));
+    const advanceRatio = Math.max(0, Math.min(2.5, (horse.goalMeters ?? 0) / Math.max(1, distanceMeters)));
     const startProgress = Number.isFinite(horse.goalStartProgress)
       ? horse.goalStartProgress
       : 0.20;
-    const progress = startProgress + advanceRatio * progressSpan;
-    return Math.max(GOAL_PROGRESS_MIN, Math.min(1.22, progress));
+    const progressScale = Number.isFinite(horse.goalProgressScale) ? horse.goalProgressScale : 1;
+    const progress = startProgress + advanceRatio * progressSpan * progressScale;
+    return Math.max(GOAL_PROGRESS_MIN, Math.min(GOAL_PROGRESS_MAX_POST_LINE, progress));
   }
 
   _buildGoalLogicProgressMap(horses, distanceMeters, progressSpan, t = 0) {
@@ -1736,7 +2010,7 @@ class PhaseController {
     horses.forEach(horse => {
       const logic = logicProgressById.get(horse.id) ?? GOAL_LEADER_ANCHOR_PROGRESS;
       const visual = GOAL_LEADER_ANCHOR_PROGRESS + (logic - GOAL_LEADER_ANCHOR_PROGRESS) * amplify;
-      visualById.set(horse.id, Math.max(0.05, Math.min(1.22, visual)));
+      visualById.set(horse.id, Math.max(GOAL_PROGRESS_MIN, Math.min(GOAL_PROGRESS_MAX_POST_LINE, visual)));
     });
     return visualById;
   }
@@ -1767,6 +2041,8 @@ class PhaseController {
       currentLane + 1,
       currentLane - 2,
       currentLane + 2,
+      currentLane - 3,
+      currentLane + 3,
     ]
       .map(v => clampLane(v))
       .filter((v, i, arr) => arr.indexOf(v) === i);
@@ -1774,6 +2050,7 @@ class PhaseController {
     const staminaRatio = context.staminaRatio ?? 0.5;
     const last3fWeight = context.last3fWeight ?? 0.5;
     const aggression = context.aggression ?? 0.5;
+    const frontBlocked = Boolean(context.frontBlocked);
 
     let bestLane = currentLane;
     let bestScore = -Infinity;
@@ -1786,12 +2063,14 @@ class PhaseController {
       const blockRisk = Math.max(0, 1 - Math.min(1, projectedGap / Math.max(1, GOAL_BLOCK_X_GAP * 1.3)));
       const styleBonus = lane * styleOutsideBias * (0.45 + last3fWeight * 0.55);
       const projectedGain = Math.min(projectedGap, 92) * GOAL_AI.projectedGapWeight;
+      const keepStraightPenalty = !frontBlocked ? Math.abs(lane - currentLane) * 2.9 : 0;
       const score =
         projectedGain -
         projectedDensity * GOAL_AI.densityWeight -
         blockRisk * GOAL_AI.blockRiskWeight -
         moveCost -
-        staminaRisk +
+        staminaRisk -
+        keepStraightPenalty +
         styleBonus +
         aggression * 0.8;
       if (Math.abs(lane - currentLane) < 0.01) currentScore = score;
