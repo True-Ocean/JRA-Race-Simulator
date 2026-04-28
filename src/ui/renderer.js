@@ -94,7 +94,27 @@ export class Renderer {
 
   _getLateralGapScale(phase = null) {
     if (!phase) return 1.0;
+    const cornerNo = Number.isFinite(phase.cornerNo) ? phase.cornerNo : null;
+    const segmentId = String(phase.segmentId ?? '').toLowerCase();
+    const segmentLabel = String(phase.segmentLabel ?? '');
     const r = Number.isFinite(phase.ratio) ? phase.ratio : 0;
+    const isBeforeThirdCorner = (
+      (cornerNo != null && cornerNo <= 3) ||
+      segmentId === 'start' ||
+      segmentId === 'home' ||
+      segmentId === 'back' ||
+      segmentId === 'corner1' ||
+      segmentId === 'corner2' ||
+      segmentId === 'corner3' ||
+      segmentLabel.includes('スタート') ||
+      segmentLabel.includes('ホーム直線') ||
+      segmentLabel.includes('向正面') ||
+      segmentLabel.includes('第1コーナー') ||
+      segmentLabel.includes('第2コーナー') ||
+      segmentLabel.includes('第3コーナー') ||
+      (!phase.isFinal && r < 0.75)
+    );
+    if (isBeforeThirdCorner) return 0.56;
     if (phase.isFinal || r >= 0.92) return 1.22;
     if (r >= 0.80) return 1.10;
     if (r >= 0.65) return 0.94;
