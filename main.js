@@ -33,6 +33,7 @@ const FORMATION_LOCK_PHASE = 0.40;
 const PRE_CORNER_PACK_PHASE_MAX = 0.28;
 const COLLISION_MIN_Y_GAP = 0.9;
 const COLLISION_ITERATIONS = 3;
+const COLLISION_ITERATIONS_EARLY = 5;
 const COLLISION_EPS = 0.001;
 const START_DELAY_BASE_RATE = 0.022;
 const STUMBLE_BASE_RATE = 0.008;
@@ -234,7 +235,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
       // スタートフェーズでは「空いていれば内へ詰める」挙動を優先する
       const isStartPhase = phase.index === 0;
       const isEarlyInnerBurst = isStartToHomePhase(phase);
-      const isBeforeFourthCorner = isBeforeFourthCornerPhase(phase);
+      const isThroughThirdCorner = isThroughThirdCornerPhase(phase);
       const isAfterFourthCorner = isAfterFourthCornerPhase(phase);
       const isLateStraight = phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO;
       const currentFrontGap = getFrontGap(horse, clampLane(horse.y), horses);
@@ -248,10 +249,10 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
         : isPreCornerPack
           ? calcPreCornerPackTargetLane(horse, phase, horses)
           : calcTargetLane(horse, phase, horses);
-      if (isBeforeFourthCorner) {
+      if (isThroughThirdCorner) {
         horse.targetLane = calcEarlyInnerPriorityLane(horse, horse.targetLane, phase, horses);
       }
-      if (isBeforeFourthCorner) {
+      if (isThroughThirdCorner) {
         horse.targetLane = Math.min(horse.targetLane, INNER_HALF_LANE_MAX);
       }
       if (isAfterFourthCorner) {
@@ -281,7 +282,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
         engagedHorseIds,
       );
       horse.y          = laneCheck.nextY;
-      if (isBeforeFourthCorner) {
+      if (isThroughThirdCorner) {
         horse.y = Math.min(horse.y, INNER_HALF_LANE_MAX);
       }
       if (laneCheck.advanceMult != null) {
@@ -343,15 +344,21 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
     }
 
     // ③ 全馬の最終位置を解消して重なりを防ぐ（非接触保証）
-    resolveHorseOverlaps(horses, {
+    const throughC3Overlap = isThroughThirdCornerPhase(phase);
+    const overlapBase = {
       minXGap: collisionMetrics.minXGap,
       minYGap: collisionMetrics.minYGap,
-      iterations: COLLISION_ITERATIONS,
+      iterations: throughC3Overlap ? COLLISION_ITERATIONS_EARLY : COLLISION_ITERATIONS,
       keepOrder: true,
-      freezeY: phase.ratio < 0.18,
-    });
-    if (isBeforeFourthCornerPhase(phase)) {
+      freezeY: throughC3Overlap ? false : phase.ratio < 0.18,
+    };
+    resolveHorseOverlaps(horses, overlapBase);
+    if (throughC3Overlap) {
       enforceInnerHalfTrack(horses);
+      resolveHorseOverlaps(horses, {
+        ...overlapBase,
+        iterations: COLLISION_ITERATIONS_EARLY,
+      });
     }
 
     if (phase.ratio <= EARLY_LEAD_RATIO_MAX) {
@@ -541,6 +548,8 @@ function resolveLaneMovement(
   const frontBlocked = Boolean(context?.frontBlocked);
   const isStartPhase = Boolean(context?.isStartPhase);
   const isEarlyInnerBurst = Boolean(context?.isEarlyInnerBurst);
+  const isThroughC3 = isThroughThirdCornerPhase(phase);
+  const allowBurstShortCircuit = isEarlyInnerBurst && !isThroughC3;
   const baseY = clampLane(horse.y);
   const desiredDelta = desiredY - baseY;
   const absDesiredDelta = Math.abs(desiredDelta);
@@ -551,7 +560,7 @@ function resolveLaneMovement(
 
   const predictedSpeed = Math.max(0, desiredAdvance);
   const speedRatio = horse.S_cruise > 0 ? predictedSpeed / horse.S_cruise : 1;
-  const capBase = isEarlyInnerBurst
+  const capBase = allowBurstShortCircuit
     ? START_LATERAL_SHIFT_CAP
     : (isLateStraight ? LATERAL_SHIFT_HARD_CAP : LATERAL_SHIFT_SOFT_CAP);
   const speedPenalty = Math.max(0, Math.min(0.5, (speedRatio - 0.85) * 0.55));
@@ -564,7 +573,7 @@ function resolveLaneMovement(
     return { nextY: baseY, advanceMult: 1 };
   }
 
-  const diagonalRearHorse = isEarlyInnerBurst ? null : findDiagonalRearHorse(horse, limitedY, allHorses);
+  const diagonalRearHorse = allowBurstShortCircuit ? null : findDiagonalRearHorse(horse, limitedY, allHorses);
   if (diagonalRearHorse) {
     if (!engagedHorseIds.has(horse.id) && !engagedHorseIds.has(diagonalRearHorse.id) &&
         shouldBattle(rng, allHorses, horse, diagonalRearHorse)) {
@@ -583,10 +592,12 @@ function resolveLaneMovement(
     }
   }
 
+  const blockerXGap = allowBurstShortCircuit ? LATERAL_BLOCK_X_GAP * 0.62 : LATERAL_BLOCK_X_GAP;
+  const blockerLaneMargin = allowBurstShortCircuit ? 0.62 : LATERAL_BLOCK_LANE_GAP;
   const laneBlocker = allHorses.find(h =>
     h.id !== horse.id &&
-    Math.abs(h.x - horse.x) < (isEarlyInnerBurst ? LATERAL_BLOCK_X_GAP * 0.62 : LATERAL_BLOCK_X_GAP) &&
-    isLaneInShiftPath(h.y, baseY, limitedY, isEarlyInnerBurst ? 0.62 : LATERAL_BLOCK_LANE_GAP)
+    Math.abs(h.x - horse.x) < blockerXGap &&
+    isLaneInShiftPath(h.y, baseY, limitedY, blockerLaneMargin)
   );
 
   if (!laneBlocker) {
@@ -596,8 +607,8 @@ function resolveLaneMovement(
     };
   }
 
-  if (isEarlyInnerBurst) {
-    // スタートでは隊列形成を優先し、完全停止させず内へ寄せる。
+  if (allowBurstShortCircuit) {
+    // スタート〜ホームのみ: 隊列形成を優先し、完全停止させず内へ寄せる。
     const fallbackInnerY = clampLane(baseY + (limitedY - baseY) * 0.55);
     if (fallbackInnerY < baseY - 0.05) {
       return { nextY: fallbackInnerY, advanceMult: 0.99 };
@@ -736,7 +747,11 @@ function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, minForwar
     }
   }
 
-  return { advance: maxAdvanceWithoutContact };
+  let advance = maxAdvanceWithoutContact;
+  if (isThroughThirdCornerPhase(phase) && desiredAdvance > maxAdvanceWithoutContact + 0.01) {
+    advance *= 0.94;
+  }
+  return { advance };
 }
 
 function clampLane(v) {
@@ -861,8 +876,8 @@ function calcStartPhaseTargetLane(horse, allHorses) {
   // スタート直後は最内寄せを最優先し、複数レーン分の切り込みを許容する。
   const innerBurstTarget = Math.max(1, styleLaneFloor - 0.35);
   for (let lane = currentLane - 1; lane >= styleLaneFloor; lane--) {
-    if (!isEarlyPackShiftOpen(horse, lane, allHorses)) continue;
-    if (!isEarlyPackLaneOpenAhead(horse, lane, allHorses)) continue;
+    if (!isLaneOpenForShift(horse, lane, allHorses)) continue;
+    if (!isInnerLaneOpenAhead(horse, lane, allHorses)) continue;
     bestLane = lane;
     if (bestLane <= innerBurstTarget) break;
   }
@@ -899,8 +914,8 @@ function calcPreCornerPackTargetLane(horse, phase, allHorses) {
   for (let lane = currentLane - 1; lane >= targetInner; lane -= 1) {
     const candidate = clampToBand(lane);
     if (candidate >= bestLane - 0.01) continue;
-    if (!isEarlyPackShiftOpen(horse, candidate, allHorses)) break;
-    if (!isEarlyPackLaneOpenAhead(horse, candidate, allHorses)) continue;
+    if (!isLaneOpenForShift(horse, candidate, allHorses)) break;
+    if (!isInnerLaneOpenAhead(horse, candidate, allHorses)) continue;
     bestLane = candidate;
     if (bestLane <= minAllowedLane + 0.15) break;
   }
@@ -922,8 +937,8 @@ function calcEarlyInnerPriorityLane(horse, baseTargetLane, phase, allHorses) {
   for (let lane = currentLane - 1; lane >= innerMost; lane--) {
     const candidate = clampToBand(lane);
     if (candidate >= bestLane - 0.01) continue;
-    if (!isEarlyInnerPriorityShiftOpen(horse, candidate, allHorses)) continue;
-    if (!isEarlyInnerPriorityAheadOpen(horse, candidate, allHorses)) continue;
+    if (!isLaneOpenForShift(horse, candidate, allHorses)) continue;
+    if (!isInnerLaneOpenAhead(horse, candidate, allHorses)) continue;
     bestLane = candidate;
     if (bestLane <= innerMost + 0.05) break;
   }
@@ -1142,8 +1157,8 @@ function getLaneChangeRate(phase) {
 }
 
 function getPhaseLaneBand(phase) {
-  // スタートから第4コーナーまでは内埒沿い中心の狭い横幅で進行する。
-  if (isBeforeFourthCornerPhase(phase)) return [1, 5];
+  // 第3コーナーまで: 内埒中心の狭い横幅。第4コーナー以降は全幅を使える。
+  if (isThroughThirdCornerPhase(phase)) return [1, 5];
   if (isAfterFourthCornerPhase(phase)) return [1, LANE_WIDTH];
   if (phase.ratio < 0.80) return [1, 7];
   if (phase.ratio < 0.92) return [1, 10];
@@ -1168,18 +1183,36 @@ function isStartToHomePhase(phase) {
   return !phase.isCorner && phase.ratio < PRE_CORNER_PACK_PHASE_MAX;
 }
 
-function isBeforeThirdCornerPhase(phase) {
+/** 第3コーナー終了まで（向正面〜第3コーナー、スタート・ホーム含む）。第4コーナー手前の向正面は含めない。 */
+function isThroughThirdCornerPhase(phase) {
   if (!phase || phase.isFinal) return false;
   const cornerNo = Number.isFinite(phase.cornerNo) ? phase.cornerNo : null;
   if (cornerNo != null) return cornerNo <= 3;
+  const segmentId = String(phase.segmentId ?? '').toLowerCase();
+  if (segmentId === 'corner4' || segmentId === 'final') return false;
+  if (
+    segmentId === 'start' ||
+    segmentId === 'home' ||
+    segmentId === 'corner1' ||
+    segmentId === 'corner2' ||
+    segmentId === 'corner3' ||
+    segmentId === 'back'
+  ) {
+    return true;
+  }
+  const segmentLabel = String(phase.segmentLabel ?? '');
+  if (segmentLabel.includes('第4コーナー') || segmentLabel.includes('最終直線')) return false;
+  if (segmentLabel.includes('スタート') || segmentLabel.includes('ホーム直線') || segmentLabel.includes('向正面')) {
+    return true;
+  }
+  if (
+    segmentLabel.includes('第1コーナー') ||
+    segmentLabel.includes('第2コーナー') ||
+    segmentLabel.includes('第3コーナー')
+  ) {
+    return true;
+  }
   return phase.ratio < 0.75;
-}
-
-function isBeforeFourthCornerPhase(phase) {
-  if (!phase || phase.isFinal) return false;
-  const cornerNo = Number.isFinite(phase.cornerNo) ? phase.cornerNo : null;
-  if (cornerNo != null) return cornerNo < 4;
-  return phase.ratio < FINAL_STRAIGHT_RATIO;
 }
 
 function isAfterFourthCornerPhase(phase) {
@@ -1213,8 +1246,12 @@ function scoreLaneOption(horse, lane, preferredLane, phase, allHorses, currentLa
   const innerBias = (LANE_WIDTH - lane) * (phase.isCorner ? 0.9 : 0.35);
   score += innerBias;
 
-  // 差し・追込は序盤で外待機、終盤で前進優先
-  if ((horse.style === '差し' || horse.style === '追込') && phase.ratio < 0.65) {
+  // 差し・追込は序盤で外待機、終盤で前進優先（第3コーナーまでは内寄せと矛盾しないよう弱める）
+  if (
+    !isThroughThirdCornerPhase(phase) &&
+    (horse.style === '差し' || horse.style === '追込') &&
+    phase.ratio < 0.65
+  ) {
     score += lane * 0.55;
   }
   if ((horse.style === '差し' || horse.style === '追込') && phase.ratio >= 0.80) {
@@ -1270,48 +1307,6 @@ function isInnerLaneOpenAhead(horse, targetLane, allHorses) {
     h.x >= horse.x - 10 &&
     h.x <= horse.x + 34 &&
     isLaneInShiftPath(h.y, fromLane, toLane, 0.82)
-  );
-}
-
-function isEarlyPackLaneOpenAhead(horse, targetLane, allHorses) {
-  const fromLane = clampLane(horse.y);
-  const toLane = clampLane(targetLane);
-  return !allHorses.some(h =>
-    h.id !== horse.id &&
-    h.x >= horse.x - 8 &&
-    h.x <= horse.x + 26 &&
-    isLaneInShiftPath(h.y, fromLane, toLane, 0.64)
-  );
-}
-
-function isEarlyPackShiftOpen(horse, targetLane, allHorses) {
-  const fromLane = clampLane(horse.y);
-  const toLane = clampLane(targetLane);
-  return !allHorses.some(h =>
-    h.id !== horse.id &&
-    Math.abs(h.x - horse.x) < (LATERAL_BLOCK_X_GAP * 0.70) &&
-    isLaneInShiftPath(h.y, fromLane, toLane, 0.68)
-  );
-}
-
-function isEarlyInnerPriorityShiftOpen(horse, targetLane, allHorses) {
-  const fromLane = clampLane(horse.y);
-  const toLane = clampLane(targetLane);
-  return !allHorses.some(h =>
-    h.id !== horse.id &&
-    Math.abs(h.x - horse.x) < (LATERAL_BLOCK_X_GAP * 0.58) &&
-    isLaneInShiftPath(h.y, fromLane, toLane, 0.56)
-  );
-}
-
-function isEarlyInnerPriorityAheadOpen(horse, targetLane, allHorses) {
-  const fromLane = clampLane(horse.y);
-  const toLane = clampLane(targetLane);
-  return !allHorses.some(h =>
-    h.id !== horse.id &&
-    h.x >= horse.x - 6 &&
-    h.x <= horse.x + 22 &&
-    isLaneInShiftPath(h.y, fromLane, toLane, 0.58)
   );
 }
 
