@@ -4,6 +4,7 @@
     {
       "id": "long_2400",
       "name": "ロング（2400m想定）",
+      "turnDirection": "left",
       "segments": [
         { "id": "start",   "label": "スタート",     "kind": "start",    "ratio": 0.06 },
         { "id": "home",    "label": "ホーム直線",   "kind": "straight", "ratio": 0.12 },
@@ -18,6 +19,7 @@
     {
       "id": "mile_short",
       "name": "短距離/マイル（ワンターン想定）",
+      "turnDirection": "right",
       "segments": [
         { "id": "start",   "label": "スタート",     "kind": "start",    "ratio": 0.10 },
         { "id": "back",    "label": "向正面",       "kind": "straight", "ratio": 0.20 },

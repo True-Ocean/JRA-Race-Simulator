@@ -36,15 +36,38 @@ const JRA_WAKU_COLORS = {
 };
 
 export class Renderer {
-  constructor(canvasId, totalPhases, track = '芝', condition = '良') {
+  constructor(canvasId, totalPhases, track = '芝', condition = '良', courseDef = null) {
     this.canvas       = document.getElementById(canvasId);
     this.ctx          = this.canvas.getContext('2d');
     this.totalPhases  = totalPhases;
     this.track        = track;
     this.condition    = condition;
+    this.courseDef    = courseDef ?? null;
+    this.innerRailSide = this._resolveInnerRailSide(this.courseDef);
     this.horseRenderState = new Map();
     this._resize();
     window.addEventListener('resize', () => this._resize());
+  }
+
+  _resolveInnerRailSide(courseDef = null) {
+    const side = String(courseDef?.innerRailSide ?? '').toLowerCase();
+    if (side === 'left' || side === 'right') return side;
+    const turnDirection = String(courseDef?.turnDirection ?? '').toLowerCase();
+    if (turnDirection === 'left' || turnDirection === 'right') return turnDirection;
+    return 'right';
+  }
+
+  _getRailX(kind = 'inner') {
+    const innerOnRight = this.innerRailSide === 'right';
+    if (kind === 'inner') {
+      return innerOnRight ? (this.W - this.RAIL_MARGIN + 2) : (this.RAIL_MARGIN - 2);
+    }
+    return innerOnRight ? (this.RAIL_MARGIN - 2) : (this.W - this.RAIL_MARGIN + 2);
+  }
+
+  _laneLeftX(lane) {
+    const cx = this.laneToX(lane);
+    return cx - this.laneW / 2;
   }
 
   _resize() {
@@ -71,9 +94,12 @@ export class Renderer {
     this.horseRenderState.clear();
   }
 
-  // Lane1=右端（最内）、Lane8=左端（大外）
+  // Lane1=最内（innerRailSide に応じて左右反転）
   laneToX(lane) {
     const idx = lane - 1;
+    if (this.innerRailSide === 'left') {
+      return this.RAIL_MARGIN + (idx + 0.5) * this.laneW;
+    }
     return this.W - this.RAIL_MARGIN - (idx + 0.5) * this.laneW;
   }
 
@@ -238,20 +264,23 @@ export class Renderer {
   _drawLanes(phase) {
     const ctx = this.ctx;
     for (let lane = 1; lane <= CONFIG.LANE_COUNT; lane++) {
-      const x = this.W - this.RAIL_MARGIN - lane * this.laneW;
+      const left = this._laneLeftX(lane);
       if (phase.isCorner && lane >= 5) {
         const alpha = (lane - 4) * 0.055;
         ctx.fillStyle = `rgba(234,179,8,${alpha})`;
-        ctx.fillRect(x, 0, this.laneW, this.H);
+        ctx.fillRect(left, 0, this.laneW, this.H);
       }
       // レール付近の境界線は描かず、レールの実線を目立たせる
       if (lane === CONFIG.LANE_COUNT) continue;
+      const boundaryX = this.innerRailSide === 'right'
+        ? left
+        : (left + this.laneW);
       ctx.strokeStyle = 'rgba(255,255,255,0.10)';
       ctx.lineWidth   = 1;
       ctx.setLineDash([5, 7]);
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, this.H);
+      ctx.moveTo(boundaryX, 0);
+      ctx.lineTo(boundaryX, this.H);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -259,11 +288,13 @@ export class Renderer {
 
   _drawRails() {
     const ctx = this.ctx;
-    const railRight = this.W - this.RAIL_MARGIN + 2; // 内ラチ
-    const railLeft  = this.RAIL_MARGIN - 2;          // 外ラチ
+    const innerRailX = this._getRailX('inner');
+    const outerRailX = this._getRailX('outer');
+    const innerOutwardSign = this.innerRailSide === 'right' ? 1 : -1;
+    const outerOutwardSign = -innerOutwardSign;
     const rails = [
-      { x: railRight, postOffset: +8 }, // コース外側=さらに右
-      { x: railLeft,  postOffset: -8 }, // コース外側=さらに左
+      { x: innerRailX, postOffset: innerOutwardSign * 8 },
+      { x: outerRailX, postOffset: outerOutwardSign * 8 },
     ];
 
     rails.forEach(({ x, postOffset }) => {
@@ -307,6 +338,107 @@ export class Renderer {
     ctx.moveTo(this.RAIL_MARGIN, y);
     ctx.lineTo(this.W - this.RAIL_MARGIN, y);
     ctx.stroke();
+    ctx.restore();
+
+    this._drawGoalBoard(y);
+  }
+
+  _drawGoalBoard(goalLineY) {
+    const ctx = this.ctx;
+    // 最内ラチの外側に小さく配置（右回り/左回りの両対応）
+    const innerRailX = this._getRailX('inner');
+    const outwardSign = this.innerRailSide === 'right' ? 1 : -1;
+    const outerAvailable = outwardSign > 0
+      ? Math.max(10, this.W - innerRailX - 4)
+      : Math.max(10, innerRailX - 4);
+    const objW = Math.max(12, Math.min(outerAvailable - 2, Math.max(18, this.laneW * 0.42)));
+    const objH = Math.max(6, Math.min(12, objW * 0.32));
+    const gapFromRail = Math.min(4, Math.max(2, this.laneW * 0.10));
+    const objLeft = outwardSign > 0
+      ? (innerRailX + gapFromRail)
+      : (innerRailX - gapFromRail - objW);
+    const objTop = goalLineY - objH * 0.5;
+    const objRight = objLeft + objW;
+    const objBottom = objTop + objH;
+
+    // 横向きUフレーム（常にコース側へ開口）
+    const frameInset = Math.max(3, objH * 0.22);
+    const frameLeft = objLeft + frameInset;
+    const frameRight = objRight - frameInset;
+    const frameTop = objTop + frameInset;
+    const frameBottom = objBottom - frameInset;
+    const frameR = Math.max(4, (frameBottom - frameTop) * 0.48);
+
+    ctx.save();
+    ctx.strokeStyle = '#1f5a3f';
+    ctx.lineWidth = Math.max(2.2, this.laneW * 0.09);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    if (outwardSign > 0) {
+      // 右外側: 左に開口
+      ctx.moveTo(frameLeft + frameR, frameTop);
+      ctx.lineTo(frameRight - frameR, frameTop);
+      ctx.arcTo(frameRight, frameTop, frameRight, frameTop + frameR, frameR);
+      ctx.lineTo(frameRight, frameBottom - frameR);
+      ctx.arcTo(frameRight, frameBottom, frameRight - frameR, frameBottom, frameR);
+      ctx.lineTo(frameLeft + frameR, frameBottom);
+    } else {
+      // 左外側: 右に開口
+      ctx.moveTo(frameRight - frameR, frameTop);
+      ctx.lineTo(frameLeft + frameR, frameTop);
+      ctx.arcTo(frameLeft, frameTop, frameLeft, frameTop + frameR, frameR);
+      ctx.lineTo(frameLeft, frameBottom - frameR);
+      ctx.arcTo(frameLeft, frameBottom, frameLeft + frameR, frameBottom, frameR);
+      ctx.lineTo(frameRight - frameR, frameBottom);
+    }
+    ctx.stroke();
+
+    // フレーム軽いハイライト
+    ctx.strokeStyle = 'rgba(247,224,154,0.70)';
+    ctx.lineWidth = Math.max(1.1, this.laneW * 0.04);
+    ctx.beginPath();
+    ctx.moveTo(frameLeft + frameR + 1, frameTop + 1);
+    ctx.lineTo(frameRight - frameR - 1, frameTop + 1);
+    ctx.stroke();
+
+    // 横向き鏡板（フレーム内部）
+    const mirrorMarginX = Math.max(6, objW * 0.20);
+    const mirrorMarginY = Math.max(2, objH * 0.20);
+    const mirrorLeft = objLeft + mirrorMarginX;
+    const mirrorTop = objTop + mirrorMarginY;
+    const mirrorW = Math.max(14, objW - mirrorMarginX * 1.55);
+    const mirrorH = Math.max(5, objH - mirrorMarginY * 2);
+    const mirrorGrad = ctx.createLinearGradient(mirrorLeft, mirrorTop, mirrorLeft + mirrorW, mirrorTop + mirrorH);
+    mirrorGrad.addColorStop(0, 'rgba(235,242,250,0.94)');
+    mirrorGrad.addColorStop(0.52, 'rgba(182,199,216,0.90)');
+    mirrorGrad.addColorStop(1, 'rgba(126,148,173,0.94)');
+    ctx.fillStyle = mirrorGrad;
+    ctx.fillRect(mirrorLeft, mirrorTop, mirrorW, mirrorH);
+
+    // 鏡ハイライト
+    ctx.fillStyle = 'rgba(255,255,255,0.34)';
+    ctx.fillRect(
+      mirrorLeft + mirrorW * 0.12,
+      mirrorTop + mirrorH * 0.14,
+      mirrorW * 0.18,
+      mirrorH * 0.72,
+    );
+
+    // 鏡枠
+    ctx.strokeStyle = 'rgba(247,224,154,0.86)';
+    ctx.lineWidth = Math.max(1.0, this.laneW * 0.035);
+    ctx.strokeRect(mirrorLeft, mirrorTop, mirrorW, mirrorH);
+
+    // ラチ外設備らしい細い支柱
+    ctx.strokeStyle = 'rgba(24,78,55,0.85)';
+    ctx.lineWidth = Math.max(1.2, this.laneW * 0.045);
+    ctx.beginPath();
+    ctx.moveTo(objLeft + objW * 0.10, objBottom);
+    ctx.lineTo(objLeft + objW * 0.10, objBottom + Math.max(8, this.laneW * 0.22));
+    ctx.moveTo(objLeft + objW * 0.26, objBottom);
+    ctx.lineTo(objLeft + objW * 0.26, objBottom + Math.max(7, this.laneW * 0.20));
+    ctx.stroke();
+
     ctx.restore();
   }
 
@@ -537,7 +669,7 @@ export class Renderer {
     }
 
     for (let lane = 1; lane <= CONFIG.LANE_COUNT; lane++) {
-      const xLeft = this.W - this.RAIL_MARGIN - lane * this.laneW;
+      const xLeft = this._laneLeftX(lane);
       const cellW = this.laneW;
 
       if (drawBack) {

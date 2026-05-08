@@ -679,11 +679,16 @@ function formatLogLineHtml(logLine, horseMetaByName) {
 function formatRaceInfo(raceData, courseDef, simOptions) {
   const info = raceData.race_info;
   const courseLabel = courseDef?.name ?? 'コース定義なし（自動生成）';
+  const turnLabel = courseDef?.turnDirection === 'left'
+    ? '左回り'
+    : courseDef?.turnDirection === 'right'
+      ? '右回り'
+      : '';
   const seedLabel = simOptions.reproducible ? `${simOptions.seed}` : 'ランダム';
   return [
     `レースID: <b>${raceData.race_id}</b>`,
     `条件: <b>${info.track}</b> / <b>${info.distance}m</b> / <b>${info.condition}</b>`,
-    `コース: <b>${courseLabel}</b>`,
+    `コース: <b>${courseLabel}</b>${turnLabel ? ` (${turnLabel})` : ''}`,
     `乱数: <b>${seedLabel}</b> (${simOptions.reproducible ? '再現性ON' : '再現性OFF'})`,
   ].join('　｜　');
 }
@@ -3283,7 +3288,7 @@ Promise.all([
     const phases        = buildPhases(runtimeRaceData.race_info.distance, courseDef);
     const track         = raceData.race_info.track;
     const condition     = raceData.race_info.condition;
-    const renderer      = new Renderer('field-canvas', phases.length, track, condition);
+    const renderer      = new Renderer('field-canvas', phases.length, track, condition, courseDef);
     const initialHorses = calcAllParams(runtimeRaceData);
     const horseMetaByName = new Map();
 
