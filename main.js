@@ -41,13 +41,28 @@ const COLLISION_EPS = 0.001;
 const START_DELAY_BASE_RATE = 0.022;
 const STUMBLE_BASE_RATE = 0.008;
 const STUMBLE_PHASE_MAX = 0.55;
+// ゴールシーンは「ゴールラインから 200m 手前〜ゴール」が画面に収まるイメージ。
+// last_3f（最終3ハロン≈600m の通過秒）から intrinsic 速度を出し、スタミナ残量で毎フレーム上限を締める。
 const GOAL_FURLONG_METERS = 200;
-const GOAL_ANIM_FURLONGS = 2;
-// 最終2ハロン演出の体感的な尺（秒/ハロン、UI マーカーは同じ 0–1 タイムライン）
-const GOAL_SECONDS_PER_FURLONG = 9;
 const GOAL_TIME_SCALE = 1.0;
-const GOAL_DISTANCE_METERS = GOAL_FURLONG_METERS * GOAL_ANIM_FURLONGS;
-const GOAL_BASE_MPS = GOAL_FURLONG_METERS / GOAL_SECONDS_PER_FURLONG;
+const GOAL_DISTANCE_METERS = GOAL_FURLONG_METERS;
+const GOAL_LAST3F_DISTANCE_M = 600;
+const GOAL_LAST3F_SEC_CLAMP_MIN = 27;
+const GOAL_LAST3F_SEC_CLAMP_MAX = 41;
+const GOAL_LAST3F_FALLBACK_SEC = 33.5;
+
+function goalIntrinsicMpsFromLast3f(last3fSec) {
+  const s = Number.isFinite(last3fSec)
+    ? Math.max(GOAL_LAST3F_SEC_CLAMP_MIN, Math.min(GOAL_LAST3F_SEC_CLAMP_MAX, last3fSec))
+    : GOAL_LAST3F_FALLBACK_SEC;
+  return GOAL_LAST3F_DISTANCE_M / s;
+}
+
+/** スタミナ残量だけでスピード上限を掛ける（last_3f とは独立に毎フレーム変化） */
+function goalStaminaSpeedMult(staminaRatio) {
+  const r = Math.max(0, Math.min(1, staminaRatio));
+  return 0.52 + 0.50 * Math.pow(r, 0.82);
+}
 const GOAL_X_PER_METER = 0.28;
 const GOAL_LANE_CHANGE_PER_SEC = 4.2;
 const GOAL_BLOCK_X_GAP = 10;
@@ -82,7 +97,7 @@ const GOAL_LEADER_ANCHOR_PROGRESS = 0.88;
 // 仮想リーダーが上に抜けた時にYで見せる（旧: 0.88 で上方向が潰れていた）
 const GOAL_ANCHOR_MAX_PROGRESS = 1.08;
 const GOAL_PROGRESS_SPAN = 0.64;
-// t < 2/3（残2〜1ﾊﾛﾝ相当）の間は相対差を大きく見せる
+// t < 2/3（ゴール接近の前半〜中盤）の間は相対差を大きく見せる
 const GOAL_EARLY_PHASE_T = 2 / 3;
 const GOAL_SPREAD_EARLY_MULT = 1.52;
 const GOAL_ANCHOR_FOLLOW_SCALE = 0.92;
@@ -126,14 +141,17 @@ const GOAL_AI = {
   densityWeight: 4.8,
   projectedGapWeight: 1.25,
   burstAccelBonus: 1.10,
-  burstWindowMetersToGoMin: 180,
-  burstWindowMetersToGoMax: 350,
+  // GOAL_DISTANCE が 200m のため「残り〇m」の窓を区間に合わせる（最後の直線ドライブ帯）
+  burstWindowMetersToGoMin: 90,
+  burstWindowMetersToGoMax: 205,
   burstCooldownSec: 0.80,
   burstDurationSec: 0.55,
   trafficPenaltyFloor: 0.72,
   goalDrainSprintCap: 1.45,
   visualLateStartT: 0.62,
   visualLateBoost: 0.34,
+  /** 短期軌道予測での接触ペナルティ（進路スコアから減算） */
+  collisionHorizonWeight: 5.5,
 };
 
 /** 差し/追込: 末脚が速くスタミナに余力があるほど外への先回り意欲が高い（0〜1） */
@@ -2159,29 +2177,29 @@ class PhaseController {
     const simHorses = baseHorses.map(h => {
       const staminaRatio = h.initialStamina > 0 ? h.stamina / h.initialStamina : 0.5;
       const res = resultsById.get(h.id) ?? h;
+      const goalIntrinsicMps = goalIntrinsicMpsFromLast3f(res.last3f);
       const l3w = Number.isFinite(res.last3f)
         ? (maxLast3f - res.last3f) / last3fSpan
         : 0.5;
       const isCloser = h.style === '差し' || h.style === '追込';
       const startSpeedMult = Math.max(
-        0.64,
+        0.72,
         Math.min(
-          1.08,
-          0.70
-            + staminaRatio * 0.28
-            + l3w * 0.12
-            + (isCloser ? 0.06 : 0),
+          1.06,
+          0.78 + l3w * 0.14 + (isCloser ? 0.05 : 0),
         ),
       );
       return {
         ...h,
         goalMeters: 0,
         goalFinished: false,
+        goalIntrinsicMps,
         targetLane: h.y,
         goalStartProgress: (baseGoalProgressById.get(h.id) ?? GOAL_ENTRY_LEADER_START_PROGRESS) + goalEntryOffset,
         // どれだけ下から入ってきても、最終的に全馬がゴール線を通過できるよう個別に進捗倍率を持たせる。
         goalProgressScale: 1,
-        goalCurrentMps: GOAL_BASE_MPS * startSpeedMult,
+        goalCurrentMps:
+          goalIntrinsicMps * goalStaminaSpeedMult(staminaRatio) * startSpeedMult,
         goalAccelState: 0,
         goalLaneCost: 0,
         goalCommitUntilMs: 0,
@@ -2202,7 +2220,17 @@ class PhaseController {
       horse.goalProgressScale = neededSpan / Math.max(1e-6, GOAL_PROGRESS_SPAN);
     });
 
-    const durationMs = GOAL_DISTANCE_METERS / GOAL_BASE_MPS * 1000 * GOAL_TIME_SCALE;
+    const durationMs =
+      Math.max(
+        ...simHorses.map(h => {
+          const r = h.initialStamina > 0 ? h.stamina / h.initialStamina : 0.5;
+          const v = h.goalIntrinsicMps * goalStaminaSpeedMult(r);
+          return (GOAL_DISTANCE_METERS / Math.max(1e-6, v)) * 1000;
+        }),
+        1,
+      ) *
+      GOAL_TIME_SCALE *
+      1.08;
     const startedAt = performance.now();
     const goalRng = createRng((this.raceData?.race_id ?? 1) + 7919);
     let lastTs = startedAt;
@@ -2239,7 +2267,10 @@ class PhaseController {
           // ゴール後も画面上に抜けるまで前進を継続する。
           laneIntentById.set(horse.id, 0);
           overtakePressureById.set(horse.id, 0);
-          const postGoalMinMps = GOAL_BASE_MPS * 1.08;
+          const sr =
+            horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0.5;
+          const postGoalMinMps =
+            horse.goalIntrinsicMps * goalStaminaSpeedMult(sr) * 1.06;
           horse.goalCurrentMps = Math.max(postGoalMinMps, horse.goalCurrentMps * 0.996);
           const progressedMeters = Math.max(postGoalMinMps * dt, horse.goalCurrentMps * dt);
           horse.goalMeters = Math.min(
@@ -2255,6 +2286,8 @@ class PhaseController {
         const last3fWeight = Number.isFinite(result.last3f)
           ? (maxLast3f - result.last3f) / last3fSpan
           : 0.5;
+        const baseMps =
+          horse.goalIntrinsicMps * goalStaminaSpeedMult(staminaRatio);
         const styleBoost = horse.style === '追込' ? 0.16
           : horse.style === '差し' ? 0.13
             : horse.style === '先行' ? 0.04
@@ -2329,7 +2362,7 @@ class PhaseController {
               horse.goalCurrentMps *= 0.992;
             }
           }
-          const speedRatio = horse.goalCurrentMps / Math.max(1e-6, GOAL_BASE_MPS);
+          const speedRatio = horse.goalCurrentMps / Math.max(1e-6, baseMps);
           const speedLimited = speedRatio > 1.15 ? 0.58 : (speedRatio > 1 ? 0.74 : 1.0);
           const laneRate = GOAL_LANE_CHANGE_PER_SEC * speedLimited * (frontBlockedNow ? 1.0 : 0.65);
           const laneStep = Math.sign(laneDelta) * Math.min(Math.abs(laneDelta), laneRate * dt);
@@ -2356,22 +2389,22 @@ class PhaseController {
           ? Math.max(GOAL_AI.trafficPenaltyFloor, frontGapAfterLane / GOAL_BLOCK_X_GAP)
           : 1.0;
         const furlongHint = (horse.goalMeters || 0) / GOAL_FURLONG_METERS;
-        const last3fCloser = last3fWeight * (isCloser ? 1.35 : 1);
         const lateBoost = 0.90
           + 0.22 * Math.pow(t, 0.9)
           + 0.14 * Math.pow(distRatio, 0.72)
           + (isCloser ? 0.10 * Math.pow(Math.min(1, furlongHint), 0.5) : 0);
-        const staminaBoost = 0.56 + staminaRatio * 0.54;
-        const surge = 0.72 + last3fCloser * 0.32 + fastWeight * 0.18 + styleBoost;
+        // baseMps にスタミナを織り込み済みのため微調整のみ
+        const staminaFineTuning = 0.97 + staminaRatio * 0.05;
+        const surge = 0.90 + fastWeight * 0.16 + styleBoost;
         const closingKick = 1
           + Math.pow(distRatio, 0.58) * (
-            (isCloser ? 0.20 : 0.06) * (0.45 + last3fWeight * 0.55)
-            + last3fWeight * 0.12
+            (isCloser ? 0.20 : 0.06) * (0.45 + last3fWeight * 0.28)
+            + last3fWeight * 0.06
           )
           + Math.pow(t, 1.2) * (
             (horse.style === '追込' ? 0.12 : 0) +
             (horse.style === '差し' ? 0.10 : 0) +
-            last3fWeight * 0.06
+            last3fWeight * 0.04
           );
         const fatiguePenalty = Math.max(0.52, 1 - battleFatigue - (1 - staminaRatio) * 0.32);
         const rescueBoost = elapsed >= durationMs * 1.20
@@ -2379,7 +2412,17 @@ class PhaseController {
           : 1;
         const routeTax = Math.min(0.07, (horse.goalLaneCost ?? 0) * 0.0035);
         const routeTaxMult = 1 - routeTax * (1.15 - staminaRatio * 0.45);
-        const targetMps = GOAL_BASE_MPS * lateBoost * staminaBoost * surge * styleTop * closingKick * trafficPenalty * fatiguePenalty * rescueBoost * routeTaxMult;
+        const targetMps =
+          baseMps *
+          lateBoost *
+          staminaFineTuning *
+          surge *
+          styleTop *
+          closingKick *
+          trafficPenalty *
+          fatiguePenalty *
+          rescueBoost *
+          routeTaxMult;
         const accelBase = 2.3
           + last3fWeight * 1.9
           + (isCloser ? 1.1 : 0.2)
@@ -2407,11 +2450,11 @@ class PhaseController {
         const accel = Math.max(0.55, accelBase * (0.64 + staminaRatio * 0.70) + burstAccelBonus);
         const mpsDiff = targetMps - horse.goalCurrentMps;
         const deltaV = Math.sign(mpsDiff) * Math.min(Math.abs(mpsDiff), accel * dt);
-        const minMps = GOAL_BASE_MPS * GOAL_MIN_SPEED_RATIO;
-        const maxMps = GOAL_BASE_MPS * GOAL_MAX_SPEED_RATIO;
+        const minMps = baseMps * GOAL_MIN_SPEED_RATIO;
+        const maxMps = baseMps * GOAL_MAX_SPEED_RATIO;
         horse.goalCurrentMps = Math.max(minMps, Math.min(maxMps, horse.goalCurrentMps + deltaV));
         if (elapsed >= durationMs * 1.45) {
-          horse.goalCurrentMps = Math.max(horse.goalCurrentMps, GOAL_BASE_MPS * 1.18);
+          horse.goalCurrentMps = Math.max(horse.goalCurrentMps, baseMps * 1.15);
         }
 
         const accelDrain = Math.max(0, deltaV) * (1.2 + (isCloser ? 0.45 : 0.15));
@@ -2430,7 +2473,7 @@ class PhaseController {
 
         const deltaMeters = horse.goalCurrentMps * dt;
         const progressedMeters = Math.max(
-          GOAL_BASE_MPS * 0.28 * dt,
+          baseMps * 0.28 * dt,
           elapsed >= durationMs * 1.55 ? deltaMeters * 1.12 : deltaMeters,
         );
         horse.goalMeters = Math.min(
@@ -2453,9 +2496,14 @@ class PhaseController {
           GOAL_PROGRESS_SPAN,
           null,
         );
+        // ゴール通過後は rawT<2/3 の pre キャップ(1.0)を掛けない。さもないと progress が頭打ちになり
+        // 画面上端で止まったように見える（goalRenderProgressById はゴール判定より先に作るため距離でも判定）。
+        const pastGoal =
+          horse.goalFinished || (horse.goalMeters ?? 0) >= GOAL_DISTANCE_METERS;
+        const cap = pastGoal ? GOAL_PROGRESS_MAX_POST_LINE : goalProgressCap;
         goalRenderProgressById.set(
           horse.id,
-          Math.max(GOAL_PROGRESS_MIN, Math.min(goalProgressCap, rawProgress)),
+          Math.max(GOAL_PROGRESS_MIN, Math.min(cap, rawProgress)),
         );
       });
       const goalLineY = this._getScrollingGoalLineY();
@@ -2698,9 +2746,60 @@ class PhaseController {
   }
 
   _predictGoalX(horse, horizonSec = GOAL_AI.horizonSec) {
-    const currentMps = horse.goalCurrentMps ?? GOAL_BASE_MPS;
+    const currentMps =
+      horse.goalCurrentMps ??
+      (horse.goalIntrinsicMps != null
+        ? horse.goalIntrinsicMps * goalStaminaSpeedMult(
+          horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0.5,
+        )
+        : goalIntrinsicMpsFromLast3f(horse.last3f));
     const deltaMeters = currentMps * horizonSec;
     return horse.x + deltaMeters * GOAL_X_PER_METER;
+  }
+
+  /**
+   * 短期（horizon）で自他の直進予測を重ね、レーン接近＋前後距離が詰まるほどコストを加算する。
+   */
+  _goalMultiStepCollisionCost(horses, horse, testLane) {
+    const stepSec = GOAL_AI.predictStepSec;
+    const horizon = GOAL_AI.horizonSec;
+    const n = Math.max(1, Math.round(horizon / stepSec));
+    let selfMps = horse.goalCurrentMps;
+    if (!Number.isFinite(selfMps)) {
+      selfMps = Number.isFinite(horse.goalIntrinsicMps)
+        ? horse.goalIntrinsicMps * 0.92
+        : goalIntrinsicMpsFromLast3f(horse.last3f);
+    }
+    const selfVx = selfMps * GOAL_X_PER_METER;
+    const nearLaneBase = this._getGoalNearLaneGap() + 0.1;
+    let cost = 0;
+    for (let k = 1; k <= n; k += 1) {
+      const time = stepSec * k;
+      const sx = horse.x + selfVx * time;
+      for (const o of horses) {
+        if (o.id === horse.id || o.goalFinished) continue;
+        let oMps = o.goalCurrentMps;
+        if (!Number.isFinite(oMps)) {
+          oMps = Number.isFinite(o.goalIntrinsicMps)
+            ? o.goalIntrinsicMps * 0.92
+            : goalIntrinsicMpsFromLast3f(o.last3f);
+        }
+        const ox = o.x + oMps * GOAL_X_PER_METER * time;
+        const laneDist = Math.abs(testLane - o.y);
+        const nearLane = nearLaneBase * (o.style === '逃げ' || o.style === '先行' ? 1.02 : 1);
+        if (laneDist >= nearLane) continue;
+        const laneFactor = 1 - laneDist / Math.max(1e-6, nearLane);
+        const dx = ox - sx;
+        const frontBand = GOAL_BLOCK_X_GAP * 1.38;
+        const rearBand = GOAL_BLOCK_X_GAP * 0.92;
+        if (dx > 0 && dx < frontBand) {
+          cost += (1 - dx / frontBand) * laneFactor * (0.85 + 0.15 * k / n);
+        } else if (dx <= 0 && dx > -rearBand) {
+          cost += (1 - Math.abs(dx) / rearBand) * laneFactor * 0.42 * (0.85 + 0.15 * k / n);
+        }
+      }
+    }
+    return cost * GOAL_AI.collisionHorizonWeight;
   }
 
   _planGoalRouteV2(horses, horse, context = {}) {
@@ -2729,11 +2828,13 @@ class PhaseController {
       : staminaRatio * 0.12;
     const styleOutsideBias = styleOutsideBiasBase * (0.75 + Math.min(1, spreadBoost));
     const keepStraightFactor = closerRoute ? Math.max(0.35, 1.15 - spreadBoost * 0.55) : 1;
+    const lowStamina = staminaRatio < 0.22;
 
     let bestLane = currentLane;
     let bestScore = -Infinity;
     let currentScore = -Infinity;
     candidates.forEach(lane => {
+      const staminaLanePenalty = lowStamina ? Math.abs(lane - currentLane) * 1.85 : 0;
       const projectedGap = this._goalFrontGap(horses, horse, lane, projectedX);
       const projectedDensity = this._goalLaneDensity(horses, horse, lane, projectedX);
       const moveCost = Math.abs(lane - currentLane) * GOAL_AI.laneMoveCostPerLane;
@@ -2744,13 +2845,16 @@ class PhaseController {
       const keepStraightPenalty = !frontBlocked
         ? Math.abs(lane - currentLane) * 2.9 * keepStraightFactor
         : 0;
+      const collisionHorizonCost = this._goalMultiStepCollisionCost(horses, horse, lane);
       const score =
         projectedGain -
         projectedDensity * GOAL_AI.densityWeight -
         blockRisk * GOAL_AI.blockRiskWeight -
         moveCost -
         staminaRisk -
-        keepStraightPenalty +
+        keepStraightPenalty -
+        collisionHorizonCost -
+        staminaLanePenalty +
         styleBonus +
         aggression * 0.8;
       if (Math.abs(lane - currentLane) < 0.01) currentScore = score;

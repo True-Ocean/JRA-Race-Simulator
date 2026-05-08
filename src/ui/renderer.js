@@ -291,32 +291,7 @@ export class Renderer {
   _drawFurlongMarkers(t) {
     const y2 = this.H - 28;
     const goalY = this.H * 0.08;
-    this._drawSingleFurlongMarker(2, y2);
     return { y2, goalY };
-  }
-
-  _drawSingleFurlongMarker(num, y) {
-    if (y < -48 || y > this.H + 48) return;
-    const ctx = this.ctx;
-    // 内ラチの外側に置きつつ、キャンバス外へ見切れない位置に収める
-    const x = Math.min(this.W - 16, this.W - this.RAIL_MARGIN + 16);
-    const radius = 12;
-
-    ctx.save();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    ctx.fillStyle = '#c81e1e';
-    ctx.font = `bold ${Math.max(12, this.W * 0.014)}px 'Courier New'`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(num), x, y);
-    ctx.restore();
   }
 
   _drawGoalBandAtTop(t, furlongLayout = null) {
