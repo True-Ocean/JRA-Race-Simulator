@@ -2006,6 +2006,7 @@ class PhaseController {
     this._goalLineDiffById = new Map();
     this._goalAllFinishedAtMs = null;
     this._goalCameraRawProgress = null;
+    this._goalBattledPairs = new Set();
 
     this.btnAdvance = document.getElementById('btn-run');
     this.btnReset  = document.getElementById('btn-reset');
@@ -2312,6 +2313,7 @@ class PhaseController {
     this._goalLineDiffById = new Map();
     this._goalAllFinishedAtMs = null;
     this._goalCameraRawProgress = null;
+    this._goalBattledPairs = new Set();
     // 1着がゴールしたあとはバトルログを出さない（バトル自体は裏で実行を継続する）
     this._goalSuppressBattleLogs = false;
     this._appendLog(GOAL_BATTLE_HEADER_LINE);
@@ -2420,13 +2422,22 @@ class PhaseController {
         let laneShift = 0;
         if (Math.abs(laneDelta) > 0.01) {
           const cutInTarget = this._findGoalCutInRival(simHorses, horse, horse.targetLane);
-          if (cutInTarget && !frameEngaged.has(horse.id) && !frameEngaged.has(cutInTarget.id)) {
+          if (
+            cutInTarget &&
+            !frameEngaged.has(horse.id) &&
+            !frameEngaged.has(cutInTarget.id) &&
+            !this._hasGoalBattlePair(horse, cutInTarget)
+          ) {
             if (shouldBattle(goalRng, simHorses, horse, cutInTarget)) {
               const result = resolveBattle(goalRng, horse, cutInTarget, phase);
               applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
+              this._markGoalBattlePair(horse, cutInTarget);
               // 1着以降はログを出さないが、バトル処理（勝敗・スタミナ反映）は継続する。
               if (!this._goalSuppressBattleLogs) {
-                const log = `[バトル:ゴール割り込み] ${horse.name} が ${cutInTarget.name} の前へ進出 → 勝者: ${result.winner.name}`;
+                const battleType = this._classifyGoalBattleType(horse, cutInTarget, {
+                  isLaneChange: true,
+                });
+                const log = `[バトル:${battleType}] ${horse.name} vs ${cutInTarget.name} → 勝者: ${result.winner.name}`;
                 this._appendLog(log);
               }
               frameEngaged.add(horse.id);
@@ -2570,6 +2581,31 @@ class PhaseController {
             maxAdvance = 0;
           } else {
             maxAdvance = allowedDx / Math.max(1e-6, GOAL_X_PER_METER * scaleSelf);
+          }
+          const shouldTryOvertakeBattle =
+            progressedMeters > maxAdvance + 1e-6 &&
+            !frameEngaged.has(horse.id) &&
+            !frameEngaged.has(blockingFront.id) &&
+            !this._hasGoalBattlePair(horse, blockingFront);
+          if (shouldTryOvertakeBattle && shouldBattle(goalRng, simHorses, horse, blockingFront)) {
+            const result = resolveBattle(goalRng, horse, blockingFront, phase);
+            applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
+            this._markGoalBattlePair(horse, blockingFront);
+            if (!this._goalSuppressBattleLogs) {
+              const battleType = this._classifyGoalBattleType(horse, blockingFront, {
+                isLaneChange: false,
+              });
+              const log = `[バトル:${battleType}] ${horse.name} vs ${blockingFront.name} → 勝者: ${result.winner.name}`;
+              this._appendLog(log);
+            }
+            frameEngaged.add(horse.id);
+            frameEngaged.add(blockingFront.id);
+            if (result.winner.id !== horse.id) {
+              horse.goalCurrentMps *= 0.986;
+            } else {
+              horse.goalCurrentMps *= 1.004;
+              blockingFront.goalCurrentMps = Math.max(0, blockingFront.goalCurrentMps * 0.996);
+            }
           }
           if (progressedMeters > maxAdvance) {
             progressedMeters = maxAdvance;
@@ -2825,6 +2861,29 @@ class PhaseController {
       if (!isLaneInShiftPath(h.y, laneFrom, laneTo, 0.9)) return false;
       return Math.abs(h.x - horse.x) < LATERAL_BLOCK_X_GAP * 0.95;
     });
+  }
+
+  _getGoalBattlePairKey(a, b) {
+    const idA = String(a?.id ?? '');
+    const idB = String(b?.id ?? '');
+    return idA < idB ? `${idA}:${idB}` : `${idB}:${idA}`;
+  }
+
+  _hasGoalBattlePair(a, b) {
+    return this._goalBattledPairs.has(this._getGoalBattlePairKey(a, b));
+  }
+
+  _markGoalBattlePair(a, b) {
+    this._goalBattledPairs.add(this._getGoalBattlePairKey(a, b));
+  }
+
+  _classifyGoalBattleType(a, b, options = {}) {
+    if (options?.isLaneChange) return '進路争い';
+    const maxGoalMeters = Math.max(a?.goalMeters ?? 0, b?.goalMeters ?? 0);
+    const remain = Math.max(0, GOAL_DISTANCE_METERS - maxGoalMeters);
+    const neckAndNeck = Math.abs((a?.x ?? 0) - (b?.x ?? 0)) <= GOAL_BLOCK_X_GAP * 0.7;
+    if (remain <= 35 && neckAndNeck) return 'ゴール前叩き合い';
+    return '追い抜き争い';
   }
 
   _getScrollingGoalLineY() {
