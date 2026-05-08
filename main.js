@@ -41,6 +41,13 @@ const COLLISION_EPS = 0.001;
 const START_DELAY_BASE_RATE = 0.022;
 const STUMBLE_BASE_RATE = 0.008;
 const STUMBLE_PHASE_MAX = 0.55;
+const EARLY_TROUBLE_DECAY = 0.64;
+const EARLY_ORDER_TIE_NOISE = 1.2;
+const EARLY_OUTER_NIGE_LANE_START = 10;
+const EARLY_OUTER_NIGE_ADV_GAIN_PER_LANE = 0.03;
+const EARLY_OUTER_NIGE_ADV_GAIN_MAX = 0.18;
+const EARLY_OUTER_NIGE_STAMINA_PER_LANE = 0.30;
+const EARLY_OUTER_NIGE_STAMINA_BASE = 0.22;
 // ゴールシーンは「ゴールラインから 200m 手前〜ゴール」が画面に収まるイメージ。
 // last_3f（最終3ハロン≈600m の通過秒）から intrinsic 速度を出し、スタミナ残量で毎フレーム上限を締める。
 const GOAL_FURLONG_METERS = 200;
@@ -226,6 +233,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
     horse.staminaBattleCost = 0;
     horse.staminaCornerCost = 0;
     horse.battleFatigue = 0;
+    horse.startTroubleScore = 0;
   });
 
   for (const phase of phases) {
@@ -241,6 +249,12 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
     const contacts       = detectContacts(horses, threshold);
     const phaseEventLogs = [];
     const engagedHorseIds = new Set();
+    const isEarlyOrderingPhase = isStartToHomePhase(phase);
+    if (isEarlyOrderingPhase) {
+      horses.forEach(horse => {
+        horse.startTroubleScore = Math.max(0, (horse.startTroubleScore ?? 0) * EARLY_TROUBLE_DECAY);
+      });
+    }
 
     resolveLeadBattle(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds);
     resolveCornerPositionBattle(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds);
@@ -260,7 +274,15 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
     }
 
     // ② 各馬の移動（衝突回避 + ブロック時バトル）
-    const order = [...horses].sort((a, b) => b.x - a.x);
+    const order = isEarlyOrderingPhase
+      ? [...horses].sort((a, b) => {
+        const scoreA = calcEarlyPhaseOrderScore(a, rng, ave3fMax, ave3fSpan);
+        const scoreB = calcEarlyPhaseOrderScore(b, rng, ave3fMax, ave3fSpan);
+        if (Math.abs(scoreA - scoreB) > 1e-6) return scoreB - scoreA;
+        if (Math.abs(a.x - b.x) > 1e-6) return b.x - a.x;
+        return a.y - b.y;
+      })
+      : [...horses].sort((a, b) => b.x - a.x);
     for (const horse of order) {
       const staminaMod = horse.stamina > 0
         ? CONFIG.STAMINA_MODIFIER_FULL
@@ -317,6 +339,22 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
       const isThroughThirdCorner = isThroughThirdCornerPhase(phase);
       const isAfterFourthCorner = isAfterFourthCornerPhase(phase);
       const isLateStraight = phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO;
+      if (isEarlyInnerBurst && horse.style === '逃げ') {
+        const lane = clampLane(horse.y);
+        const outerLanePressure = Math.max(0, lane - EARLY_OUTER_NIGE_LANE_START);
+        if (outerLanePressure > 0) {
+          const dashGain = Math.min(
+            EARLY_OUTER_NIGE_ADV_GAIN_MAX,
+            outerLanePressure * EARLY_OUTER_NIGE_ADV_GAIN_PER_LANE,
+          );
+          adjustedAdvance *= (1 + dashGain);
+          const dashDrain =
+            EARLY_OUTER_NIGE_STAMINA_BASE +
+            outerLanePressure * EARLY_OUTER_NIGE_STAMINA_PER_LANE;
+          horse.stamina = Math.max(0, horse.stamina - dashDrain);
+          horse.staminaAccelCost += dashDrain;
+        }
+      }
       const currentFrontGap = getFrontGap(horse, clampLane(horse.y), horses);
       const frontBlocked = currentFrontGap < (collisionMetrics.minXGap + FINAL_FRONT_BLOCK_EXTRA_GAP);
       if ((horse.laneChangeCooldownPhases ?? 0) > 0) {
@@ -952,6 +990,7 @@ function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
     if (rng() < startDelayRate) {
       const lossRatio = 0.22 + rng() * 0.16;
       mult *= (1 - lossRatio);
+      horse.startTroubleScore = (horse.startTroubleScore ?? 0) + 1.0;
       const lossPct = Math.round(lossRatio * 100);
       const log = `[出遅れ] ${horse.name} がスタートで遅れる（-${lossPct}%）`;
       globalLogs.push(log);
@@ -971,6 +1010,7 @@ function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
       mult *= (1 - lossRatio);
       horse.stumbleCooldown = 2;
       horse.stamina = Math.max(0, horse.stamina - (1.0 + rng() * 2.0));
+      horse.startTroubleScore = (horse.startTroubleScore ?? 0) + 0.65;
       const lossPct = Math.round(lossRatio * 100);
       const log = `[つまずき] ${horse.name} がつまずく（-${lossPct}%）`;
       globalLogs.push(log);
@@ -989,6 +1029,32 @@ function calcStartDelayRate(horse) {
         : 1.12;
   const rate = START_DELAY_BASE_RATE * (0.65 + maneuvWeakness * 0.9) * styleAdj;
   return Math.max(0.004, Math.min(0.055, rate));
+}
+
+function calcEarlyPhaseOrderScore(horse, rng, ave3fMax, ave3fSpan) {
+  const styleBase = horse.style === '逃げ' ? 100
+    : horse.style === '先行' ? 77
+      : horse.style === '差し' ? 48
+        : 34;
+  const ave3fScore = Number.isFinite(horse.ave3f)
+    ? (ave3fMax - horse.ave3f) / Math.max(0.001, ave3fSpan)
+    : 0.5;
+  const launchSkill = (horse.S_cruise * 0.30 + horse.M_maneuv * 0.20) / 100;
+  const styleBurst = horse.style === '逃げ' ? 0.24
+    : horse.style === '先行' ? 0.10
+      : 0;
+  const projectedBurst = horse.startBurstFactor ?? (
+    0.72 + ave3fScore * 0.68 + launchSkill * 0.22 + styleBurst
+  );
+  const burstBonus = (projectedBurst - 1.0) * 22;
+  const lane = clampLane(horse.y);
+  const innerLaneBonus = (LANE_WIDTH - lane) * 0.7;
+  const outerNigeBonus = horse.style === '逃げ'
+    ? Math.max(0, lane - EARLY_OUTER_NIGE_LANE_START) * 1.35
+    : 0;
+  const troublePenalty = (horse.startTroubleScore ?? 0) * 17;
+  const tieNoise = (rng() - 0.5) * EARLY_ORDER_TIE_NOISE;
+  return styleBase + burstBonus + innerLaneBonus + outerNigeBonus - troublePenalty + tieNoise;
 }
 
 function calcStumbleRate(horse) {
