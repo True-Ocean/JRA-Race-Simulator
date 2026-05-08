@@ -2721,17 +2721,26 @@ class PhaseController {
         // 後付けの押し出しではなく事前に前進量を絞ることで、
         // 「一旦進んでから後退するように見える」現象を根本から無くす。
         let progressedMeters = horse.goalCurrentMps * dt;
+        const minForwardMeters = minMps * dt;
         const minPackGap = Math.max(5.5, GOAL_MIN_PACK_GAP_X);
         const blockingFront = this._goalFrontHorse(simHorses, horse, horse.y);
         if (blockingFront) {
           const allowedDx = (blockingFront.x - minPackGap) - horse.x;
           const scaleSelf = horse.goalProgressScale ?? 1;
+          const xPerMeterSelf = Math.max(1e-6, GOAL_X_PER_METER * scaleSelf);
+          const frontStartX = Number.isFinite(blockingFront._frameStartX)
+            ? blockingFront._frameStartX
+            : (blockingFront.x ?? 0);
+          const frontAdvanceX = Math.max(0, (blockingFront.x ?? 0) - frontStartX);
+          const followAdvanceMeters = frontAdvanceX / xPerMeterSelf;
           let maxAdvance;
           if (allowedDx <= 0) {
-            // 既に最小間隔より内側 -> 本フレームは前進ゼロ（後退はしない）。
-            maxAdvance = 0;
+            // 既に最小間隔より内側でも停止はさせず、前走馬の進みへ追従する。
+            maxAdvance = followAdvanceMeters;
           } else {
-            maxAdvance = allowedDx / Math.max(1e-6, GOAL_X_PER_METER * scaleSelf);
+            const spacingAdvanceMeters = allowedDx / xPerMeterSelf;
+            // 車間が許す限り、前走馬の流れには追従させる。
+            maxAdvance = Math.max(spacingAdvanceMeters, followAdvanceMeters);
           }
           const shouldTryOvertakeBattle =
             progressedMeters > maxAdvance + 1e-6 &&
@@ -2760,10 +2769,19 @@ class PhaseController {
           }
           if (progressedMeters > maxAdvance) {
             progressedMeters = maxAdvance;
-            // 実際の前進に合わせて速度も落とす（次フレーム以降の自然な減速感のため）。
-            horse.goalCurrentMps = Math.max(0, progressedMeters / Math.max(1e-6, dt));
+            // 進路が塞がれた時は「停止」ではなく前走馬に追従する。
+            // どの状況でも通常速度の半分未満に落とさない。
+            const frontMps = Number.isFinite(blockingFront.goalCurrentMps)
+              ? blockingFront.goalCurrentMps
+              : minMps;
+            horse.goalCurrentMps = Math.max(
+              minMps,
+              Math.min(maxMps, frontMps),
+            );
           }
+          progressedMeters = Math.max(progressedMeters, Math.min(minForwardMeters, maxAdvance));
         }
+        horse.goalCurrentMps = Math.max(minMps, horse.goalCurrentMps);
         horse.goalMeters = Math.min(
           GOAL_DISTANCE_METERS + GOAL_POST_CLEAR_METERS * 3.2,
           horse.goalMeters + progressedMeters,
