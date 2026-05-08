@@ -3279,7 +3279,7 @@ class PhaseController {
 //  エントリーポイント
 // =====================
 Promise.all([
-  fetch('./src/data/sample.json').then(res => res.json()),
+  fetch('./src/data/race-card.json').then(res => res.json()),
   fetch('./src/data/courses.json').then(res => res.json()),
 ])
   .then(([raceData, courseCatalog]) => {

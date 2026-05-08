@@ -213,6 +213,7 @@ export class Renderer {
     if (drawOptions.goalRun && furlongLayout) {
       drawOptions.goalRun = { ...drawOptions.goalRun, ...furlongLayout };
     }
+    this._drawPhaseLabel(phase, options.phaseLabel);
     this._drawHorses(horses, phase, phaseProgress, forceStartLineup, drawOptions);
     if (options.goalLine !== undefined) {
       this._drawGoalBandAtTop(options.goalLine, furlongLayout);
@@ -220,7 +221,6 @@ export class Renderer {
     if (inGateView) {
       this._drawStartingGate(phase, gateOpenProgress, 'front', gateYOffset, gateOpacity);
     }
-    this._drawPhaseLabel(phase, options.phaseLabel);
     if (options.sceneTransition) {
       this._drawSceneTransition(options.sceneTransition);
     }
@@ -339,107 +339,6 @@ export class Renderer {
     ctx.lineTo(this.W - this.RAIL_MARGIN, y);
     ctx.stroke();
     ctx.restore();
-
-    this._drawGoalBoard(y);
-  }
-
-  _drawGoalBoard(goalLineY) {
-    const ctx = this.ctx;
-    // 最内ラチの外側に小さく配置（右回り/左回りの両対応）
-    const innerRailX = this._getRailX('inner');
-    const outwardSign = this.innerRailSide === 'right' ? 1 : -1;
-    const outerAvailable = outwardSign > 0
-      ? Math.max(10, this.W - innerRailX - 4)
-      : Math.max(10, innerRailX - 4);
-    const objW = Math.max(12, Math.min(outerAvailable - 2, Math.max(18, this.laneW * 0.42)));
-    const objH = Math.max(6, Math.min(12, objW * 0.32));
-    const gapFromRail = Math.min(4, Math.max(2, this.laneW * 0.10));
-    const objLeft = outwardSign > 0
-      ? (innerRailX + gapFromRail)
-      : (innerRailX - gapFromRail - objW);
-    const objTop = goalLineY - objH * 0.5;
-    const objRight = objLeft + objW;
-    const objBottom = objTop + objH;
-
-    // 横向きUフレーム（常にコース側へ開口）
-    const frameInset = Math.max(3, objH * 0.22);
-    const frameLeft = objLeft + frameInset;
-    const frameRight = objRight - frameInset;
-    const frameTop = objTop + frameInset;
-    const frameBottom = objBottom - frameInset;
-    const frameR = Math.max(4, (frameBottom - frameTop) * 0.48);
-
-    ctx.save();
-    ctx.strokeStyle = '#1f5a3f';
-    ctx.lineWidth = Math.max(2.2, this.laneW * 0.09);
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    if (outwardSign > 0) {
-      // 右外側: 左に開口
-      ctx.moveTo(frameLeft + frameR, frameTop);
-      ctx.lineTo(frameRight - frameR, frameTop);
-      ctx.arcTo(frameRight, frameTop, frameRight, frameTop + frameR, frameR);
-      ctx.lineTo(frameRight, frameBottom - frameR);
-      ctx.arcTo(frameRight, frameBottom, frameRight - frameR, frameBottom, frameR);
-      ctx.lineTo(frameLeft + frameR, frameBottom);
-    } else {
-      // 左外側: 右に開口
-      ctx.moveTo(frameRight - frameR, frameTop);
-      ctx.lineTo(frameLeft + frameR, frameTop);
-      ctx.arcTo(frameLeft, frameTop, frameLeft, frameTop + frameR, frameR);
-      ctx.lineTo(frameLeft, frameBottom - frameR);
-      ctx.arcTo(frameLeft, frameBottom, frameLeft + frameR, frameBottom, frameR);
-      ctx.lineTo(frameRight - frameR, frameBottom);
-    }
-    ctx.stroke();
-
-    // フレーム軽いハイライト
-    ctx.strokeStyle = 'rgba(247,224,154,0.70)';
-    ctx.lineWidth = Math.max(1.1, this.laneW * 0.04);
-    ctx.beginPath();
-    ctx.moveTo(frameLeft + frameR + 1, frameTop + 1);
-    ctx.lineTo(frameRight - frameR - 1, frameTop + 1);
-    ctx.stroke();
-
-    // 横向き鏡板（フレーム内部）
-    const mirrorMarginX = Math.max(6, objW * 0.20);
-    const mirrorMarginY = Math.max(2, objH * 0.20);
-    const mirrorLeft = objLeft + mirrorMarginX;
-    const mirrorTop = objTop + mirrorMarginY;
-    const mirrorW = Math.max(14, objW - mirrorMarginX * 1.55);
-    const mirrorH = Math.max(5, objH - mirrorMarginY * 2);
-    const mirrorGrad = ctx.createLinearGradient(mirrorLeft, mirrorTop, mirrorLeft + mirrorW, mirrorTop + mirrorH);
-    mirrorGrad.addColorStop(0, 'rgba(235,242,250,0.94)');
-    mirrorGrad.addColorStop(0.52, 'rgba(182,199,216,0.90)');
-    mirrorGrad.addColorStop(1, 'rgba(126,148,173,0.94)');
-    ctx.fillStyle = mirrorGrad;
-    ctx.fillRect(mirrorLeft, mirrorTop, mirrorW, mirrorH);
-
-    // 鏡ハイライト
-    ctx.fillStyle = 'rgba(255,255,255,0.34)';
-    ctx.fillRect(
-      mirrorLeft + mirrorW * 0.12,
-      mirrorTop + mirrorH * 0.14,
-      mirrorW * 0.18,
-      mirrorH * 0.72,
-    );
-
-    // 鏡枠
-    ctx.strokeStyle = 'rgba(247,224,154,0.86)';
-    ctx.lineWidth = Math.max(1.0, this.laneW * 0.035);
-    ctx.strokeRect(mirrorLeft, mirrorTop, mirrorW, mirrorH);
-
-    // ラチ外設備らしい細い支柱
-    ctx.strokeStyle = 'rgba(24,78,55,0.85)';
-    ctx.lineWidth = Math.max(1.2, this.laneW * 0.045);
-    ctx.beginPath();
-    ctx.moveTo(objLeft + objW * 0.10, objBottom);
-    ctx.lineTo(objLeft + objW * 0.10, objBottom + Math.max(8, this.laneW * 0.22));
-    ctx.moveTo(objLeft + objW * 0.26, objBottom);
-    ctx.lineTo(objLeft + objW * 0.26, objBottom + Math.max(7, this.laneW * 0.20));
-    ctx.stroke();
-
-    ctx.restore();
   }
 
   _drawSceneTransition(transition) {
@@ -473,15 +372,23 @@ export class Renderer {
     ctx.restore();
   }
 
-  // フェーズ名ラベル（DOMの#phase-indicatorとは別に盤面内に薄く1つだけ描画）
+  // フェーズ名ラベル（DOMの#phase-indicatorとは別に盤面中央に描画）
   _drawPhaseLabel(phase, overrideLabel = null) {
     const ctx  = this.ctx;
     const name = overrideLabel ?? this.getPhaseName(phase);
+    const fontPx = Math.max(30, this.W * 0.078);
     ctx.save();
-    ctx.font      = `bold ${Math.max(20, this.W * 0.052)}px 'Courier New'`;
-    ctx.fillStyle = 'rgba(240,192,64,0.13)';
+    ctx.font = `bold ${fontPx}px 'Courier New'`;
     ctx.textAlign = 'center';
-    ctx.fillText(name, this.W / 2, this.H / 2 + 10);
+    ctx.textBaseline = 'middle';
+    const cx = this.W / 2;
+    const cy = this.H / 2 + 10;
+    ctx.strokeStyle = 'rgba(0,0,0,0.26)';
+    ctx.lineWidth = Math.max(2.5, fontPx * 0.07);
+    ctx.lineJoin = 'round';
+    ctx.strokeText(name, cx, cy);
+    ctx.fillStyle = 'rgba(255,252,248,0.58)';
+    ctx.fillText(name, cx, cy);
     ctx.restore();
   }
 

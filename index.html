@@ -20,12 +20,34 @@
     }
 
     h1 {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45em;
+      flex-wrap: nowrap;
+      white-space: nowrap;
+      min-width: 0;
       text-align: center;
       color: #f0c040;
-      font-size: 1.2rem;
-      letter-spacing: 0.25em;
+      /* 1行に収まるよう上限を抑え、ビューポートに追従して縮小 */
+      font-size: clamp(1.1rem, 2.35vw + 0.65rem, 2.85rem);
+      font-weight: 700;
+      letter-spacing: clamp(0.06em, 0.45vw, 0.2em);
       margin-bottom: 12px;
       text-shadow: 0 0 12px rgba(240,192,64,0.5);
+    }
+
+    h1 .title-brand-icon {
+      display: inline-flex;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      font-size: 1.08em;
+    }
+
+    h1 .title-text {
+      min-width: 0;
     }
 
     /* ===== コントロール ===== */
@@ -39,16 +61,13 @@
     }
 
     #sim-options {
-      display: inline-flex;
-      align-items: center;
       gap: 6px;
       color: #9ec3d8;
-      font-size: 0.73rem;
       letter-spacing: 0.03em;
       border: 1px solid #2c5275;
       border-radius: 6px;
-      padding: 7px 10px;
       background: rgba(16, 40, 63, 0.65);
+      cursor: pointer;
     }
     #sim-options input { accent-color: #f0c040; }
 
@@ -67,6 +86,20 @@
     button:hover  { background: #2a4f80; }
     button:active { background: #f0c040; color: #0d1b2a; }
     button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* タイトル直下の3つ（開始・リセット・再現性）を同一サイズのボックスに */
+    #controls > button,
+    #controls > #sim-options {
+      flex: 0 0 12rem;
+      width: 12rem;
+      min-height: 2.75rem;
+      padding: 8px 10px;
+      font-size: 0.85rem;
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
 
     /* ===== 3カラムメインレイアウト：左右を広く、中央を縦長に ===== */
     #main-layout {
@@ -302,7 +335,10 @@
   </style>
 </head>
 <body>
-  <h1>🏇 JRA RACE SIMULATOR</h1>
+  <h1>
+    <span class="title-brand-icon" aria-hidden="true">🏇</span>
+    <span class="title-text">JRA RACE SIMULATOR</span>
+  </h1>
 
   <!-- コントロール -->
   <div id="controls">
