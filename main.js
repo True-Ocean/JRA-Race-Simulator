@@ -36,7 +36,7 @@ const FORMATION_LOCK_PHASE = 0.40;
 const PRE_CORNER_PACK_PHASE_MAX = 0.28;
 const COLLISION_MIN_Y_GAP = 0.9;
 const COLLISION_ITERATIONS = 3;
-const COLLISION_ITERATIONS_EARLY = 5;
+const COLLISION_ITERATIONS_EARLY = 7;
 const COLLISION_EPS = 0.001;
 const START_DELAY_BASE_RATE = 0.022;
 const STUMBLE_BASE_RATE = 0.008;
@@ -51,10 +51,13 @@ const OONIGE_BURST_ROLL_MAX = 1.12;
 const OONIGE_BURST_PHASE_JITTER_MIN = 0.97;
 const OONIGE_BURST_PHASE_JITTER_MAX = 1.03;
 const OONIGE_DRAIN_BURST_LINK_GAIN = 1.4;
+const OONIGE_PHASE_DRAIN_EARLY_MULT = 0.88;
+const OONIGE_PHASE_DRAIN_LATE_MULT = 1.10;
 const FRONTRUN_ROLL_MIN = 0.94;
 const FRONTRUN_ROLL_MAX = 1.10;
-const OONIGE_LATE_DRAIN_BASE_PER_100M = 1.05;
-const OONIGE_LATE_DRAIN_LEAD_GAIN = 0.95;
+const OONIGE_LATE_DRAIN_BASE_PER_100M = 1.24;
+const OONIGE_LATE_DRAIN_LEAD_GAIN = 1.08;
+const OONIGE_GOAL_ENTRY_MIN_STAMINA_RATIO = 0.12;
 // ゴールシーンは「ゴールラインから 200m 手前〜ゴール」が画面に収まるイメージ。
 // last_3f（最終3ハロン≈600m の通過秒）から intrinsic 速度を出し、スタミナ残量で毎フレーム上限を締める。
 const GOAL_FURLONG_METERS = 200;
@@ -75,9 +78,18 @@ function goalIntrinsicMpsFromLast3f(last3fSec) {
 /** スタミナ残量だけでスピード上限を掛ける（last_3f とは独立に毎フレーム変化） */
 function goalStaminaSpeedMult(staminaRatio) {
   const r = Math.max(0, Math.min(1, staminaRatio));
-  // last_3f は終盤の疲労込みの実走タイムなので、この場での追加減衰は控えめにする。
-  // 下限を 0.82 まで引き上げ、ゴール前 200m の所要時間が現実値に近づくようにする。
-  return 0.82 + 0.20 * Math.pow(r, 0.82);
+  // スタミナが残っている間は last_3f 由来の能力を素直に出し、
+  // ほぼ枯渇した時だけ速度低下を入れる（速度への二重計上を避ける）。
+  if (r >= 0.08) return 1.0;
+  return 0.84 + (r / 0.08) * 0.16;
+}
+
+/** スタミナ低下の影響は「加速の乗りにくさ」として扱う（最高速への直接減衰は避ける）。 */
+function staminaAccelAbilityMult(staminaRatio) {
+  const r = Math.max(0, Math.min(1, staminaRatio));
+  if (r >= 0.35) return 1.0;
+  // 0.35 -> 1.0, 0.00 -> 0.62
+  return 0.62 + (r / 0.35) * 0.38;
 }
 const GOAL_X_PER_METER = 0.28;
 const GOAL_LANE_CHANGE_PER_SEC = 4.2;
@@ -135,6 +147,10 @@ const GOAL_ANCHOR_FOLLOW_SCALE = 0.92;
 const GOAL_CAMERA_LERP = 0.085;
 const GOAL_CAMERA_LERP_MAX = 0.16;
 const GOAL_ANCHOR_DYNAMIC_BOOST = 0.12;
+const OONIGE_VISUAL_GAP_START = 14;
+const OONIGE_VISUAL_GAP_FULL = 42;
+const OONIGE_VISUAL_SPREAD_MAX_GAIN = 0.28;
+const OONIGE_VISUAL_LERP = 0.10;
 const STAMINA_LANE_CHANGE_COST = 0.45;
 const STAMINA_ACCEL_COST = 0.10;
 const STAMINA_EARLY_ACCEL_MULT = 1.10;
@@ -208,6 +224,33 @@ function isNigeStyle(style) {
 
 function isOonigeStyle(style) {
   return style === '大逃げ';
+}
+
+function getOonigePhaseDrainMult(phase) {
+  return isAfterFourthCornerPhase(phase)
+    ? OONIGE_PHASE_DRAIN_LATE_MULT
+    : OONIGE_PHASE_DRAIN_EARLY_MULT;
+}
+
+function buildOonigeVisualContext(horses, phase) {
+  if (!Array.isArray(horses) || horses.length < 2) return null;
+  const sortedByFront = [...horses].sort((a, b) => b.x - a.x);
+  const leader = sortedByFront[0] ?? null;
+  const runnerUp = sortedByFront[1] ?? null;
+  if (!leader || !runnerUp || !isOonigeStyle(leader.style)) return null;
+
+  const gap = Math.max(0, leader.x - runnerUp.x);
+  const gapSpan = Math.max(1, OONIGE_VISUAL_GAP_FULL - OONIGE_VISUAL_GAP_START);
+  const gapNorm = Math.max(0, Math.min(1, (gap - OONIGE_VISUAL_GAP_START) / gapSpan));
+  if (gapNorm <= 0) return null;
+
+  const ratio = Number.isFinite(phase?.ratio) ? phase.ratio : 0;
+  const phaseGain = ratio < 0.25 ? 0.45 : ratio < 0.75 ? 1.0 : 0.75;
+  return {
+    leaderId: leader.id,
+    spreadMult: 1 + gapNorm * OONIGE_VISUAL_SPREAD_MAX_GAIN * phaseGain,
+    lerp: OONIGE_VISUAL_LERP,
+  };
 }
 
 function sampleInnerRailGap(rng) {
@@ -439,6 +482,8 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
       const isThroughThirdCorner = isThroughThirdCornerPhase(phase);
       const isAfterFourthCorner = isAfterFourthCornerPhase(phase);
       const isLateStraight = phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO;
+      const isOonige = isOonigeStyle(horse.style);
+      const oonigeDrainPhaseMult = isOonige ? getOonigePhaseDrainMult(phase) : 1.0;
       if (isEarlyInnerBurst && isNigeStyle(horse.style)) {
         const outerLanePressureNorm = calcOuterNigePressureNorm(horse.y);
         if (outerLanePressureNorm > 0) {
@@ -449,7 +494,8 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
             (Math.max(0, phase.distance) / 100) *
             EARLY_OUTER_NIGE_DRAIN_PER_100M *
             (0.6 + 0.8 * outerLanePressureNorm) *
-            (isOonigeStyle(horse.style) ? 1.30 : 1.0);
+            (isOonige ? 1.04 : 1.0) *
+            oonigeDrainPhaseMult;
           horse.stamina = Math.max(0, horse.stamina - dashDrain);
           horse.staminaAccelCost += dashDrain;
         }
@@ -470,7 +516,6 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
             : 0;
           const isEarlyBand = phase.ratio <= 0.35;
           const isMiddleBand = phase.ratio <= 0.55;
-          const isOonige = isOonigeStyle(horse.style);
           const frontDrive = Math.max(horse.frontRunDrive ?? 0, isOonige ? horse.oonigeDrive : 0);
           const baseBoost = isOonige
             ? (isEarlyBand ? 0.060 : isMiddleBand ? 0.046 : 0.033)
@@ -519,8 +564,11 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
             (1 + streakPenalty) *
             linkedDrainMult *
             pressureDrain;
-          horse.stamina = Math.max(0, horse.stamina - extraDrain);
-          horse.staminaAccelCost += extraDrain;
+          const tunedDrain = isOonige
+            ? extraDrain * oonigeDrainPhaseMult
+            : extraDrain;
+          horse.stamina = Math.max(0, horse.stamina - tunedDrain);
+          horse.staminaAccelCost += tunedDrain;
         } else {
           horse.oonigeLeadStreak = 0;
           horse.oonigePressure = Math.max(0, (horse.oonigePressure ?? horse.frontRunDrive ?? 0) * 0.86);
@@ -607,7 +655,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
       }
       const laneShift = Math.abs(horse.y - prevLaneY);
       if (laneShift > 0.001) {
-        const laneDrain = laneShift * STAMINA_LANE_CHANGE_COST;
+        const laneDrain = laneShift * STAMINA_LANE_CHANGE_COST * oonigeDrainPhaseMult;
         horse.stamina = Math.max(0, horse.stamina - laneDrain);
         horse.staminaLaneCost += laneDrain;
         if (isLateStraight && laneShift > 0.12) {
@@ -636,28 +684,36 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
         globalLogs,
         engagedHorseIds,
       );
-      horse.x += forwardCheck.advance;
+      const prevAdvance = horse.lastAdvance ?? 0;
+      let frameAdvance = forwardCheck.advance;
+      const staminaRatioNow = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
+      const accelIntent = Math.max(0, frameAdvance - prevAdvance);
+      if (accelIntent > 0.001) {
+        const accelMultByStamina = staminaAccelAbilityMult(staminaRatioNow);
+        frameAdvance = prevAdvance + accelIntent * accelMultByStamina;
+      }
+      horse.x += frameAdvance;
 
-      const accelAmount = Math.max(0, forwardCheck.advance - (horse.lastAdvance ?? 0));
+      const accelAmount = Math.max(0, frameAdvance - prevAdvance);
       if (accelAmount > 0.001) {
         const earlyMult = isNigeStyle(horse.style) && phase.ratio <= 0.35 ? STAMINA_EARLY_ACCEL_MULT : 1.0;
-        const accelDrain = accelAmount * STAMINA_ACCEL_COST * earlyMult;
+        const accelDrain = accelAmount * STAMINA_ACCEL_COST * earlyMult * oonigeDrainPhaseMult;
         horse.stamina = Math.max(0, horse.stamina - accelDrain);
         horse.staminaAccelCost += accelDrain;
       }
-      horse.lastAdvance = forwardCheck.advance;
+      horse.lastAdvance = frameAdvance;
 
       applyCornerLoss(phase, horse);
       if (phase.isCorner) {
         const lane = laneIndex(horse.y);
-        const outerDrain = Math.max(0, lane - 3) * STAMINA_CORNER_OUTER_PER_LANE;
+        const outerDrain = Math.max(0, lane - 3) * STAMINA_CORNER_OUTER_PER_LANE * oonigeDrainPhaseMult;
         if (outerDrain > 0) {
           horse.stamina = Math.max(0, horse.stamina - outerDrain);
           horse.staminaCornerCost += outerDrain;
         }
       }
 
-      const cons    = calcStaminaCons(phase, horse, trackMod);
+      const cons    = calcStaminaCons(phase, horse, trackMod) * oonigeDrainPhaseMult;
       horse.stamina = Math.max(0, horse.stamina - cons);
 
       horse.battleLosses  = 0;
@@ -955,7 +1011,8 @@ function resolveLaneMovement(
   const isStartPhase = Boolean(context?.isStartPhase);
   const isEarlyInnerBurst = Boolean(context?.isEarlyInnerBurst);
   const isThroughC3 = isThroughThirdCornerPhase(phase);
-  const allowBurstShortCircuit = isEarlyInnerBurst && !isThroughC3;
+  // 序盤でも接触回避の判定を緩めない。
+  const allowBurstShortCircuit = false;
   const collisionMetrics = context?.collisionMetrics ?? null;
   const minXGapForCollision = collisionMetrics?.minXGap ?? MIN_FORWARD_GAP;
   const minYGapForCollision = collisionMetrics?.minYGap ?? COLLISION_MIN_Y_GAP;
@@ -2411,6 +2468,7 @@ class PhaseController {
             gateOpenProgress: moveProgress <= 0 ? holdProgress * 0.03 : gateOpenProgress,
             gateYOffset: gateSlide * this.renderer.H * 0.22,
             gateOpacity: 1 - gateSlide * 0.95,
+            oonigeVisual: buildOonigeVisualContext(rendered, phase),
           }
         );
         this.lastRenderedHorses = rendered.map(h => ({ ...h }));
@@ -2444,7 +2502,9 @@ class PhaseController {
         };
       });
 
-      this.renderer.draw(tweened, phase, 1);
+      this.renderer.draw(tweened, phase, 1, {
+        oonigeVisual: buildOonigeVisualContext(tweened, phase),
+      });
       this.lastRenderedHorses = tweened.map(h => ({ ...h }));
       updateEntryStaminaBars(tweened);
       if (progress >= 1) {
@@ -2546,7 +2606,10 @@ class PhaseController {
     const goalEntryOffset = GOAL_ENTRY_LEADER_START_PROGRESS - baseLeaderProgress;
 
     const simHorses = baseHorses.map(h => {
-      const staminaRatio = h.initialStamina > 0 ? h.stamina / h.initialStamina : 0.5;
+      const rawStaminaRatio = h.initialStamina > 0 ? h.stamina / h.initialStamina : 0.5;
+      const staminaRatio = isOonigeStyle(h.style)
+        ? Math.max(OONIGE_GOAL_ENTRY_MIN_STAMINA_RATIO, rawStaminaRatio)
+        : rawStaminaRatio;
       const res = resultsById.get(h.id) ?? h;
       const goalIntrinsicMps = goalIntrinsicMpsFromLast3f(res.last3f);
       const l3w = Number.isFinite(res.last3f)

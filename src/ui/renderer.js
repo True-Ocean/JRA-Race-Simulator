@@ -45,6 +45,7 @@ export class Renderer {
     this.courseDef    = courseDef ?? null;
     this.innerRailSide = this._resolveInnerRailSide(this.courseDef);
     this.horseRenderState = new Map();
+    this.oonigeVisualProgressState = new Map();
     this._resize();
     window.addEventListener('resize', () => this._resize());
   }
@@ -95,6 +96,7 @@ export class Renderer {
 
   resetHorseRenderState() {
     this.horseRenderState.clear();
+    this.oonigeVisualProgressState.clear();
   }
 
   // Lane1=最内（innerRailSide に応じて左右反転）
@@ -178,13 +180,16 @@ export class Renderer {
     const safeForwardPx = this.cardH * 1.24 + 8;
     const lateralScale = this._getLateralGapScale(phase);
     const safeLateralPx = this.cardW * 1.12 * lateralScale;
+    const isEarlyPhase = Number.isFinite(phase?.index) && phase.index <= 1;
+    const earlyXMult = isEarlyPhase ? 1.08 : 1.0;
+    const earlyYMult = isEarlyPhase ? 1.10 : 1.0;
 
     return {
-      minXGap: safeForwardPx / Math.max(0.001, pxPerXUnit),
-      minYGap: safeLateralPx / Math.max(0.001, this.laneW),
+      minXGap: (safeForwardPx * earlyXMult) / Math.max(0.001, pxPerXUnit),
+      minYGap: (safeLateralPx * earlyYMult) / Math.max(0.001, this.laneW),
       drawNearLaneGap: safeLateralPx / Math.max(0.001, this.laneW),
       drawNearXGap: safeForwardPx / Math.max(0.001, pxPerXUnit),
-      drawCardSpacingPx: safeForwardPx + 14,
+      drawCardSpacingPx: safeForwardPx + 14 + (isEarlyPhase ? 12 : 0),
     };
   }
 
@@ -417,6 +422,7 @@ export class Renderer {
       const horseRenderY = new Map();
       const placed = [];
       const sortedForLayout = [...horses].sort((a, b) => b.x - a.x);
+      const baseProgressById = new Map();
       sortedForLayout.forEach(horse => {
         const lane = Math.max(1, Math.min(CONFIG.LANE_COUNT, horse.y));
         const normalized = Math.max(0, Math.min(1, (horse.x - minX) / span));
@@ -443,7 +449,7 @@ export class Renderer {
           );
           progress = Math.min(0.99, progress + t * 0.35 * (0.40 + fastWeight * 0.60));
         }
-        const mappedProgress = options.goalRun
+        let mappedProgress = options.goalRun
           ? Math.max(
             Number.isFinite(options.goalRun.minProgress) ? options.goalRun.minProgress : -1.2,
             Math.min(
@@ -451,12 +457,31 @@ export class Renderer {
               progress,
             ),
           )
-          : Math.min(0.93, progress * 0.88 + 0.06);
+          : Math.max(-0.25, Math.min(0.95, progress * 0.90 + 0.02));
+        baseProgressById.set(horse.id, mappedProgress);
+        if (!options.goalRun) {
+          const oonige = options.oonigeVisual ?? null;
+          if (oonige && oonige.leaderId != null && horse.id !== oonige.leaderId) {
+            const leaderProgress = baseProgressById.get(oonige.leaderId);
+            if (Number.isFinite(leaderProgress)) {
+              const spreadMult = Math.max(1, Number(oonige.spreadMult) || 1);
+              const gap = Math.max(0, leaderProgress - mappedProgress);
+              const widened = leaderProgress - gap * spreadMult;
+              const target = Math.max(-0.25, Math.min(0.95, widened));
+              const prev = this.oonigeVisualProgressState.get(horse.id);
+              const lerp = Math.max(0.01, Math.min(1, Number(oonige.lerp) || 0.1));
+              mappedProgress = Number.isFinite(prev)
+                ? prev + (target - prev) * lerp
+                : target;
+            }
+          }
+        }
+        this.oonigeVisualProgressState.set(horse.id, mappedProgress);
         const baseY = this.progressToY(mappedProgress);
         // スタート直後はゲートから真っ直ぐ進ませ、余白押し出しは徐々に有効化する。
         const spacingActivation =
           phase.index === 0
-            ? Math.max(0, Math.min(1, (phaseProgress - 0.55) / 0.30))
+            ? Math.max(0, Math.min(1, (phaseProgress - 0.20) / 0.45))
             : 1;
         const cardSpacing = metrics.drawCardSpacingPx * spacingActivation;
         let finalY = baseY;
@@ -517,6 +542,9 @@ export class Renderer {
 
     for (const id of this.horseRenderState.keys()) {
       if (!activeHorseIds.has(id)) this.horseRenderState.delete(id);
+    }
+    for (const id of this.oonigeVisualProgressState.keys()) {
+      if (!activeHorseIds.has(id)) this.oonigeVisualProgressState.delete(id);
     }
   }
 
