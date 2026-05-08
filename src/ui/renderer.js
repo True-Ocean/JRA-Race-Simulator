@@ -78,7 +78,10 @@ export class Renderer {
     this.canvas.height = this.H;
 
     // 内外ラチの外側に余白を確保し、ラチ外演出を見切れにくくする
-    this.RAIL_MARGIN = Math.max(26, this.W * 0.06);
+    this.RAIL_MARGIN = Math.max(
+      Number(CONFIG.TRACK_RAIL_MARGIN_MIN) || 22,
+      this.W * (Number(CONFIG.TRACK_RAIL_MARGIN_RATIO) || 0.045),
+    );
     this.trackW      = this.W - this.RAIL_MARGIN * 2;
     this.laneW       = this.trackW / CONFIG.LANE_COUNT;
 
@@ -101,6 +104,19 @@ export class Renderer {
       return this.RAIL_MARGIN + (idx + 0.5) * this.laneW;
     }
     return this.W - this.RAIL_MARGIN - (idx + 0.5) * this.laneW;
+  }
+
+  _calcGateLane(gate, total) {
+    const laneMax = CONFIG.LANE_COUNT;
+    const innerMargin = Math.max(0, Number(CONFIG.GATE_LANE_INNER_MARGIN) || 0);
+    const outerMargin = Math.max(0, Number(CONFIG.GATE_LANE_OUTER_MARGIN) || 0);
+    const usableMin = 1 + innerMargin;
+    const usableMax = Math.max(usableMin, laneMax - outerMargin);
+    if (!Number.isFinite(total) || total <= 1) return Math.max(1, Math.min(laneMax, usableMin));
+    const clampedGate = Math.max(1, Math.min(total, Number(gate) || 1));
+    const ratio = (clampedGate - 1) / (total - 1);
+    const lane = usableMin + ratio * (usableMax - usableMin);
+    return Math.max(1, Math.min(laneMax, lane));
   }
 
   // progress=0 → 下（スタート）、progress=1 → 上（ゴール）
@@ -199,12 +215,13 @@ export class Renderer {
     const gateOpenProgress = options.gateOpenProgress ?? (phaseProgress > 0 ? 1 : 0);
     const gateYOffset = options.gateYOffset ?? 0;
     const gateOpacity = options.gateOpacity ?? 1;
+    const horseCount = Math.max(1, horses?.length ?? CONFIG.LANE_COUNT);
     const forceStartLineup = Boolean(options.forceStartLineup);
     const inGateView = phase.index === 0 && (phaseProgress === 0 || forceStartLineup);
     if (inGateView) {
-      this._drawStartingGate(phase, gateOpenProgress, 'back', gateYOffset, gateOpacity);
+      this._drawStartingGate(phase, gateOpenProgress, 'back', gateYOffset, gateOpacity, horseCount);
     } else {
-      this._drawStartingGate(phase, gateOpenProgress, 'full', gateYOffset, gateOpacity);
+      this._drawStartingGate(phase, gateOpenProgress, 'full', gateYOffset, gateOpacity, horseCount);
     }
     const furlongLayout = options.furlong
       ? this._drawFurlongMarkers(options.furlong.t ?? 0)
@@ -219,7 +236,7 @@ export class Renderer {
       this._drawGoalBandAtTop(options.goalLine, furlongLayout);
     }
     if (inGateView) {
-      this._drawStartingGate(phase, gateOpenProgress, 'front', gateYOffset, gateOpacity);
+      this._drawStartingGate(phase, gateOpenProgress, 'front', gateYOffset, gateOpacity, horseCount);
     }
     if (options.sceneTransition) {
       this._drawSceneTransition(options.sceneTransition);
@@ -391,8 +408,9 @@ export class Renderer {
     const targetPose = new Map();
     if (inStartLineup) {
       const horseY = this._getStartInGateCy();
+      const total = horses.length;
       horses.forEach(horse => {
-        const lane = Math.max(1, Math.min(CONFIG.LANE_COUNT, horse.gate ?? Math.round(horse.y) ?? 1));
+        const lane = this._calcGateLane(horse.gate ?? 1, total);
         targetPose.set(horse.id, { lane, cy: horseY });
       });
     } else {
@@ -506,8 +524,9 @@ export class Renderer {
   _drawHorsesAtStart(horses) {
     const horseY = this._getStartInGateCy();
     const sorted = [...horses].sort((a, b) => (a.gate ?? a.id) - (b.gate ?? b.id));
+    const total = sorted.length;
     sorted.forEach(horse => {
-      const lane = Math.max(1, Math.min(CONFIG.LANE_COUNT, horse.gate ?? Math.round(horse.y) ?? 1));
+      const lane = this._calcGateLane(horse.gate ?? 1, total);
       const cx = this.laneToX(lane);
       this._drawCard(horse, cx, horseY);
     });
@@ -534,7 +553,7 @@ export class Renderer {
     return gateTop - this.cardH * 0.30;
   }
 
-  _drawStartingGate(phase, gateOpenProgress, layer = 'full', gateYOffset = 0, gateOpacity = 1) {
+  _drawStartingGate(phase, gateOpenProgress, layer = 'full', gateYOffset = 0, gateOpacity = 1, horseCount = CONFIG.LANE_COUNT) {
     if (phase.index !== 0 && gateOpenProgress >= 1) return;
     const ctx = this.ctx;
     const { gateY: baseGateY, gateH } = this._getGateGeometry();
@@ -561,9 +580,13 @@ export class Renderer {
       ctx.stroke();
     }
 
-    for (let lane = 1; lane <= CONFIG.LANE_COUNT; lane++) {
-      const xLeft = this._laneLeftX(lane);
-      const cellW = this.laneW;
+    const total = Math.max(1, Math.min(CONFIG.LANE_COUNT, Math.round(horseCount)));
+    const firstLane = this._calcGateLane(1, total);
+    const secondLane = total >= 2 ? this._calcGateLane(2, total) : (firstLane + 1);
+    const cellW = Math.max(this.laneW * 0.58, Math.abs(this.laneToX(secondLane) - this.laneToX(firstLane)) * 0.92);
+    for (let gate = 1; gate <= total; gate++) {
+      const lane = this._calcGateLane(gate, total);
+      const xLeft = this.laneToX(lane) - cellW / 2;
 
       if (drawBack) {
         ctx.fillStyle = frameColor;
@@ -601,7 +624,7 @@ export class Renderer {
         ctx.font = `bold ${Math.max(9, cellW * 0.24)}px 'Courier New'`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(String(lane), xLeft + cellW / 2, plateY + plateH / 2 + 0.5);
+        ctx.fillText(String(gate), xLeft + cellW / 2, plateY + plateH / 2 + 0.5);
       }
     }
 

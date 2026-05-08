@@ -97,6 +97,8 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
     const waku  = calcWaku(entry.gate, total);
     const color = CONFIG.JRA_WAKU_COLORS[waku] || '#CCCCCC';
 
+    const startLane = calcInitialLane(entry.gate, entries.length);
+
     return {
       id,
       gate:           entry.gate,
@@ -115,8 +117,9 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
       stamina:        initialStamina,
       initialStamina,
       x:              0,
-      y:              calcInitialLane(entry.gate, entries.length),
-      targetLane:     calcInitialLane(entry.gate, entries.length),
+      startLane,
+      y:              startLane,
+      targetLane:     startLane,
       battlePenalty:  1.0,    // 次フェーズに適用する速度係数
       distanceLoss:   0,      // コーナー距離ロスの累計
       battleLosses:   0,      // フェーズ内バトル敗北数（スタミナ消費計算用）
@@ -126,15 +129,17 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
 }
 
 /**
- * ゲート番号からY座標（レーン 1.0〜8.0）を算出
- * ゲート番号をそのままレーン番号にマッピング
+ * ゲート番号からY座標（レーン 1.0〜LANE_COUNT）を算出
+ * コース左右の余白を持たせたうえで線形マッピング
  */
 function calcInitialLane(gate, total) {
-  // 枠順をコース全レーン幅に線形マッピング
-  // 18頭立てなら 1〜18 をそのまま使い、少頭数は内外へ均等に広げる
   const laneMax = CONFIG.LANE_COUNT;
-  if (total <= 1) return 1;
+  const innerMargin = Math.max(0, Number(CONFIG.GATE_LANE_INNER_MARGIN) || 0);
+  const outerMargin = Math.max(0, Number(CONFIG.GATE_LANE_OUTER_MARGIN) || 0);
+  const usableMin = 1 + innerMargin;
+  const usableMax = Math.max(usableMin, laneMax - outerMargin);
+  if (total <= 1) return Math.max(1, Math.min(laneMax, usableMin));
   const ratio = (gate - 1) / (total - 1);
-  const lane = 1 + ratio * (laneMax - 1);
-  return Math.max(1, Math.min(laneMax, Math.round(lane)));
+  const lane = usableMin + ratio * (usableMax - usableMin);
+  return Math.max(1, Math.min(laneMax, lane));
 }
