@@ -348,27 +348,13 @@ export class Renderer {
     const maxAlpha = Number.isFinite(transition?.maxAlpha)
       ? Math.max(0, Math.min(1, transition.maxAlpha))
       : 0.4;
-    // 前半で暗転し、後半で戻すカット演出（センタータイトル付き）
+    // 前半で暗転し、後半で戻すシンプルなカット演出（Preset A）。
     const alpha = Math.sin(t * Math.PI) * maxAlpha;
     if (alpha <= 0.001) return;
     const ctx = this.ctx;
     ctx.save();
     ctx.fillStyle = `rgba(0,0,0,${alpha})`;
     ctx.fillRect(0, 0, this.W, this.H);
-    const accentAlpha = Math.max(0, Math.min(1, alpha / Math.max(0.01, maxAlpha)));
-    ctx.strokeStyle = `rgba(245,188,56,${0.75 * accentAlpha})`;
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(this.W * 0.12, this.H * 0.40);
-    ctx.lineTo(this.W * 0.88, this.H * 0.40);
-    ctx.moveTo(this.W * 0.12, this.H * 0.60);
-    ctx.lineTo(this.W * 0.88, this.H * 0.60);
-    ctx.stroke();
-    ctx.fillStyle = `rgba(248,214,110,${0.88 * accentAlpha})`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `bold ${Math.max(18, this.W * 0.040)}px 'Courier New'`;
-    ctx.fillText('GOAL SCENE', this.W * 0.5, this.H * 0.5);
     ctx.restore();
   }
 

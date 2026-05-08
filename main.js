@@ -111,9 +111,9 @@ const GOAL_PROGRESS_MAX_POST_LINE = 1.78;
 const GOAL_ENTRY_LEADER_START_PROGRESS = 0.0;
 // 画面外を含むゴール描画 progress 下限
 const GOAL_PROGRESS_MIN = -1.10;
-// 切替時の短いカット演出（フェード）時間
-const GOAL_SCENE_TRANSITION_MS = 800;
-const GOAL_SCENE_TRANSITION_MAX_ALPHA = 0.72;
+// 切替時のカット演出（フェード）時間
+const GOAL_SCENE_TRANSITION_MS = 1500;
+const GOAL_SCENE_TRANSITION_MAX_ALPHA = 0.82;
 const GOAL_PROGRESS_TARGET_AT_FINISH = 1.06;
 const GOAL_LEADER_ANCHOR_PROGRESS = 0.88;
 // 仮想リーダーが上に抜けた時にYで見せる（旧: 0.88 で上方向が潰れていた）
@@ -2413,14 +2413,17 @@ class PhaseController {
         ...simHorses.map(h => (GOAL_DISTANCE_METERS / Math.max(1e-6, h.goalIntrinsicMps)) * 1000),
         1,
       ) * GOAL_TIME_SCALE;
-    const startedAt = performance.now();
     const goalRng = createRng((this.raceData?.race_id ?? 1) + 7919);
-    let lastTs = startedAt;
+    const transitionStartedAt = performance.now();
+    const transitionHalfMs = GOAL_SCENE_TRANSITION_MS * 0.5;
+    let goalSceneStarted = false;
+    let startedAt = null;
+    let lastTs = null;
     let goalFrameIndex = 0;
 
     this.isAnimating = true;
     this.btnAdvance.disabled = true;
-    this.indicator.textContent = 'ゴールシーン';
+    this.indicator.textContent = this.renderer.getPhaseName(phase);
     this._goalRankLogged = new Set();
     this._goalRankOrder = [];
     this._goalPlacingHeaderLogged = false;
@@ -2430,9 +2433,34 @@ class PhaseController {
     this._goalBattledPairs = new Set();
     // 1着がゴールしたあとはバトルログを出さない（バトル自体は裏で実行を継続する）
     this._goalSuppressBattleLogs = false;
-    this._appendLog(GOAL_BATTLE_HEADER_LINE);
 
     const step = (ts) => {
+      if (!goalSceneStarted) {
+        const transitionElapsed = ts - transitionStartedAt;
+        const transitionT = Math.max(
+          0,
+          Math.min(1, transitionElapsed / Math.max(1, GOAL_SCENE_TRANSITION_MS)),
+        );
+        if (transitionElapsed < transitionHalfMs) {
+          this.renderer.draw(baseHorses, phase, 1, {
+            sceneTransition: {
+              t: transitionT,
+              maxAlpha: GOAL_SCENE_TRANSITION_MAX_ALPHA,
+            },
+          });
+          this.lastRenderedHorses = baseHorses.map(h => ({ ...h }));
+          requestAnimationFrame(step);
+          return;
+        }
+
+        goalSceneStarted = true;
+        startedAt = ts;
+        lastTs = ts;
+        goalFrameIndex = 0;
+        this.indicator.textContent = 'ゴールシーン';
+        this._appendLog(GOAL_BATTLE_HEADER_LINE);
+      }
+
       const isFirstGoalFrame = goalFrameIndex === 0;
       goalFrameIndex += 1;
       const rawDt = Math.max(0.001, Math.min(0.12, (ts - lastTs) / 1000));
@@ -2787,7 +2815,10 @@ class PhaseController {
         furlong: { t },
         goalLine: rawT,
         sceneTransition: {
-          t: Math.max(0, Math.min(1, elapsed / GOAL_SCENE_TRANSITION_MS)),
+          t: Math.max(
+            0,
+            Math.min(1, (transitionHalfMs + elapsed) / Math.max(1, GOAL_SCENE_TRANSITION_MS)),
+          ),
           maxAlpha: GOAL_SCENE_TRANSITION_MAX_ALPHA,
         },
         goalRun: {
