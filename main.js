@@ -3448,10 +3448,19 @@ class PhaseController {
 //  エントリーポイント
 // =====================
 Promise.all([
-  fetch('./src/data/race-card.json').then(res => res.json()),
+  fetch('./src/data/race-info.json').then(res => res.json()),
+  fetch('./src/data/race-entries.json').then(res => res.json()),
   fetch('./src/data/courses.json').then(res => res.json()),
 ])
-  .then(([raceData, courseCatalog]) => {
+  .then(([raceInfoData, raceEntriesData, courseCatalog]) => {
+    if (raceInfoData?.race_id !== raceEntriesData?.race_id) {
+      throw new Error(`race_id mismatch: race-info=${raceInfoData?.race_id} race-entries=${raceEntriesData?.race_id}`);
+    }
+    const raceData = {
+      race_id: raceInfoData.race_id,
+      race_info: raceInfoData.race_info,
+      entries: raceEntriesData.entries,
+    };
     const courseDef = resolveCourseDef(raceData, courseCatalog);
     const runtimeRaceData = { ...raceData, courseDef };
     const phases        = buildPhases(runtimeRaceData.race_info.distance, courseDef);

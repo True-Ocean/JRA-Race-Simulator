@@ -1,21 +1,10 @@
 {
   "race_id": 20250601,
-  "race_info": {
-    "date": "2026-05-31",
-    "venue": "東京競馬場",
-    "grade": "G1",
-    "age_condition": "3歳",
-    "race_name": "東京優駿",
-    "track": "芝",
-    "distance": 2400,
-    "condition": "良",
-    "course_id": "long_2400"
-  },
   "entries": [
     {
       "gate": 1,
-      "horse": { "name": "アパパネ", "style": "先行", "sex_age": "牝3", "weight": 55, "ave_3f": 36.3, "last_3f": 33.6, "results": [1,2,2,1] },
-      "jockey": { "name": "ルメール", "win_rate": 0.25, "top3_rate": 0.55 }
+      "horse": { "name": "オグリキャップ", "style": "差し", "sex_age": "牡3", "weight": 57, "ave_3f": 36.1, "last_3f": 33.0, "results": [1,1,2,1] },
+      "jockey": { "name": "南井克巳", "win_rate": 0.20, "top3_rate": 0.50 }
     },
     {
       "gate": 2,
@@ -50,7 +39,7 @@
     {
       "gate": 8,
       "horse": { "name": "アーモンドアイ", "style": "差し", "sex_age": "牝3", "weight": 55, "ave_3f": 35.8, "last_3f": 32.6, "results": [1,1,1,1] },
-      "jockey": { "name": "デムーロ", "win_rate": 0.28, "top3_rate": 0.58 }
+      "jockey": { "name": "ルメール", "win_rate": 0.28, "top3_rate": 0.58 }
     },
     {
       "gate": 9,
@@ -74,8 +63,8 @@
     },
     {
       "gate": 13,
-      "horse": { "name": "スワーヴリチャード", "style": "先行", "sex_age": "牡3", "weight": 57, "ave_3f": 36.5, "last_3f": 33.6, "results": [1,2,0,1] },
-      "jockey": { "name": "坂井瑠星", "win_rate": 0.15, "top3_rate": 0.42 }
+      "horse": { "name": "スペシャルウィーク", "style": "差し", "sex_age": "牡3", "weight": 57, "ave_3f": 36.2, "last_3f": 32.9, "results": [1,1,1,2] },
+      "jockey": { "name": "武豊", "win_rate": 0.23, "top3_rate": 0.53 }
     },
     {
       "gate": 14,
@@ -95,12 +84,12 @@
     {
       "gate": 17,
       "horse": { "name": "イクイノックス", "style": "差し", "sex_age": "牡3", "weight": 57, "ave_3f": 35.6, "last_3f": 32.5, "results": [1,1,1,1] },
-      "jockey": { "name": "鮫島克駿", "win_rate": 0.28, "top3_rate": 0.58 }
+      "jockey": { "name": "ルメール", "win_rate": 0.28, "top3_rate": 0.58 }
     },
     {
       "gate": 18,
-      "horse": { "name": "ジャスティンパレス", "style": "追込", "sex_age": "牡3", "weight": 57, "ave_3f": 36.1, "last_3f": 33.0, "results": [1,0,2,1] },
-      "jockey": { "name": "三浦皇成", "win_rate": 0.13, "top3_rate": 0.39 }
+      "horse": { "name": "サイレンススズカ", "style": "逃げ", "sex_age": "牡3", "weight": 57, "ave_3f": 35.8, "last_3f": 33.4, "results": [1,1,0,1] },
+      "jockey": { "name": "武豊", "win_rate": 0.24, "top3_rate": 0.54 }
     }
   ]
 }

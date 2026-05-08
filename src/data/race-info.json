@@ -1,0 +1,14 @@
+{
+  "race_id": 20250601,
+  "race_info": {
+    "date": "2026-05-31",
+    "venue": "東京競馬場",
+    "grade": "G1",
+    "age_condition": "3歳",
+    "race_name": "東京優駿",
+    "track": "芝",
+    "distance": 2400,
+    "condition": "良",
+    "course_id": "long_2400"
+  }
+}
