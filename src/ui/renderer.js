@@ -447,7 +447,11 @@ export class Renderer {
     const activeHorseIds = new Set(sortedHorses.map(h => h.id));
     const smoothing = inStartLineup
       ? 0.32
-      : (options.goalRun || phase.isFinal ? 0.48 : (phase.index === 0 ? 0.26 : 0.40));
+      : (options.goalRun
+        ? 0.78
+        : phase.isFinal
+          ? 0.48
+          : (phase.index === 0 ? 0.26 : 0.40));
 
     sortedHorses.forEach(horse => {
       const target = targetPose.get(horse.id);
