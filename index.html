@@ -284,12 +284,8 @@
       display: none;
     }
 
-    /* ===== 右カラム：レースログ ===== */
+    /* ===== 右カラム：レースログ / 着順ログ ===== */
     #right-panel {
-      background: #06111e;
-      border: 1px solid #1e3a5f;
-      border-radius: 8px;
-      padding: 7px;
       height: 100%;
       min-height: 0;
       display: flex;
@@ -298,7 +294,6 @@
     }
 
     .right-block {
-      flex: 1;
       min-height: 0;
       display: flex;
       flex-direction: column;
@@ -307,8 +302,19 @@
       border-radius: 6px;
       padding: 6px;
     }
+    #race-log-block {
+      flex: 1;
+    }
+    #placing-log-block {
+      flex: 0 0 26rem;
+    }
 
     #log-panel {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    #placing-panel {
       flex: 1;
       overflow-y: auto;
       padding-right: 2px;
@@ -338,6 +344,30 @@
       text-shadow: 0 0 6px rgba(253, 224, 71, 0.45);
     }
     .log-tag.placing { color: #fde047; text-shadow: 0 0 6px rgba(253, 224, 71, 0.45); }
+    .placing-entry {
+      font-size: 0.70rem;
+      padding: 2px 0;
+      border-bottom: 1px solid #142538;
+      color: #eef4ff;
+      font-weight: bold;
+      text-shadow: none;
+      line-height: 1.35;
+      font-variant-numeric: tabular-nums;
+    }
+    .placing-entry.top5 {
+      color: #fde047;
+      text-shadow: 0 0 6px rgba(253, 224, 71, 0.42);
+    }
+    .placing-rank {
+      display: inline-block;
+      min-width: 2.8em;
+      margin-right: 0.22em;
+      color: inherit;
+    }
+    .placing-entry .horse-name {
+      color: inherit;
+      margin-left: 0.12em;
+    }
     .race-summary-header {
       color: #60a5fa;
       font-weight: 800;
@@ -409,11 +439,15 @@
 
     <!-- 右：レースログ -->
     <div id="right-panel">
-      <div class="right-block">
+      <div class="right-block" id="race-log-block">
         <p class="section-title">📝 レースログ</p>
         <div id="log-panel">
           <div class="log-entry" style="color:#334;">待機中...</div>
         </div>
+      </div>
+      <div class="right-block" id="placing-log-block">
+        <p class="section-title">🏁 着順ログ</p>
+        <div id="placing-panel"></div>
       </div>
     </div>
 

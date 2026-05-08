@@ -925,6 +925,18 @@ function formatLogLineHtml(logLine, horseMetaByName) {
   return `${tagHtml} ${bodyHtml}`;
 }
 
+function formatPlacingLineHtml(rank, horseName, horseMetaByName) {
+  const safeRank = Number.isFinite(rank) ? `${rank}着` : '';
+  const safeName = escapeHtml(horseName ?? '');
+  const meta = horseMetaByName?.get(horseName);
+  if (!meta) {
+    return `<span class="placing-rank">${safeRank}</span> <span class="horse-name">${safeName}</span>`;
+  }
+  const waku = JRA_WAKU_COLORS[meta.waku] ?? { bg: '#888', text: '#fff' };
+  const badge = `<span class="horse-badge" style="background:${waku.bg};color:${waku.text};">${meta.gate}</span>`;
+  return `<span class="placing-rank">${safeRank}</span> ${badge} <span class="horse-name">${safeName}</span>`;
+}
+
 function formatRaceInfo(raceData) {
   const info = raceData.race_info;
   const formatRaceDate = (value) => {
@@ -2386,6 +2398,7 @@ class PhaseController {
     this.btnAdvance = document.getElementById('btn-run');
     this.btnReset  = document.getElementById('btn-reset');
     this.logPanel  = document.getElementById('log-panel');
+    this.placingPanel = document.getElementById('placing-panel');
     this.indicator = document.getElementById('phase-indicator');
     this.isAnimating = false;
     this.frameCount  = 24; // 1フェーズを細かく刻む
@@ -2395,6 +2408,7 @@ class PhaseController {
   start() {
     this.currentIdx = 0;
     this.renderer.resetHorseRenderState();
+    this._initializePlacingPanel();
     this._renderPhase(0);
     this.btnAdvance.disabled = false;
     this.btnAdvance.textContent = '▶▶ 次のフェーズ';
@@ -2541,6 +2555,27 @@ class PhaseController {
     div.innerHTML = formatLogLineHtml(line, this.horseMetaByName);
     this.logPanel.appendChild(div);
     this.logPanel.scrollTop = this.logPanel.scrollHeight;
+  }
+
+  _appendPlacingLog(line, isTop5 = false) {
+    if (!this.placingPanel) return;
+    const div = document.createElement('div');
+    div.className = isTop5 ? 'placing-entry top5' : 'placing-entry';
+    div.innerHTML = line;
+    this.placingPanel.appendChild(div);
+    this.placingPanel.scrollTop = this.placingPanel.scrollHeight;
+  }
+
+  _initializePlacingPanel() {
+    if (!this.placingPanel) return;
+    this.placingPanel.innerHTML = '';
+  }
+
+  _setPlacingLog(rank, horseName) {
+    this._appendPlacingLog(
+      formatPlacingLineHtml(rank, horseName, this.horseMetaByName),
+      rank <= 5,
+    );
   }
 
   _playGoalApproach(onDone) {
@@ -2705,8 +2740,6 @@ class PhaseController {
     this._goalAllFinishedAtMs = null;
     this._goalCameraRawProgress = null;
     this._goalBattledPairs = new Set();
-    // 1着がゴールしたあとはバトルログを出さない（バトル自体は裏で実行を継続する）
-    this._goalSuppressBattleLogs = false;
 
     const step = (ts) => {
       if (!goalSceneStarted) {
@@ -2876,14 +2909,11 @@ class PhaseController {
               const result = resolveBattle(goalRng, horse, cutInTarget, phase);
               applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
               this._markGoalBattlePair(horse, cutInTarget);
-              // 1着以降はログを出さないが、バトル処理（勝敗・スタミナ反映）は継続する。
-              if (!this._goalSuppressBattleLogs) {
-                const battleType = this._classifyGoalBattleType(horse, cutInTarget, {
-                  isLaneChange: true,
-                });
-                const log = `[バトル:${battleType}] ${horse.name} vs ${cutInTarget.name} → 勝者: ${result.winner.name}`;
-                this._appendLog(log);
-              }
+              const battleType = this._classifyGoalBattleType(horse, cutInTarget, {
+                isLaneChange: true,
+              });
+              const log = `[バトル:${battleType}] ${horse.name} vs ${cutInTarget.name} → 勝者: ${result.winner.name}`;
+              this._appendLog(log);
               frameEngaged.add(horse.id);
               frameEngaged.add(cutInTarget.id);
               if (result.winner.id !== horse.id) {
@@ -3065,13 +3095,11 @@ class PhaseController {
             const result = resolveBattle(goalRng, horse, blockingFront, phase);
             applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
             this._markGoalBattlePair(horse, blockingFront);
-            if (!this._goalSuppressBattleLogs) {
-              const battleType = this._classifyGoalBattleType(horse, blockingFront, {
-                isLaneChange: false,
-              });
-              const log = `[バトル:${battleType}] ${horse.name} vs ${blockingFront.name} → 勝者: ${result.winner.name}`;
-              this._appendLog(log);
-            }
+            const battleType = this._classifyGoalBattleType(horse, blockingFront, {
+              isLaneChange: false,
+            });
+            const log = `[バトル:${battleType}] ${horse.name} vs ${blockingFront.name} → 勝者: ${result.winner.name}`;
+            this._appendLog(log);
             frameEngaged.add(horse.id);
             frameEngaged.add(blockingFront.id);
             if (result.winner.id !== horse.id) {
@@ -3770,16 +3798,9 @@ class PhaseController {
     if (!this._goalRankLogged.has(horse.id)) {
       this._goalRankLogged.add(horse.id);
       this._goalRankOrder.push(horse.id);
-      if (!this._goalPlacingHeaderLogged) {
-        this._goalPlacingHeaderLogged = true;
-        this._appendLog('＝＝＝＝＝＝＝＝[着順]＝＝＝＝＝＝＝＝');
-      }
+      if (!this._goalPlacingHeaderLogged) this._goalPlacingHeaderLogged = true;
       const placing = this._goalRankOrder.length;
-      this._appendLog(`${placing}着 ${horse.name}`);
-      // 1着が出たタイミング以降はバトルログを抑止し、着順表示だけが流れるようにする。
-      if (placing === 1) {
-        this._goalSuppressBattleLogs = true;
-      }
+      this._setPlacingLog(placing, horse.name);
     }
   }
 
@@ -3913,6 +3934,7 @@ Promise.all([
       if (!controller) {
         btnReset.disabled = false;
         document.getElementById('log-panel').innerHTML = '';
+        document.getElementById('placing-panel').innerHTML = '';
         btnRun.textContent = '▶▶ 次のフェーズ';
 
         const simOptions = currentOptions();
@@ -3962,6 +3984,7 @@ Promise.all([
       document.getElementById('phase-indicator').textContent = 'スタート';
       document.getElementById('log-panel').innerHTML =
         '<div class="log-entry" style="color:#334;">待機中...</div>';
+      document.getElementById('placing-panel').innerHTML = '';
 
       renderer.resetHorseRenderState();
       renderer.draw(initialHorses, phases[0], 0);
