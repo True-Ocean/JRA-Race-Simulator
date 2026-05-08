@@ -418,11 +418,17 @@ export class Renderer {
         const cardSpacing = metrics.drawCardSpacingPx * spacingActivation;
         let finalY = baseY;
 
-        // レーン境界での丸め誤差を避けるため、連続値レーンの近傍だけ押し出す
+        // レーン境界での丸め誤差を避けるため、連続値レーンの近傍だけ押し出す。
+        // ゴールシーンでは horse.x と描画 Y の対応が他のフェーズと違うため、
+        // sim-x ベースの nearX 制約は使わず、描画 Y の近接そのものをトリガーにする。
+        const isGoalRunMode = Boolean(options.goalRun);
         for (const prev of placed) {
           const nearLane = Math.abs(prev.lane - lane) < metrics.drawNearLaneGap;
-          const nearX = Math.abs(prev.x - horse.x) < metrics.drawNearXGap;
-          if (!nearLane || !nearX || cardSpacing <= 0) continue;
+          if (!nearLane || cardSpacing <= 0) continue;
+          if (!isGoalRunMode) {
+            const nearX = Math.abs(prev.x - horse.x) < metrics.drawNearXGap;
+            if (!nearX) continue;
+          }
           if (Math.abs(finalY - prev.y) < cardSpacing) {
             finalY = prev.y + cardSpacing;
           }
