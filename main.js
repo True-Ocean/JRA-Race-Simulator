@@ -85,6 +85,21 @@ const GOAL_MIN_SPEED_RATIO = 0.58;
 const GOAL_MAX_SPEED_RATIO = 1.95;
 const GOAL_POST_SCROLL_MS = 700;
 const GOAL_POST_CLEAR_METERS = GOAL_FURLONG_METERS * 1.25;
+const RACE_SUMMARY_HEADER_LINE = '=====ここまでのレースサマリ=====';
+const GOAL_BATTLE_HEADER_LINE = '=====ゴール前の攻防=====';
+const RACE_SUMMARY_SCENE_LABELS = new Set([
+  'スタート',
+  'ホーム直線',
+  '第1コーナー',
+  '第2コーナー',
+  '向正面',
+  '第3コーナー',
+  '第4コーナー',
+  '最終直線',
+  'スタート〜1コーナー手前',
+  '3〜4コーナー中間',
+  '4コーナー〜直線',
+]);
 // ゴールシーン progress の上限（画面外まで抜ける余地）
 const GOAL_PROGRESS_MAX_POST_LINE = 1.78;
 // ゴールシーン開始時、先頭馬は画面下辺から出現させる
@@ -494,23 +509,39 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
   });
   results.sort((a, b) => a.arrivalTime - b.arrivalTime);
 
-  if (snapshots.length > 0 && totalEarlyPhases > 0) {
+  if (snapshots.length > 0) {
     const lastEventLogs = snapshots[snapshots.length - 1].eventLogs;
-    const leadSummary = [...earlyLeadCounts.entries()]
-      .map(([id, leadCount]) => {
-        const horse = horses.find(h => h.id === id);
-        const name = horse?.name ?? `ID:${id}`;
-        const style = horse?.style ?? '-';
-        const pct = Math.round((leadCount / totalEarlyPhases) * 100);
-        return { name, style, leadCount, pct };
-      })
-      .sort((a, b) => b.leadCount - a.leadCount);
-    lastEventLogs.push('＝＝＝＝＝＝＝＝[序盤先頭サマリ]＝＝＝＝＝＝＝＝');
-    for (const row of leadSummary.slice(0, 4)) {
-      lastEventLogs.push(`[序盤先頭率] ${row.name}(${row.style}) ${row.leadCount}/${totalEarlyPhases} (${row.pct}%)`);
+    const phaseLabelForSummary = (phase) => {
+      if (phase?.segmentLabel) return String(phase.segmentLabel);
+      if (phase?.isFinal) return '最終直線';
+      if (phase?.index === 0) return 'スタート';
+      if (phase?.isCorner) {
+        const r = Number.isFinite(phase?.ratio) ? phase.ratio : 0;
+        if (r < 0.3) return '第1コーナー';
+        if (r < 0.5) return '第2コーナー';
+        if (r < 0.7) return '第3コーナー';
+        return '第4コーナー';
+      }
+      const r = Number.isFinite(phase?.ratio) ? phase.ratio : 0;
+      if (r < 0.2) return 'スタート〜1コーナー手前';
+      if (r < 0.45) return '向正面';
+      if (r < 0.65) return '3〜4コーナー中間';
+      return '4コーナー〜直線';
+    };
+
+    lastEventLogs.push(RACE_SUMMARY_HEADER_LINE);
+    for (let i = 0; i < Math.min(phases.length, snapshots.length); i++) {
+      const phase = phases[i];
+      const snap = snapshots[i];
+      const label = phaseLabelForSummary(phase);
+      const top3 = [...(snap?.horses ?? [])]
+        .sort((a, b) => (b.x ?? 0) - (a.x ?? 0))
+        .slice(0, 3)
+        .map(h => h?.name ?? `ID:${h?.id ?? '?'}`);
+      if (top3.length === 0) continue;
+      const parts = top3.map((name, idx) => `${idx + 1} ${name}`);
+      lastEventLogs.push(`${label}: ${parts.join(' / ')}`);
     }
-    lastEventLogs.push(`[序盤先頭推移] ${earlyLeaderTimeline.join(' → ')}`);
-    lastEventLogs.push(`[序盤先頭交代回数] ${earlyLeaderSwitches}回`);
   }
 
   return { results, logs: globalLogs, snapshots, phases };
@@ -558,6 +589,14 @@ function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function getRaceSummarySceneLabel(logLine) {
+  if (typeof logLine !== 'string') return null;
+  for (const label of RACE_SUMMARY_SCENE_LABELS) {
+    if (logLine.startsWith(`${label}:`)) return label;
+  }
+  return null;
+}
+
 function decorateHorseNames(text, horseMetaByName) {
   let html = escapeHtml(text);
   if (!horseMetaByName || horseMetaByName.size === 0) return html;
@@ -576,6 +615,19 @@ function decorateHorseNames(text, horseMetaByName) {
 }
 
 function formatLogLineHtml(logLine, horseMetaByName) {
+  if (logLine === RACE_SUMMARY_HEADER_LINE) {
+    return `<span class="race-summary-header">${escapeHtml(logLine)}</span>`;
+  }
+  if (logLine === GOAL_BATTLE_HEADER_LINE) {
+    return `<span class="goal-battle-header">${escapeHtml(logLine)}</span>`;
+  }
+  const raceSummarySceneLabel = getRaceSummarySceneLabel(logLine);
+  if (raceSummarySceneLabel) {
+    const restText = logLine.slice(raceSummarySceneLabel.length + 1).trimStart();
+    const bodyHtml = decorateHorseNames(restText, horseMetaByName);
+    return `<span class="race-summary-scene">${escapeHtml(raceSummarySceneLabel)}</span>: ${bodyHtml}`;
+  }
+
   const tagMatch = logLine.match(/^\[[^\]]+\]/);
   if (!tagMatch) return decorateHorseNames(logLine, horseMetaByName);
 
@@ -2262,7 +2314,7 @@ class PhaseController {
     this._goalCameraRawProgress = null;
     // 1着がゴールしたあとはバトルログを出さない（バトル自体は裏で実行を継続する）
     this._goalSuppressBattleLogs = false;
-    this._appendLog('[ゴール前] 最終直線の攻防、ゴール到達順を表示します');
+    this._appendLog(GOAL_BATTLE_HEADER_LINE);
 
     const step = (ts) => {
       const isFirstGoalFrame = goalFrameIndex === 0;
