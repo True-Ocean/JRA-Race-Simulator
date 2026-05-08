@@ -2446,6 +2446,15 @@ class PhaseController {
       const overtakePressureById = new Map();
       const frameEngaged = new Set();
 
+      // フレーム冒頭の x / goalMeters をスナップショット。
+      // _enforceGoalPackSpacing の押し戻しはこの値を下限としてクランプし、
+      // フレーム間で goalMeters / x が「減る」ことを構造的に禁止する
+      // （= 馬が後退して見える挙動を根本から無くす）。
+      simHorses.forEach(h => {
+        h._frameStartX = h.x;
+        h._frameStartGoalMeters = h.goalMeters;
+      });
+
       simHorses.sort((a, b) => b.x - a.x);
       simHorses.forEach(horse => {
         if (horse.goalFinished) {
@@ -2906,9 +2915,8 @@ class PhaseController {
     const adjacentLaneGap = 1.10;
     const minGap = Math.max(5.5, GOAL_MIN_PACK_GAP_X);
     const adjacentMinGap = minGap * 0.55;
-    // 1 フレームあたりの後退量上限。実際のレースでは後退はあり得ないため、
-    // 万一押し出しが必要になった場合でも目立たないよう小刻みに戻す。
-    // 通常はシミュ側の事前前進クランプでこの分岐に到達しない想定。
+    // 1 フレームあたりの押し戻し量上限（フレーム冒頭値を下限とした単調クランプの中での上限）。
+    // 実際のレースでは後退は起こり得ないため、押し戻しても「フレーム冒頭」より戻さない設計。
     const maxShavePerFrame = 0.45;
     for (let iter = 0; iter < 6; iter += 1) {
       let changed = false;
@@ -2928,15 +2936,26 @@ class PhaseController {
         if (h.x > bestMaxX + 1e-6) {
           const desiredShave = h.x - bestMaxX;
           const shave = Math.min(desiredShave, maxShavePerFrame);
-          h.x -= shave;
-          // x が progressScale 倍速で進む再束縛を踏まえて、
-          // goalMeters の戻し量も scale を割って整合させる。
-          const scale = h.goalProgressScale ?? 1;
-          h.goalMeters = Math.max(
-            0,
-            (h.goalMeters ?? 0) - shave / Math.max(1e-6, GOAL_X_PER_METER * scale),
-          );
-          changed = true;
+          // フレーム冒頭値を下限として後退クランプ。
+          // x / goalMeters はフレーム間で絶対に減らない（後退禁止）ため、
+          // 「フレーム内で進みすぎた分だけを進まなかったことにする」挙動に置き換わる。
+          const floorX = Number.isFinite(h._frameStartX) ? h._frameStartX : (h.x - shave);
+          const newX = Math.max(h.x - shave, floorX);
+          const actualShave = h.x - newX;
+          if (actualShave > 1e-9) {
+            h.x = newX;
+            // x が progressScale 倍速で進む再束縛を踏まえて、
+            // goalMeters の戻し量も scale を割って整合させる。
+            const scale = h.goalProgressScale ?? 1;
+            const floorGoalMeters = Number.isFinite(h._frameStartGoalMeters)
+              ? h._frameStartGoalMeters
+              : 0;
+            h.goalMeters = Math.max(
+              floorGoalMeters,
+              (h.goalMeters ?? 0) - actualShave / Math.max(1e-6, GOAL_X_PER_METER * scale),
+            );
+            changed = true;
+          }
         }
       }
       if (!changed) break;
