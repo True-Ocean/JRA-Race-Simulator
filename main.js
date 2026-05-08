@@ -676,21 +676,48 @@ function formatLogLineHtml(logLine, horseMetaByName) {
   return `${tagHtml} ${bodyHtml}`;
 }
 
-function formatRaceInfo(raceData, courseDef, simOptions) {
+function formatRaceInfo(raceData) {
   const info = raceData.race_info;
-  const courseLabel = courseDef?.name ?? 'コース定義なし（自動生成）';
-  const turnLabel = courseDef?.turnDirection === 'left'
-    ? '左回り'
-    : courseDef?.turnDirection === 'right'
-      ? '右回り'
-      : '';
-  const seedLabel = simOptions.reproducible ? `${simOptions.seed}` : 'ランダム';
-  return [
-    `レースID: <b>${raceData.race_id}</b>`,
-    `条件: <b>${info.track}</b> / <b>${info.distance}m</b> / <b>${info.condition}</b>`,
-    `コース: <b>${courseLabel}</b>${turnLabel ? ` (${turnLabel})` : ''}`,
-    `乱数: <b>${seedLabel}</b> (${simOptions.reproducible ? '再現性ON' : '再現性OFF'})`,
-  ].join('　｜　');
+  const formatRaceDate = (value) => {
+    if (!value) return '';
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return `${value.getFullYear()}年${value.getMonth() + 1}月${value.getDate()}日`;
+    }
+    if (typeof value === 'number') {
+      const raw = String(value);
+      if (/^\d{8}$/.test(raw)) {
+        return `${raw.slice(0, 4)}年${Number(raw.slice(4, 6))}月${Number(raw.slice(6, 8))}日`;
+      }
+      return '';
+    }
+    if (typeof value !== 'string') return '';
+
+    const compact = value.trim();
+    const normalized = compact.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (normalized) {
+      const [, y, m, d] = normalized;
+      return `${y}年${Number(m)}月${Number(d)}日`;
+    }
+    const compactDigits = compact.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (compactDigits) {
+      const [, y, m, d] = compactDigits;
+      return `${y}年${Number(m)}月${Number(d)}日`;
+    }
+    return compact;
+  };
+
+  const dateLabel = formatRaceDate(info.date || raceData.race_date);
+  const parts = [
+    dateLabel,
+    info.venue,
+    info.age_condition,
+    info.grade,
+    info.race_name,
+    info.track,
+    Number.isFinite(info.distance) ? `${info.distance}m` : '',
+  ].filter(Boolean);
+
+  return parts.join('　');
 }
 
 function resolveCourseDef(raceData, courseCatalog) {
@@ -2002,6 +2029,13 @@ function renderEntryList(horses) {
     const waku = JRA_WAKU_COLORS[horse.waku] ?? { bg: '#888', text: '#fff' };
     const staminaRemainPct = getStaminaRemainPct(horse);
     const staminaBarClass = getStaminaBarClassName(staminaRemainPct);
+    const weightLabel = Number.isFinite(horse.weight) ? `${horse.weight}kg` : '';
+    const profileLabel = [horse.sexAge, weightLabel].filter(Boolean).join(' ');
+    const sexClass = horse.sexAge?.startsWith('牝')
+      ? 'is-female'
+      : horse.sexAge?.startsWith('牡')
+        ? 'is-male'
+        : '';
 
     const row = document.createElement('div');
     row.className        = 'entry-row';
@@ -2012,9 +2046,11 @@ function renderEntryList(horses) {
     row.innerHTML = `
       <div class="entry-gate" style="background:${waku.bg};color:${waku.text};border:1px solid rgba(255,255,255,0.3);">${horse.gate}</div>
       <div class="entry-info">
-        <div class="entry-head">
-          <div class="entry-name">${horse.name}</div>
-          <div class="entry-jockey">🏇 ${horse.jockeyName ?? ''} / ${horse.style}</div>
+        <div class="entry-meta-line">
+          <span class="entry-name">${horse.name}</span>
+          ${profileLabel ? `<span class="entry-demographics ${sexClass}">${profileLabel}</span>` : ''}
+          <span class="entry-jockey-inline">🏇 ${horse.jockeyName ?? ''}</span>
+          <span class="entry-style-inline">${horse.style}</span>
         </div>
         <div class="entry-params">
           <div class="param-row">
@@ -3331,16 +3367,13 @@ Promise.all([
       return { reproducible, seed: lastSeed };
     };
 
-    const refreshRaceInfo = (options) => {
-      raceInfoEl.innerHTML = formatRaceInfo(runtimeRaceData, courseDef, options);
+    const refreshRaceInfo = () => {
+      raceInfoEl.innerHTML = formatRaceInfo(runtimeRaceData);
     };
 
-    refreshRaceInfo({ reproducible: true, seed: runtimeRaceData.race_id });
+    refreshRaceInfo();
     reproducibleToggle?.addEventListener('change', () => {
-      const opts = reproducibleToggle.checked
-        ? { reproducible: true, seed: runtimeRaceData.race_id }
-        : { reproducible: false, seed: 'ランダム' };
-      raceInfoEl.innerHTML = formatRaceInfo(runtimeRaceData, courseDef, opts);
+      raceInfoEl.innerHTML = formatRaceInfo(runtimeRaceData);
     });
 
     // レース開始／次フェーズ進行（単一ボタン）
@@ -3351,7 +3384,7 @@ Promise.all([
         btnRun.textContent = '▶▶ 次のフェーズ';
 
         const simOptions = currentOptions();
-        refreshRaceInfo(simOptions);
+        refreshRaceInfo();
         const sim  = runSimulation(runtimeRaceData, simOptions, {}, {}, renderer);
         simResults = sim.results;
         simLogs    = sim.logs;

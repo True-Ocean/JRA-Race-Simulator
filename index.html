@@ -176,15 +176,54 @@
       flex-shrink: 0;
     }
 
-    .entry-info { display: flex; flex-direction: column; gap: 1px; }
-    .entry-head {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: center;
-      column-gap: 5px;
+    .entry-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .entry-meta-line {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
     }
-    .entry-name { color: #fff; font-size: 0.72rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-    .entry-jockey { color: #7eb8d4; font-size: 0.56rem; white-space: nowrap; }
+    .entry-name {
+      color: #ffffff;
+      font-size: 0.72rem;
+      font-weight: 700;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .entry-demographics {
+      color: #fde68a;
+      font-size: 0.56rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      flex: 0 0 auto;
+    }
+    .entry-demographics.is-male {
+      color: #93c5fd;
+      text-shadow: 0 0 5px rgba(147, 197, 253, 0.28);
+    }
+    .entry-demographics.is-female {
+      color: #f9a8d4;
+      text-shadow: 0 0 5px rgba(249, 168, 212, 0.28);
+    }
+    .entry-jockey-inline {
+      color: #93c5fd;
+      font-size: 0.56rem;
+      flex: 0 0 auto;
+    }
+    .entry-style-inline {
+      color: #86efac;
+      font-size: 0.54rem;
+      font-weight: 700;
+      border: 1px solid rgba(134, 239, 172, 0.45);
+      border-radius: 999px;
+      padding: 0 6px;
+      line-height: 1.35;
+      flex: 0 0 auto;
+    }
 
     /* パラメータバー */
     .entry-params { margin-top: 1px; display: flex; flex-direction: column; gap: 1px; }

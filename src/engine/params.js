@@ -104,6 +104,8 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
       color,
       name:           horse.name,
       style:          horse.style,
+      sexAge:         horse.sex_age ?? '',
+      weight:         horse.weight ?? null,
       ave3f:          horse.ave_3f,
       last3f:         horse.last_3f,
       S_cruise,
