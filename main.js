@@ -41,13 +41,11 @@ const COLLISION_EPS = 0.001;
 const START_DELAY_BASE_RATE = 0.022;
 const STUMBLE_BASE_RATE = 0.008;
 const STUMBLE_PHASE_MAX = 0.55;
-const EARLY_TROUBLE_DECAY = 0.64;
+const EARLY_TROUBLE_DECAY_PER_100M = 0.88;
 const EARLY_ORDER_TIE_NOISE = 1.2;
-const EARLY_OUTER_NIGE_LANE_START = 10;
-const EARLY_OUTER_NIGE_ADV_GAIN_PER_LANE = 0.03;
+const EARLY_OUTER_NIGE_START_RATIO = 0.60;
 const EARLY_OUTER_NIGE_ADV_GAIN_MAX = 0.18;
-const EARLY_OUTER_NIGE_STAMINA_PER_LANE = 0.30;
-const EARLY_OUTER_NIGE_STAMINA_BASE = 0.22;
+const EARLY_OUTER_NIGE_DRAIN_PER_100M = 0.45;
 // ゴールシーンは「ゴールラインから 200m 手前〜ゴール」が画面に収まるイメージ。
 // last_3f（最終3ハロン≈600m の通過秒）から intrinsic 速度を出し、スタミナ残量で毎フレーム上限を締める。
 const GOAL_FURLONG_METERS = 200;
@@ -252,7 +250,11 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
     const isEarlyOrderingPhase = isStartToHomePhase(phase);
     if (isEarlyOrderingPhase) {
       horses.forEach(horse => {
-        horse.startTroubleScore = Math.max(0, (horse.startTroubleScore ?? 0) * EARLY_TROUBLE_DECAY);
+        const decay = Math.pow(
+          EARLY_TROUBLE_DECAY_PER_100M,
+          Math.max(0, phase.distance) / 100,
+        );
+        horse.startTroubleScore = Math.max(0, (horse.startTroubleScore ?? 0) * decay);
       });
     }
 
@@ -340,17 +342,14 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
       const isAfterFourthCorner = isAfterFourthCornerPhase(phase);
       const isLateStraight = phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO;
       if (isEarlyInnerBurst && horse.style === '逃げ') {
-        const lane = clampLane(horse.y);
-        const outerLanePressure = Math.max(0, lane - EARLY_OUTER_NIGE_LANE_START);
-        if (outerLanePressure > 0) {
-          const dashGain = Math.min(
-            EARLY_OUTER_NIGE_ADV_GAIN_MAX,
-            outerLanePressure * EARLY_OUTER_NIGE_ADV_GAIN_PER_LANE,
-          );
+        const outerLanePressureNorm = calcOuterNigePressureNorm(horse.y);
+        if (outerLanePressureNorm > 0) {
+          const dashGain = EARLY_OUTER_NIGE_ADV_GAIN_MAX * outerLanePressureNorm;
           adjustedAdvance *= (1 + dashGain);
           const dashDrain =
-            EARLY_OUTER_NIGE_STAMINA_BASE +
-            outerLanePressure * EARLY_OUTER_NIGE_STAMINA_PER_LANE;
+            (Math.max(0, phase.distance) / 100) *
+            EARLY_OUTER_NIGE_DRAIN_PER_100M *
+            (0.6 + 0.8 * outerLanePressureNorm);
           horse.stamina = Math.max(0, horse.stamina - dashDrain);
           horse.staminaAccelCost += dashDrain;
         }
@@ -1049,12 +1048,20 @@ function calcEarlyPhaseOrderScore(horse, rng, ave3fMax, ave3fSpan) {
   const burstBonus = (projectedBurst - 1.0) * 22;
   const lane = clampLane(horse.y);
   const innerLaneBonus = (LANE_WIDTH - lane) * 0.7;
+  const outerLanePressureNorm = calcOuterNigePressureNorm(lane);
   const outerNigeBonus = horse.style === '逃げ'
-    ? Math.max(0, lane - EARLY_OUTER_NIGE_LANE_START) * 1.35
+    ? outerLanePressureNorm * 5.0
     : 0;
   const troublePenalty = (horse.startTroubleScore ?? 0) * 17;
   const tieNoise = (rng() - 0.5) * EARLY_ORDER_TIE_NOISE;
   return styleBase + burstBonus + innerLaneBonus + outerNigeBonus - troublePenalty + tieNoise;
+}
+
+function calcOuterNigePressureNorm(lane) {
+  const clampedLane = clampLane(lane);
+  const outerStartLane = 1 + (LANE_WIDTH - 1) * EARLY_OUTER_NIGE_START_RATIO;
+  const maxOuterSpan = Math.max(0.5, LANE_WIDTH - outerStartLane);
+  return Math.max(0, Math.min(1, (clampedLane - outerStartLane) / maxOuterSpan));
 }
 
 function calcStumbleRate(horse) {
