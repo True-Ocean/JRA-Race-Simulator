@@ -132,9 +132,21 @@ const GOAL_AI = {
   burstDurationSec: 0.55,
   trafficPenaltyFloor: 0.72,
   goalDrainSprintCap: 1.45,
-  visualLateBoost: 0.34,
   visualLateStartT: 0.62,
+  visualLateBoost: 0.34,
 };
+
+/** 差し/追込: 末脚が速くスタミナに余力があるほど外への先回り意欲が高い（0〜1） */
+function getCloserOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan) {
+  if (horse.style !== '差し' && horse.style !== '追込') return 0;
+  const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
+  const span = Math.max(0.001, last3fSpan ?? (last3fMax - last3fMin));
+  const last3fWeight = Number.isFinite(horse.last3f)
+    ? (last3fMax - horse.last3f) / span
+    : 0.5;
+  const w = Math.max(0, Math.min(1, last3fWeight));
+  return Math.max(0, Math.min(1, w * (0.35 + staminaRatio * 0.85)));
+}
 
 // =====================
 //  シミュレーション（全フェーズ一括計算）
@@ -152,6 +164,11 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
   const ave3fMin = ave3fValues.length ? Math.min(...ave3fValues) : 0;
   const ave3fMax = ave3fValues.length ? Math.max(...ave3fValues) : 1;
   const ave3fSpan = Math.max(0.001, ave3fMax - ave3fMin);
+  const last3fValues = horses.map(h => h.last3f).filter(Number.isFinite);
+  const last3fMin = last3fValues.length ? Math.min(...last3fValues) : 33;
+  const last3fMax = last3fValues.length ? Math.max(...last3fValues) : last3fMin + 1;
+  const last3fSpan = Math.max(0.001, last3fMax - last3fMin);
+  const last3fNorm = { min: last3fMin, max: last3fMax, span: last3fSpan };
 
   const globalLogs = [];
   const snapshots  = [];
@@ -283,17 +300,19 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
         horse.targetLane = Math.min(horse.targetLane, INNER_HALF_LANE_MAX);
       }
       if (isAfterFourthCorner) {
-        horse.targetLane = calcPostFourthWideTargetLane(horse, horse.targetLane, phase, horses);
+        horse.targetLane = calcPostFourthWideTargetLane(horse, horse.targetLane, phase, horses, last3fNorm);
       }
       if (isEarlyInnerBurst && horse.targetLane > horse.y) {
         horse.targetLane = horse.y;
       }
-      if (isLateStraight && !frontBlocked) {
+      const outerSpreadIntent = getCloserOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan);
+      const allowProactiveLateSpread = isLateStraight && !frontBlocked && outerSpreadIntent > 0.42;
+      if (isLateStraight && !frontBlocked && !allowProactiveLateSpread) {
         horse.targetLane = horse.y;
       } else if ((horse.laneChangeCooldownPhases ?? 0) > 0) {
         horse.targetLane = horse.y;
       }
-      const laneChangeRate = getLaneChangeRate(phase);
+      const laneChangeRate = getLaneChangeRate(phase, horse, last3fNorm);
       const desiredY   = horse.y + (horse.targetLane - horse.y) * laneChangeRate;
       const prevLaneY = horse.y;
       const laneCheck  = resolveLaneMovement(
@@ -329,6 +348,12 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
             FINAL_LANE_CHANGE_COOLDOWN_PHASES,
           );
         }
+      }
+      if (isLateStraight && laneShift > 0.04) {
+        const staminaRatioLate = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
+        const lateralFatigueMult =
+          1 - Math.min(0.06, laneShift * 0.18 * (1.35 - staminaRatioLate * 0.5));
+        adjustedAdvance *= lateralFatigueMult;
       }
 
       // 前方間隔チェック（前が塞がれていて仕掛ける場合はバトル）
@@ -1189,9 +1214,19 @@ function calcEarlyInnerPriorityLane(horse, baseTargetLane, phase, allHorses, col
   return Math.min(bestLane, currentLane);
 }
 
-function calcPostFourthWideTargetLane(horse, baseTargetLane, phase, allHorses) {
+function calcPostFourthWideTargetLane(horse, baseTargetLane, phase, allHorses, last3fNorm = null) {
   const currentLane = clampLane(horse.y);
   const baseTarget = clampLane(baseTargetLane);
+  const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
+  let outerSpreadIntent = 0;
+  if (last3fNorm && Number.isFinite(last3fNorm.min) && Number.isFinite(last3fNorm.max)) {
+    outerSpreadIntent = getCloserOuterSpreadIntent(
+      horse,
+      last3fNorm.min,
+      last3fNorm.max,
+      last3fNorm.span,
+    );
+  }
   const candidates = [
     baseTarget,
     currentLane,
@@ -1216,10 +1251,13 @@ function calcPostFourthWideTargetLane(horse, baseTargetLane, phase, allHorses) {
       Math.abs(h.x - horse.x) < 26 &&
       Math.abs(h.y - lane) < 0.92
     ).length;
-    const moveCost = Math.abs(lane - currentLane) * 1.05;
-    const outsideBias = lane * 0.55;
+    const staminaDiscountOnOuterMove = Math.max(0.15, staminaRatio) * 0.8;
+    const moveCost = Math.abs(lane - currentLane) * 1.05 * (2.0 - staminaDiscountOnOuterMove);
+    const outsideBias = lane * (0.55 + outerSpreadIntent * 1.1);
     const openLaneBonus = frontGap > MIN_FORWARD_GAP + 10 ? 6.2 : 0;
-    const score = Math.min(frontGap, 92) * 1.08 - density * 4.7 - moveCost + outsideBias + openLaneBonus;
+    const closerPrepBonus = outerSpreadIntent * 4.0;
+    const score = Math.min(frontGap, 92) * 1.08 - density * 4.7 - moveCost + outsideBias + openLaneBonus
+      + closerPrepBonus;
     if (score > bestScore) {
       bestScore = score;
       bestLane = lane;
@@ -1440,11 +1478,29 @@ function getPreferredLaneByStyle(horse, phase) {
   return 3.8;
 }
 
-function getLaneChangeRate(phase) {
+function getLaneChangeRate(phase, horse = null, last3fNorm = null) {
   // スタート〜ホーム直線は一気に内へ寄せて隊列を作る
   if (isStartToHomePhase(phase)) return 0.98;
   if (phase.ratio < FORMATION_LOCK_PHASE) return 0.55;
   if (isThroughThirdCornerPhase(phase) && phase.ratio < 0.80) return 0.55;
+  if (
+    horse &&
+    last3fNorm &&
+    Number.isFinite(last3fNorm.min) &&
+    Number.isFinite(last3fNorm.max) &&
+    isAfterFourthCornerPhase(phase) &&
+    !phase.isFinal &&
+    phase.ratio < 0.80
+  ) {
+    const intent = getCloserOuterSpreadIntent(
+      horse,
+      last3fNorm.min,
+      last3fNorm.max,
+      last3fNorm.span,
+    );
+    if (intent > 0.25) return 0.36;
+    return 0.22;
+  }
   if (phase.ratio < 0.80) return 0.12;
   return 0.20;
 }
@@ -2243,7 +2299,12 @@ class PhaseController {
         } else if (Math.abs((horse.targetLane ?? horse.y) - horse.y) < 0.08) {
           horse.targetLane = horse.y;
         }
-        if (!frontBlockedNow) {
+        const outerSpreadIntentGoal = getCloserOuterSpreadIntent(horse, minLast3f, maxLast3f, last3fSpan);
+        const holdProactiveLane =
+          isCloser &&
+          outerSpreadIntentGoal > 0.38 &&
+          distRatio < 0.92;
+        if (!frontBlockedNow && !holdProactiveLane) {
           horse.targetLane = horse.y;
         }
         laneIntentById.set(horse.id, Math.max(-1, Math.min(1, (horse.targetLane - horse.y) / 2.2)));
@@ -2283,8 +2344,10 @@ class PhaseController {
           if (laneShift > 0.12) {
             horse.goalLaneCooldownUntilMs = elapsed + GOAL_LANE_CHANGE_COOLDOWN_MS;
           }
-          if (!frontBlockedNow && laneShift > 0.08) {
-            horse.goalCurrentMps *= 0.992;
+          if (!frontBlockedNow && laneShift > 0.05) {
+            const rawLoss = Math.min(0.028, 0.006 + (laneShift - 0.05) * 0.14);
+            const ease = (0.2 + staminaRatio * 0.5) * (0.25 + last3fWeight * 0.55);
+            horse.goalCurrentMps *= Math.max(0.972, 1 - rawLoss * ease);
           }
         }
 
@@ -2314,7 +2377,9 @@ class PhaseController {
         const rescueBoost = elapsed >= durationMs * 1.20
           ? 1 + Math.min(0.45, ((elapsed / durationMs) - 1.20) * 0.70)
           : 1;
-        const targetMps = GOAL_BASE_MPS * lateBoost * staminaBoost * surge * styleTop * closingKick * trafficPenalty * fatiguePenalty * rescueBoost;
+        const routeTax = Math.min(0.07, (horse.goalLaneCost ?? 0) * 0.0035);
+        const routeTaxMult = 1 - routeTax * (1.15 - staminaRatio * 0.45);
+        const targetMps = GOAL_BASE_MPS * lateBoost * staminaBoost * surge * styleTop * closingKick * trafficPenalty * fatiguePenalty * rescueBoost * routeTaxMult;
         const accelBase = 2.3
           + last3fWeight * 1.9
           + (isCloser ? 1.1 : 0.2)
@@ -2640,6 +2705,10 @@ class PhaseController {
 
   _planGoalRouteV2(horses, horse, context = {}) {
     const currentLane = clampLane(horse.y);
+    const staminaRatio = context.staminaRatio ?? 0.5;
+    const last3fWeight = context.last3fWeight ?? 0.5;
+    const aggression = context.aggression ?? 0.5;
+    const frontBlocked = Boolean(context.frontBlocked);
     const horizonSec = GOAL_AI.horizonSec;
     const projectedX = this._predictGoalX(horse, horizonSec);
     const candidates = [
@@ -2653,11 +2722,13 @@ class PhaseController {
     ]
       .map(v => clampLane(v))
       .filter((v, i, arr) => arr.indexOf(v) === i);
-    const styleOutsideBias = (horse.style === '差し' || horse.style === '追込') ? 0.58 : 0.16;
-    const staminaRatio = context.staminaRatio ?? 0.5;
-    const last3fWeight = context.last3fWeight ?? 0.5;
-    const aggression = context.aggression ?? 0.5;
-    const frontBlocked = Boolean(context.frontBlocked);
+    const styleOutsideBiasBase = (horse.style === '差し' || horse.style === '追込') ? 0.58 : 0.16;
+    const closerRoute = horse.style === '差し' || horse.style === '追込';
+    const spreadBoost = closerRoute
+      ? last3fWeight * 0.55 + staminaRatio * 0.35
+      : staminaRatio * 0.12;
+    const styleOutsideBias = styleOutsideBiasBase * (0.75 + Math.min(1, spreadBoost));
+    const keepStraightFactor = closerRoute ? Math.max(0.35, 1.15 - spreadBoost * 0.55) : 1;
 
     let bestLane = currentLane;
     let bestScore = -Infinity;
@@ -2670,7 +2741,9 @@ class PhaseController {
       const blockRisk = Math.max(0, 1 - Math.min(1, projectedGap / Math.max(1, GOAL_BLOCK_X_GAP * 1.3)));
       const styleBonus = lane * styleOutsideBias * (0.45 + last3fWeight * 0.55);
       const projectedGain = Math.min(projectedGap, 92) * GOAL_AI.projectedGapWeight;
-      const keepStraightPenalty = !frontBlocked ? Math.abs(lane - currentLane) * 2.9 : 0;
+      const keepStraightPenalty = !frontBlocked
+        ? Math.abs(lane - currentLane) * 2.9 * keepStraightFactor
+        : 0;
       const score =
         projectedGain -
         projectedDensity * GOAL_AI.densityWeight -
