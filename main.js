@@ -2501,20 +2501,15 @@ class PhaseController {
         initialRenderProgressById.set(id, this.renderer.yToProgress(state.cy));
       }
     });
-    const arrivalTimes = this.simResults.map(h => h.arrivalTime).filter(v => Number.isFinite(v));
-    if (arrivalTimes.length === 0) {
+    // ※ 段階(α): 事前確定着順 (arrivalTime) を演出にバイアスとして渡さない方針へ移行。
+    //   従来は fastWeightById を作って surge を ±18% 揺らしていたが、これは
+    //   「runSimulation の結果を答え合わせさせる」構造になっており、ゴールシーンが
+    //   自律シミュレーションとして機能していなかった。fastWeight 系は完全撤廃する。
+    //   ここで simResults の有無だけは sanity check として残す（馬データ自体が必要なため）。
+    if (!Array.isArray(this.simResults) || this.simResults.length === 0) {
       onDone?.();
       return;
     }
-    const minArrival = Math.min(...arrivalTimes);
-    const maxArrival = Math.max(...arrivalTimes);
-    const arrivalSpan = Math.max(1e-9, maxArrival - minArrival);
-    const fastWeightById = new Map(
-      this.simResults.map(horse => {
-        const fastness = (maxArrival - horse.arrivalTime) / arrivalSpan;
-        return [horse.id, Math.max(0, Math.min(1, fastness))];
-      }),
-    );
 
     const resultsById = new Map(this.simResults.map(h => [h.id, h]));
     const last3fValues = this.simResults
@@ -2587,6 +2582,13 @@ class PhaseController {
         goalLaneCooldownUntilMs: 0,
         goalBurstRemainMs: 0,
         goalBurstCooldownUntilMs: 0,
+        // 同レーン前方に詰まっている時間の積算（ms）。
+        // 一定時間を超えたら _planGoalRouteV2 の進路変更閾値を緩める用途に使う。
+        goalStuckMs: 0,
+        // 直前にレーン変更を採用した時刻+短い窓。
+        // この窓内は _enforceGoalPackSpacing の「隣接レーン押し戻し」を弱め、
+        // 追い抜きの瞬間に肩が並ぶ動きを潰さないようにする。
+        goalLaneEnterUntilMs: 0,
       };
     });
 
@@ -2714,7 +2716,6 @@ class PhaseController {
         }
         const result = resultsById.get(horse.id) ?? horse;
         const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0.5;
-        const fastWeight = fastWeightById.get(horse.id) ?? 0.5;
         const last3fWeight = Number.isFinite(result.last3f)
           ? (maxLast3f - result.last3f) / last3fSpan
           : 0.5;
@@ -2736,6 +2737,14 @@ class PhaseController {
         const frontGapNow = this._goalFrontGap(simHorses, horse, clampLane(horse.y));
         const frontBlockedNow = frontGapNow < GOAL_BLOCK_X_GAP * 1.08;
         const urgePass = this._goalShouldSeekPass(simHorses, horse);
+        // 「同レーン前方に詰まっている時間」を積算する。
+        // 詰まっている間は時間が伸び、解消したら同じ速さで減衰させる。
+        // _planGoalRouteV2 の閾値緩和に使う（一定時間以上詰まっていれば外を見る）。
+        const stuckThisFrameMs = frontBlockedNow ? dt * 1000 : -dt * 1000 * 1.5;
+        horse.goalStuckMs = Math.max(
+          0,
+          Math.min(2000, (horse.goalStuckMs ?? 0) + stuckThisFrameMs),
+        );
         const lanePlan = this._planGoalRouteV2(simHorses, horse, {
           t,
           dt,
@@ -2745,17 +2754,23 @@ class PhaseController {
           last3fWeight,
           frontBlocked: frontBlockedNow,
           urgeOvertake: urgePass,
+          stuckMs: horse.goalStuckMs,
         });
         overtakePressureById.set(horse.id, lanePlan.pressure);
         const canChangeRoute = elapsed >= (horse.goalCommitUntilMs ?? 0) &&
           elapsed >= (horse.goalLaneCooldownUntilMs ?? 0);
+        // 詰まっている時間が長いほど、進路変更に必要なスコア差を大きく緩める。
+        // 1.2 秒を上限に、最大 0.55 まで閾値を下げる。
+        const stuckEase = Math.min(0.55, (horse.goalStuckMs ?? 0) / 1200 * 0.55);
         const adaptiveThreshold = Math.max(
-          0.55,
+          // 詰まりが深刻な時は下限自体も少し下げる（0.55 -> 0.40）
+          0.40,
           GOAL_AI.switchThresholdBase
             - aggression * 0.52
             + (1 - distRatio) * 0.14
             + (staminaRatio < 0.24 ? 0.12 : 0)
-            - (urgePass ? 0.32 : 0),
+            - (urgePass ? 0.32 : 0)
+            - stuckEase,
         );
         const laneRound = clampLane(horse.y);
         const frontSlower = this._goalFrontIsSlower(simHorses, horse, laneRound);
@@ -2770,6 +2785,12 @@ class PhaseController {
         if (shouldSwitch) {
           horse.targetLane = lanePlan.lane;
           horse.goalCommitUntilMs = elapsed + GOAL_AI.switchCommitSec * 1000;
+          // 進路変更直後 ~0.6 秒は _enforceGoalPackSpacing の隣接レーン押し戻しを
+          // 半分に弱める。これがないと、肩を並べに行った瞬間に押し戻されて
+          // 「外に出ようとしたのに元のレーンに戻される」剛体ブロック挙動になる。
+          horse.goalLaneEnterUntilMs = elapsed + 600;
+          // 詰まり時間も 0 にリセット（同じ詰まりに二重で甘くしないため）。
+          horse.goalStuckMs = 0;
         } else if (canChangeRoute) {
           // 進路変更を選ばなかった -> 中途半端な目標レーンを残さず現在地に固定。
           // これがないと過去の目標レーンに引きずられて細かく揺れ続けてしまう。
@@ -2854,7 +2875,11 @@ class PhaseController {
           + (isCloser ? 0.10 * Math.pow(Math.min(1, furlongHint), 0.5) : 0);
         // baseMps にスタミナを織り込み済みのため微調整のみ
         const staminaFineTuning = 0.97 + staminaRatio * 0.05;
-        const surge = 0.90 + fastWeight * 0.16 + styleBoost;
+        // 段階(α): 旧 surge は `0.90 + fastWeight * 0.16 + styleBoost` で
+        // 事前確定着順 (arrivalTime) を直接バイアスに使っていた。これを撤廃し、
+        // 残スタミナという「現在進行中のシミュ状態」だけで surge を組み立てる。
+        // 値域は概ね従来と同等（0.92〜1.06 + styleBoost）に揃えてある。
+        const surge = 0.92 + staminaRatio * 0.14 + styleBoost;
         const closingKick = 1
           + Math.pow(distRatio, 0.58) * (
             (isCloser ? 0.20 : 0.06) * (0.45 + last3fWeight * 0.28)
@@ -2865,6 +2890,17 @@ class PhaseController {
             (horse.style === '差し' ? 0.10 : 0) +
             last3fWeight * 0.04
           );
+        // 段階(α) 追加: 残スタミナを「ゴール直前の末脚」として開放する係数。
+        //   - distRatio が大きい（ゴール接近）ほど効きが強くなる（=上がり3Fの加速）
+        //   - staminaRatio が低ければ開放できる余力がないためゼロに近づく
+        //   - last3fWeight が高い末脚タイプは開放上限を高めにする
+        // closingKick はスタミナ非依存（潜在能力）だったため、ここで「実際に
+        // 余力を残せた馬だけが末脚を爆発させられる」という物理が成立する。
+        const staminaUnleash =
+          staminaRatio *
+          (0.06 + 0.20 * Math.pow(distRatio, 0.55)) *
+          (0.85 + last3fWeight * 0.30);
+        const staminaKick = 1 + staminaUnleash;
         // スタミナ残量は baseMps 側（goalStaminaSpeedMult）で既に反映済み。
         // ここではバトルでの疲労分だけを純粋にペナルティとして反映し、
         // スタミナ二重計上で 200m 所要時間が伸びすぎる現象を解消する。
@@ -2878,6 +2914,7 @@ class PhaseController {
           surge *
           styleTop *
           closingKick *
+          staminaKick *
           trafficPenalty *
           fatiguePenalty *
           routeTaxMult;
@@ -3011,7 +3048,7 @@ class PhaseController {
         horse.x += progressedMeters * GOAL_X_PER_METER * (horse.goalProgressScale ?? 1);
       });
 
-      this._enforceGoalPackSpacing(simHorses);
+      this._enforceGoalPackSpacing(simHorses, elapsed);
 
       // 各馬の goalMeters 積み上げのみから progress を作る（グローバル演出による頭打ちはしない）
       const goalRenderProgressById = new Map();
@@ -3131,8 +3168,12 @@ class PhaseController {
   _goalFrontIsSlower(horses, horse, lane) {
     const front = this._goalFrontHorse(horses, horse, lane);
     if (!front) return false;
-    const selfM = horse.goalCurrentMps ?? 0;
-    const frontM = front.goalCurrentMps ?? 0;
+    // ブロック中は goalCurrentMps が前走馬速度に寄せられているため、現速度だけ
+    // で比較すると「自分は速いのに前と同速 → 直進維持」と誤判定する。
+    // ここも進路AI ゲートと同じく、野心速度 (goalDesiredMps) と現速度のうち
+    // 大きい方を採用し、「自分が本当に出したい速度」で前走馬と比較する。
+    const selfM = Math.max(horse.goalDesiredMps ?? 0, horse.goalCurrentMps ?? 0);
+    const frontM = Math.max(front.goalDesiredMps ?? 0, front.goalCurrentMps ?? 0);
     return selfM > frontM * 1.04;
   }
 
@@ -3142,7 +3183,11 @@ class PhaseController {
    * 関係ない馬では発火しないようにする（その馬は自分の進路を塞いでいない）。
    */
   _goalShouldSeekPass(horses, horse) {
-    const selfM = horse.goalCurrentMps ?? 0;
+    // ブロック中は goalCurrentMps が前走馬に寄せられて速度差が消えるため、
+    // 「現速度」だけで判断すると追い抜き意欲が立ち上がらない。
+    // 自分は野心速度 (goalDesiredMps) を尊重し、相手も野心と現速度の大きい方で
+    // 比較することで「本当は速い後続」が前を抜きにいく動きを取り戻す。
+    const selfM = Math.max(horse.goalDesiredMps ?? 0, horse.goalCurrentMps ?? 0);
     if (!Number.isFinite(selfM) || selfM < 1e-6) return false;
     const near = this._getGoalNearLaneGap();
     const maxDx = GOAL_AI.passSeekMaxForwardX;
@@ -3151,10 +3196,57 @@ class PhaseController {
       const dx = o.x - horse.x;
       if (dx <= 0.5 || dx > maxDx) continue;
       if (Math.abs(o.y - horse.y) >= near) continue;
-      const oM = o.goalCurrentMps ?? 0;
+      const oM = Math.max(o.goalDesiredMps ?? 0, o.goalCurrentMps ?? 0);
       if (selfM > oM * 1.03) return true;
     }
     return false;
+  }
+
+  /**
+   * ゴールシーン専用: 自分の前方近接バンド内で、横方向に minWidth 以上空いた切れ目
+   * （= 「割って入れる隙間」）を 1 つだけ返す。
+   *
+   * 使い所は _planGoalRouteV2 のみ。判定は純粋な幾何計算で副作用を持たない。
+   * @returns {{ center:number, width:number, low:number, high:number } | null}
+   */
+  _goalDetectInnerSqueezeAhead(horses, horse, options = {}) {
+    const currentLane = clampLane(horse.y);
+    // 既定値は 1.5 頭分（馬体幅 cardW = laneW * 0.6 → 1.5 頭 ≒ 0.9 レーン）。
+    const minWidth = options.minWidth ?? 0.9;
+    // 横方向探索範囲。これより外の馬は別世界として扱う。
+    const lateralReach = options.lateralReach ?? 1.6;
+    // X 方向の前方バンド: 直近すぎ（既に並走）と遠すぎ（視程外）を除外し
+    // 「目の前」だけを切り出す。
+    const xMin = horse.x + GOAL_BLOCK_X_GAP * 0.35;
+    const xMax = horse.x + GOAL_BLOCK_X_GAP * 1.8;
+    const cluster = horses
+      .filter(o =>
+        o.id !== horse.id &&
+        !o.goalFinished &&
+        o.x >= xMin && o.x <= xMax &&
+        Math.abs(o.y - currentLane) < lateralReach,
+      )
+      .sort((a, b) => a.y - b.y);
+    // 仮想壁として lateralReach の両端を加え、馬体間の横隙間を列挙する。
+    // 片側が完全に空でも自然に「片側ガラ空き」として検出できる構造。
+    const ys = [
+      currentLane - lateralReach,
+      ...cluster.map(o => o.y),
+      currentLane + lateralReach,
+    ];
+    let best = null;
+    for (let i = 0; i < ys.length - 1; i += 1) {
+      const width = ys[i + 1] - ys[i];
+      if (width < minWidth) continue;
+      const center = (ys[i] + ys[i + 1]) / 2;
+      // 「目の前」と言える範囲（自レーン±1.0）の隙間だけ採用する。
+      // ここを越えるなら _planGoalRouteV2 の通常の外側候補で扱うべき領域。
+      if (Math.abs(center - currentLane) > 1.0) continue;
+      if (!best || width > best.width) {
+        best = { center, width, low: ys[i], high: ys[i + 1] };
+      }
+    }
+    return best;
   }
 
   /**
@@ -3177,7 +3269,7 @@ class PhaseController {
     return false;
   }
 
-  _enforceGoalPackSpacing(horses) {
+  _enforceGoalPackSpacing(horses, elapsedMs = 0) {
     // 視覚上の馬体幅は cardW = laneW * 0.6 なので、laneDiff < 0.78 で必ず重なる。
     // 「強い間隔」を要求する閾値は安全側で 0.78、隣接気味の重なりも捌くため
     // 「弱い間隔」を 1.10 まで適用する。
@@ -3185,6 +3277,10 @@ class PhaseController {
     const adjacentLaneGap = 1.10;
     const minGap = Math.max(5.5, GOAL_MIN_PACK_GAP_X);
     const adjacentMinGap = minGap * 0.55;
+    // レーン変更直後の馬は、追い抜きで肩を並べに行く瞬間の動きを優先する。
+    // この間は隣接（同レーンではない）押し戻しを 0.55 倍まで弱める。
+    // ※ 同レーンでの重なりは安全のため緩めない（馬体重なりは常に防ぐ）。
+    const recentLaneChangeAdjacentScale = 0.55;
     // 1 フレームあたりの押し戻し量上限（フレーム冒頭値を下限とした単調クランプの中での上限）。
     // 実際のレースでは後退は起こり得ないため、押し戻しても「フレーム冒頭」より戻さない設計。
     const maxShavePerFrame = 0.45;
@@ -3193,12 +3289,23 @@ class PhaseController {
       const sorted = [...horses].sort((a, b) => a.x - b.x);
       for (const h of sorted) {
         let bestMaxX = Infinity;
+        // h（後方馬）が直近にレーン変更を採用していれば、隣接押し戻しを弱める。
+        const hRecentLaneChange = elapsedMs > 0 &&
+          (h.goalLaneEnterUntilMs ?? 0) > elapsedMs;
         for (const o of horses) {
           if (o.id === h.id) continue;
           const laneDiff = Math.abs(o.y - h.y);
           if (laneDiff >= adjacentLaneGap) continue;
           if (o.x <= h.x) continue;
-          const gap = laneDiff < sameLaneGap ? minGap : adjacentMinGap;
+          const isAdjacent = laneDiff >= sameLaneGap;
+          // 「同レーンの最小間隔」は常に維持。
+          // 「隣接レーンの最小間隔」だけを、いずれかの馬が直近にレーン変更していれば緩める。
+          const oRecentLaneChange = elapsedMs > 0 &&
+            (o.goalLaneEnterUntilMs ?? 0) > elapsedMs;
+          const adjacentScale = (isAdjacent && (hRecentLaneChange || oRecentLaneChange))
+            ? recentLaneChangeAdjacentScale
+            : 1;
+          const gap = isAdjacent ? adjacentMinGap * adjacentScale : minGap;
           const candidateMaxX = o.x - gap;
           if (candidateMaxX < bestMaxX) bestMaxX = candidateMaxX;
         }
@@ -3446,6 +3553,7 @@ class PhaseController {
     const aggression = context.aggression ?? 0.5;
     const frontBlocked = Boolean(context.frontBlocked);
     const urgeOvertake = Boolean(context.urgeOvertake);
+    const stuckMs = Math.max(0, Math.min(2000, context.stuckMs ?? 0));
     const horizonSec = GOAL_AI.horizonSec;
 
     // 進路が完全に空いている、または前方馬が自分以上に速い／実質追いつかない場合は
@@ -3468,10 +3576,38 @@ class PhaseController {
       frontInCurrent.goalDesiredMps ?? 0,
       frontInCurrent.goalCurrentMps ?? 0,
     );
-    if (selfDesired <= frontDesired * 1.02) {
+    // 詰まり時間が長くなるほどゲートを甘くする（最低でも 0.97 倍までは緩める）。
+    // 例: 0.6 秒詰まりで 1.005、1.2 秒で ~0.985 → 微差でも進路評価に進めるようになる。
+    const gateRatio = Math.max(0.97, 1.02 - stuckMs / 1200 * 0.05);
+    if (selfDesired <= frontDesired * gateRatio) {
       // 自分が出したい速度でも前方馬の方が速い -> 進路変更しても追いつけない。直進維持。
       return { lane: currentLane, gain: 0, pressure: 0 };
     }
+
+    // === ゴール前「内突き」判定 ==========================================
+    // 内側で詰まっていて、かつ「足・余力・バトル勝率」が揃っている馬だけが、
+    // 目の前の 1.5 頭分の隙間に対してリスクを取って割り込む挙動を許可する。
+    // この AI が呼ばれるのはゴールシーンだけなので、追加のシーン判定は不要。
+    const isInnerTrapped =
+      currentLane <= 4 &&
+      frontBlocked &&
+      stuckMs >= 400;
+    // resolveBattle と同じ式（ノイズ無し）で勝率の指標を作る。
+    // 期待値プラス（Δedge ≥ 2.0）でない限り内突きは選ばない。
+    const battleEdgeOf = h =>
+      (Number.isFinite(h.M_maneuv) ? h.M_maneuv : 50) * 0.6 +
+      (Number.isFinite(h.S_cruise) ? h.S_cruise : 50) * 0.4;
+    const selfEdge = battleEdgeOf(horse);
+    const frontEdge = battleEdgeOf(frontInCurrent);
+    const isCapableOfSqueeze =
+      staminaRatio >= 0.30 &&                     // 余力が残っている
+      selfDesired >= frontDesired * 1.06 &&       // 出したい速度が明確に速い
+      (selfEdge - frontEdge) >= 2.0;              // バトル勝率 ~70%+
+    const squeeze = (isInnerTrapped && isCapableOfSqueeze)
+      ? this._goalDetectInnerSqueezeAhead(horses, horse)
+      : null;
+    // 突けるなら割り込む先のレーン（整数）を確定。
+    const squeezeLane = squeeze ? clampLane(Math.round(squeeze.center)) : null;
 
     const projectedX = this._predictGoalX(horse, horizonSec);
     const baseProjectedGap = this._goalFrontGap(horses, horse, currentLane, projectedX);
@@ -3494,6 +3630,15 @@ class PhaseController {
     const styleOutsideBias = styleOutsideBiasBase * (0.75 + Math.min(1, spreadBoost));
     const keepStraightFactor = closerRoute ? Math.max(0.35, 1.15 - spreadBoost * 0.55) : 1;
     const lowStamina = staminaRatio < 0.22;
+    // 内側で詰まっている時の外脱出補助：
+    // currentLane が浅い（=内側）ほど、かつ stuckMs が長いほど、外側候補の評価を持ち上げる。
+    // インナー側へ動く候補にはボーナスを与えない（=押し込み合いの悪化を避ける）。
+    // ただし squeeze（内突き）が成立している馬は、外に流すと意図と矛盾するため 0 に。
+    const innerEscapeStrength = squeeze
+      ? 0
+      : Math.max(0, Math.min(1, stuckMs / 1000)) *         // 1.0 秒で最大
+        Math.max(0, Math.min(1, (4 - currentLane) / 3)) *  // lane 1〜4 で線形に強くなる
+        (frontBlocked ? 1 : 0.5);                          // 詰まっている時は満額
 
     let bestLane = currentLane;
     let bestScore = -Infinity;
@@ -3515,6 +3660,20 @@ class PhaseController {
         ? Math.max(0, projectedGap - baseProjectedGap) * 0.52
         : 0;
       const collisionHorizonCost = this._goalMultiStepCollisionCost(horses, horse, lane);
+      // 外側候補のみ加点。lane が currentLane より内側 or 同じならゼロ。
+      const innerEscapeBonus = lane > currentLane
+        ? innerEscapeStrength * (lane - currentLane) * 1.6
+        : 0;
+      // 内突き（squeeze）が成立している馬だけに与える、隙間中心方向への強加点。
+      // 隙間中心と一致する整数レーンで最大、隣レーンで半減、2 レーン以上ずれるとゼロ。
+      // 隙間幅（width）が広いほどボーナスを伸ばす（1.5 頭分=0.9 で発火、上限を設けて暴走防止）。
+      // styleOutsideBias / innerEscapeBonus の典型値を上回る程度の強度に設定し、
+      // 「能力ゲートを抜けた馬は内突きを最優先」と planner に伝える。
+      const splitThroughBonus = squeeze
+        ? Math.max(0, 1.2 - Math.abs(lane - squeezeLane)) *
+          Math.min(1.4, 0.6 + (squeeze.width - 0.9) * 1.6) *
+          2.4
+        : 0;
       const score =
         projectedGain -
         projectedDensity * GOAL_AI.densityWeight -
@@ -3526,7 +3685,9 @@ class PhaseController {
         staminaLanePenalty +
         styleBonus +
         aggression * 0.8 +
-        passLaneBonus;
+        passLaneBonus +
+        innerEscapeBonus +
+        splitThroughBonus;
       if (Math.abs(lane - currentLane) < 0.01) currentScore = score;
       if (score > bestScore) {
         bestScore = score;
