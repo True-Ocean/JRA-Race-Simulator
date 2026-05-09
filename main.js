@@ -63,6 +63,21 @@ const FRONTRUN_ROLL_MIN = 0.94;
 const FRONTRUN_ROLL_MAX = 1.10;
 const OONIGE_LATE_DRAIN_BASE_PER_100M = 1.24;
 const OONIGE_LATE_DRAIN_LEAD_GAIN = 1.08;
+/** 安全策: 新スタミナモデル（イベント主導 + 距離微小消費）を段階導入 */
+const USE_SAFE_STAMINA_MODEL = true;
+/** 新モデル: 距離起因の微小消費（1m あたり） */
+const SAFE_BASE_STAMINA_PER_M = 0.0055;
+/** 新モデル: 進路変更イベント消費倍率 */
+const SAFE_LANE_EVENT_DRAIN_MULT = 0.58;
+/** 新モデル: コーナー外回しイベント消費倍率 */
+const SAFE_CORNER_EVENT_DRAIN_MULT = 0.48;
+/** 新モデル: 余剰加速イベント消費倍率 */
+const SAFE_ACCEL_EVENT_DRAIN_MULT = 0.80;
+/** 新モデル: 終盤でイベント疲労を速度へ反映する重み */
+const SAFE_GOAL_EVENT_FATIGUE_WEIGHT = 0.42;
+/** 新モデル: 終盤の stamina/m 正規化基準 */
+const SAFE_GOAL_STAMINA_PER_M_REF = 0.030;
+const SAFE_GOAL_STAMINA_PER_M_RANGE = 0.090;
 /** スタート初速のうちこの倍率までは能力域とみなし、accel スタミナは超過分のみ課金 */
 const START_BURST_STAMINA_FREE_CAP = 1.14;
 /** 逃げ・大逃げの「ペース拡大」追加ドレイン: 楽先頭・クリア時の下限（1=従来同等） */
@@ -105,6 +120,12 @@ function staminaAccelAbilityMult(staminaRatio) {
   // 0.35 -> 1.0, 0.00 -> 0.62
   return 0.62 + (r / 0.35) * 0.38;
 }
+
+function normalize01(v) {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+
 const GOAL_X_PER_METER = 0.28;
 const GOAL_LANE_CHANGE_PER_SEC = 4.2;
 const GOAL_BLOCK_X_GAP = 10;
@@ -189,7 +210,7 @@ const COLLISION_REAR_BUFFER_X = 14;
 const INNER_CUTIN_BUFFER_MULT = 1.25;
 const PACK_DENSITY_PENALTY_QUAD = 1.1;
 const STAMINA_CORNER_OUTER_PER_LANE = 0.30;
-const GOAL_STAMINA_DRAIN_MULT = 1.35;
+const GOAL_STAMINA_DRAIN_MULT = 1.50;
 const GOAL_AI = {
   horizonSec: 1.0,
   predictStepSec: 0.10,
@@ -374,11 +395,32 @@ function applyUniversalReserveDrain(horse, rawDrain, phase) {
   return d;
 }
 
-function subtractStaminaWithReserve(horse, rawDrain, phase, trackField = null) {
+function subtractStaminaWithReserve(horse, rawDrain, phase, trackFieldOrOptions = null) {
+  let trackField = null;
+  let fatigueGain = 0;
+  let category = 'event';
+  if (typeof trackFieldOrOptions === 'string' || trackFieldOrOptions == null) {
+    trackField = trackFieldOrOptions;
+  } else if (typeof trackFieldOrOptions === 'object') {
+    trackField = trackFieldOrOptions.trackField ?? null;
+    fatigueGain = Number.isFinite(trackFieldOrOptions.fatigueGain)
+      ? trackFieldOrOptions.fatigueGain
+      : 0;
+    category = trackFieldOrOptions.category ?? category;
+  }
   const d = applyUniversalReserveDrain(horse, rawDrain, phase);
   if (d <= 0) return;
   horse.stamina = Math.max(0, horse.stamina - d);
   if (trackField && horse[trackField] !== undefined) horse[trackField] += d;
+  if (category === 'base') {
+    horse.staminaBaseCost = (horse.staminaBaseCost ?? 0) + d;
+  } else {
+    horse.staminaEventCost = (horse.staminaEventCost ?? 0) + d;
+  }
+  if (fatigueGain > 0) {
+    horse.eventFatigueScore = (horse.eventFatigueScore ?? 0) + d * fatigueGain;
+    horse.recentEventLoad = (horse.recentEventLoad ?? 0) + d * fatigueGain;
+  }
 }
 
 /**
@@ -497,6 +539,10 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
     horse.staminaAccelCost = 0;
     horse.staminaBattleCost = 0;
     horse.staminaCornerCost = 0;
+    horse.staminaBaseCost = 0;
+    horse.staminaEventCost = 0;
+    horse.eventFatigueScore = 0;
+    horse.recentEventLoad = 0;
     horse.battleFatigue = 0;
     horse.startTroubleScore = 0;
     horse.staminaRatioAfterC3 = null;
@@ -559,6 +605,10 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
         horse.startTroubleScore = Math.max(0, (horse.startTroubleScore ?? 0) * decay);
       });
     }
+    horses.forEach(horse => {
+      horse.recentEventLoad = (horse.recentEventLoad ?? 0) * 0.72;
+      horse.eventFatigueScore = (horse.eventFatigueScore ?? 0) * 0.94;
+    });
 
     resolveLeadBattle(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds);
     resolveCornerPositionBattle(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds);
@@ -663,7 +713,6 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
       const isAfterFourthCorner = isAfterFourthCornerPhase(phase);
       const isLateStraight = phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO;
       const isOonige = isOonigeStyle(horse.style);
-      const oonigeDrainPhaseMult = isOonige ? getOonigePhaseDrainMult(phase) : 1.0;
       if (isEarlyInnerBurst && isNigeStyle(horse.style)) {
         const outerLanePressureNorm = calcOuterNigePressureNorm(horse.y);
         if (outerLanePressureNorm > 0) {
@@ -677,8 +726,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
             (Math.max(0, phase.distance) / 100) *
             EARLY_OUTER_NIGE_DRAIN_PER_100M *
             (0.6 + 0.8 * outerLanePressureNorm) *
-            (isOonige ? 1.04 : 1.0) *
-            oonigeDrainPhaseMult;
+            (isOonige ? 1.04 : 1.0);
           if (
             isLeadingPre &&
             secondGapPre >= 7 &&
@@ -687,7 +735,13 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
           ) {
             dashDrain *= NIGE_OUTER_DASH_CLEAR_LEAD_MULT;
           }
-          subtractStaminaWithReserve(horse, dashDrain, phase, 'staminaAccelCost');
+          const tunedDashDrain = USE_SAFE_STAMINA_MODEL
+            ? 0
+            : dashDrain;
+          subtractStaminaWithReserve(horse, tunedDashDrain, phase, {
+            trackField: 'staminaAccelCost',
+            fatigueGain: 0.22,
+          });
         }
       }
       if (isNigeStyle(horse.style) && !isAfterFourthCorner && phase.ratio <= 0.78) {
@@ -791,9 +845,14 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
             frontBlocked: earlyFrontBlockedPre,
             inTrafficBattle: phaseTrafficBattlePre,
           });
-          const tunedDrain =
-            (isOonige ? extraDrain * oonigeDrainPhaseMult : extraDrain) * paceExtraDrainMult;
-          subtractStaminaWithReserve(horse, tunedDrain, phase, 'staminaAccelCost');
+          const tunedDrain = extraDrain * paceExtraDrainMult;
+          const safeDrain = USE_SAFE_STAMINA_MODEL
+            ? 0
+            : tunedDrain;
+          subtractStaminaWithReserve(horse, safeDrain, phase, {
+            trackField: 'staminaAccelCost',
+            fatigueGain: 0.42,
+          });
         } else {
           horse.oonigeLeadStreak = 0;
           horse.oonigePressure = Math.max(0, (horse.oonigePressure ?? horse.frontRunDrive ?? 0) * 0.86);
@@ -824,7 +883,13 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
         ) {
           lateDrain *= OONIGE_LATE_CLEAR_LEAD_MULT;
         }
-        subtractStaminaWithReserve(horse, lateDrain, phase, 'staminaAccelCost');
+        const safeLateDrain = USE_SAFE_STAMINA_MODEL
+          ? 0
+          : lateDrain;
+        subtractStaminaWithReserve(horse, safeLateDrain, phase, {
+          trackField: 'staminaAccelCost',
+          fatigueGain: 0.36,
+        });
         horse.oonigePressure = Math.max(0, (horse.oonigePressure ?? 0) * 0.82);
       }
       const currentFrontGap = getFrontGap(horse, clampLane(horse.y), horses);
@@ -901,8 +966,14 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
       }
       const laneShift = Math.abs(horse.y - prevLaneY);
       if (laneShift > 0.001) {
-        const laneDrain = laneShift * STAMINA_LANE_CHANGE_COST * oonigeDrainPhaseMult;
-        subtractStaminaWithReserve(horse, laneDrain, phase, 'staminaLaneCost');
+        const laneDrain = laneShift * STAMINA_LANE_CHANGE_COST;
+        const safeLaneDrain = USE_SAFE_STAMINA_MODEL
+          ? laneDrain * SAFE_LANE_EVENT_DRAIN_MULT
+          : laneDrain;
+        subtractStaminaWithReserve(horse, safeLaneDrain, phase, {
+          trackField: 'staminaLaneCost',
+          fatigueGain: 0.20,
+        });
         if (isLateStraight && laneShift > 0.12) {
           horse.laneChangeCooldownPhases = Math.max(
             horse.laneChangeCooldownPhases ?? 0,
@@ -950,8 +1021,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
         let accelDrain =
           (taxableAccel < 0.02 ? 0 : taxableAccel) *
           STAMINA_ACCEL_COST *
-          earlyMult *
-          oonigeDrainPhaseMult;
+          earlyMult;
         if (
           isNigeStyle(horse.style) &&
           isLeadingPre &&
@@ -963,21 +1033,37 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
           const accelLeadEase = 0.38 + 0.62 * (1 - gapComfort);
           accelDrain *= accelLeadEase;
         }
-        subtractStaminaWithReserve(horse, accelDrain, phase, 'staminaAccelCost');
+        const safeAccelDrain = USE_SAFE_STAMINA_MODEL
+          ? accelDrain * SAFE_ACCEL_EVENT_DRAIN_MULT
+          : accelDrain;
+        subtractStaminaWithReserve(horse, safeAccelDrain, phase, {
+          trackField: 'staminaAccelCost',
+          fatigueGain: 0.28,
+        });
       }
       horse.lastAdvance = frameAdvance;
 
       applyCornerLoss(phase, horse);
       if (phase.isCorner) {
         const lane = laneIndex(horse.y);
-        const outerDrain = Math.max(0, lane - 3) * STAMINA_CORNER_OUTER_PER_LANE * oonigeDrainPhaseMult;
+        const outerDrain = Math.max(0, lane - 3) * STAMINA_CORNER_OUTER_PER_LANE;
         if (outerDrain > 0) {
-          subtractStaminaWithReserve(horse, outerDrain, phase, 'staminaCornerCost');
+          const safeOuterDrain = USE_SAFE_STAMINA_MODEL
+            ? outerDrain * SAFE_CORNER_EVENT_DRAIN_MULT
+            : outerDrain;
+          subtractStaminaWithReserve(horse, safeOuterDrain, phase, {
+            trackField: 'staminaCornerCost',
+            fatigueGain: 0.18,
+          });
         }
       }
 
-      const cons    = calcStaminaCons(phase, horse, trackMod) * oonigeDrainPhaseMult;
-      subtractStaminaWithReserve(horse, cons, phase, null);
+      const cons = USE_SAFE_STAMINA_MODEL
+        ? Math.max(0, phase.distance) * trackMod * SAFE_BASE_STAMINA_PER_M
+        : calcStaminaCons(phase, horse, trackMod);
+      subtractStaminaWithReserve(horse, cons, phase, {
+        category: 'base',
+      });
 
       horse.battleLosses  = 0;
       horse.battlePenalty = 1.0;
@@ -2157,6 +2243,12 @@ function applyBattleStaminaImpact(winner, loser, options = {}) {
 
   winner.staminaBattleCost = (winner.staminaBattleCost ?? 0) + winnerDrain;
   loser.staminaBattleCost = (loser.staminaBattleCost ?? 0) + loserExtraDrain;
+  winner.staminaEventCost = (winner.staminaEventCost ?? 0) + winnerDrain;
+  loser.staminaEventCost = (loser.staminaEventCost ?? 0) + loserExtraDrain;
+  winner.eventFatigueScore = (winner.eventFatigueScore ?? 0) + winnerDrain * 0.45;
+  loser.eventFatigueScore = (loser.eventFatigueScore ?? 0) + loserExtraDrain * 0.62;
+  winner.recentEventLoad = (winner.recentEventLoad ?? 0) + winnerDrain * 0.45;
+  loser.recentEventLoad = (loser.recentEventLoad ?? 0) + loserExtraDrain * 0.62;
   // 勝者までフェーズ消費を積み上げると枯渇が早すぎるため、追跡加算は敗者中心にする。
   winner.battleLosses = (winner.battleLosses ?? 0) + STAMINA_BATTLE_TRACKER_GAIN * 0.25;
   loser.battleLosses = (loser.battleLosses ?? 0) + STAMINA_BATTLE_TRACKER_GAIN;
@@ -3377,6 +3469,15 @@ class PhaseController {
           (0.06 + 0.20 * Math.pow(distRatio, 0.55)) *
           (0.85 + last3fWeight * 0.30);
         const staminaKick = 1 + staminaUnleash;
+        const staminaPerMeter = horse.stamina / Math.max(1, remainMeters);
+        const spmNorm = normalize01(
+          (staminaPerMeter - SAFE_GOAL_STAMINA_PER_M_REF) / SAFE_GOAL_STAMINA_PER_M_RANGE,
+        );
+        const eventFatigueNorm = normalize01((horse.eventFatigueScore ?? 0) * 0.065);
+        const readiness = normalize01(spmNorm * 0.74 + (1 - eventFatigueNorm) * 0.26);
+        const finalReadinessMult = USE_SAFE_STAMINA_MODEL
+          ? 0.90 + 0.24 * readiness - eventFatigueNorm * SAFE_GOAL_EVENT_FATIGUE_WEIGHT * 0.08
+          : 1.0;
         // スタミナ残量は baseMps 側（goalStaminaSpeedMult）で既に反映済み。
         // ここではバトルでの疲労分だけを純粋にペナルティとして反映し、
         // スタミナ二重計上で 200m 所要時間が伸びすぎる現象を解消する。
@@ -3391,6 +3492,7 @@ class PhaseController {
           styleTop *
           closingKick *
           staminaKick *
+          finalReadinessMult *
           trafficPenalty *
           fatiguePenalty *
           routeTaxMult;
