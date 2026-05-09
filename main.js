@@ -66,13 +66,13 @@ const OONIGE_LATE_DRAIN_LEAD_GAIN = 1.08;
 /** 安全策: 新スタミナモデル（イベント主導 + 距離微小消費）を段階導入 */
 const USE_SAFE_STAMINA_MODEL = true;
 /** 新モデル: 距離起因の微小消費（1m あたり） */
-const SAFE_BASE_STAMINA_PER_M = 0.0072;
+const SAFE_BASE_STAMINA_PER_M = 0.0038;
 /** 新モデル: 進路変更イベント消費倍率 */
-const SAFE_LANE_EVENT_DRAIN_MULT = 0.70;
+const SAFE_LANE_EVENT_DRAIN_MULT = 0.45;
 /** 新モデル: コーナー外回しイベント消費倍率 */
-const SAFE_CORNER_EVENT_DRAIN_MULT = 0.60;
+const SAFE_CORNER_EVENT_DRAIN_MULT = 0.35;
 /** 新モデル: 余剰加速イベント消費倍率 */
-const SAFE_ACCEL_EVENT_DRAIN_MULT = 0.95;
+const SAFE_ACCEL_EVENT_DRAIN_MULT = 0.62;
 /** 新モデル: 終盤でイベント疲労を速度へ反映する重み */
 const SAFE_GOAL_EVENT_FATIGUE_WEIGHT = 0.42;
 /** 新モデル: 終盤の stamina/m 正規化基準 */
@@ -210,7 +210,7 @@ const COLLISION_REAR_BUFFER_X = 14;
 const INNER_CUTIN_BUFFER_MULT = 1.25;
 const PACK_DENSITY_PENALTY_QUAD = 1.1;
 const STAMINA_CORNER_OUTER_PER_LANE = 0.30;
-const GOAL_STAMINA_DRAIN_MULT = 1.70;
+const GOAL_STAMINA_DRAIN_MULT = 1.35;
 const GOAL_AI = {
   horizonSec: 1.0,
   predictStepSec: 0.10,
@@ -2760,14 +2760,19 @@ function canInsertIntoInnerPocket(frontGap, rearGap, minXGap, ownBuffer = null, 
 // =====================
 //  出馬表の初期描画（充実版）
 // =====================
+/** 残スタミナ表示: 実比率この％未満はバー0%、この％でバー100%（見せ方のスケール） */
+const ENTRY_STAMINA_BAR_RAW_MIN = 60;
+const ENTRY_STAMINA_BAR_RAW_MAX = 100;
+
 function renderEntryList(horses) {
   const listEl = document.getElementById('entry-list');
   if (!listEl) return;
   listEl.innerHTML = '';
   horses.forEach(horse => {
     const waku = JRA_WAKU_COLORS[horse.waku] ?? { bg: '#888', text: '#fff' };
-    const staminaRemainPct = getStaminaRemainPct(horse);
-    const staminaBarClass = getStaminaBarClassName(staminaRemainPct);
+    const staminaRawPct = getStaminaRemainRawPct(horse);
+    const staminaDisplayPct = getStaminaDisplayBarPct(horse);
+    const staminaBarClass = getStaminaBarClassName(staminaRawPct);
     const weightLabel = Number.isFinite(horse.weight) ? `${horse.weight}kg` : '';
     const profileLabel = [horse.sexAge, weightLabel].filter(Boolean).join(' ');
     const sexClass = horse.sexAge?.startsWith('牝')
@@ -2794,8 +2799,8 @@ function renderEntryList(horses) {
         <div class="entry-params">
           <div class="param-row">
             <span class="param-label">残ST</span>
-            <div class="param-bar-bg"><div class="param-bar ${staminaBarClass}" style="width:${staminaRemainPct}%"></div></div>
-            <span class="param-val stamina-remain-val">${staminaRemainPct}</span>
+            <div class="param-bar-bg"><div class="param-bar ${staminaBarClass}" style="width:${staminaDisplayPct}%"></div></div>
+            <span class="param-val stamina-remain-val">${staminaDisplayPct}%</span>
           </div>
         </div>
       </div>
@@ -2804,15 +2809,27 @@ function renderEntryList(horses) {
   });
 }
 
-function getStaminaRemainPct(horse) {
+/** 初期スタミナに対する実残量％（0〜100）。色分けはこの値で判定 */
+function getStaminaRemainRawPct(horse) {
   if (!horse || horse.initialStamina <= 0) return 0;
   const ratio = (horse.stamina / horse.initialStamina) * 100;
   return Math.max(0, Math.min(100, Math.round(ratio)));
 }
 
-function getStaminaBarClassName(staminaPct) {
-  if (staminaPct < 25) return 'stamina-remain-bar is-critical';
-  if (staminaPct < 50) return 'stamina-remain-bar is-warning';
+/**
+ * バー幅・表示用％（ENTRY_STAMINA_BAR_RAW_MIN〜MAX を 0〜100% に線形マップ）
+ */
+function getStaminaDisplayBarPct(horse) {
+  const raw = getStaminaRemainRawPct(horse);
+  const span = ENTRY_STAMINA_BAR_RAW_MAX - ENTRY_STAMINA_BAR_RAW_MIN;
+  if (span <= 0) return raw;
+  const t = (raw - ENTRY_STAMINA_BAR_RAW_MIN) / span;
+  return Math.max(0, Math.min(100, Math.round(t * 100)));
+}
+
+function getStaminaBarClassName(staminaRawPct) {
+  if (staminaRawPct < 25) return 'stamina-remain-bar is-critical';
+  if (staminaRawPct < 50) return 'stamina-remain-bar is-warning';
   return 'stamina-remain-bar';
 }
 
@@ -2820,14 +2837,15 @@ function updateEntryStaminaBars(horses) {
   horses.forEach(horse => {
     const rowEl = document.querySelector(`[data-horse-id="${horse.id}"]`);
     if (!rowEl) return;
-    const pct = getStaminaRemainPct(horse);
+    const rawPct = getStaminaRemainRawPct(horse);
+    const displayPct = getStaminaDisplayBarPct(horse);
     const barEl = rowEl.querySelector('.stamina-remain-bar');
     const valEl = rowEl.querySelector('.stamina-remain-val');
     if (barEl) {
-      barEl.style.width = `${pct}%`;
-      barEl.className = `param-bar ${getStaminaBarClassName(pct)}`;
+      barEl.style.width = `${displayPct}%`;
+      barEl.className = `param-bar ${getStaminaBarClassName(rawPct)}`;
     }
-    if (valEl) valEl.textContent = `${pct}`;
+    if (valEl) valEl.textContent = `${displayPct}%`;
   });
 }
 
