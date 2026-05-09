@@ -70,21 +70,33 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
     else if (marks['〇'] === id) markBonus = 5;
     else if (marks['▲'] === id) markBonus = 3;
 
+    const normalize = v => Math.max(0, Math.min(100, v));
+    const scaleRate = (value, min, max) => normalize(((value - min) / (max - min)) * 100);
+
     // 3着以内回数 / 全出走数
     const results       = horse.results;
     const top3Count     = results.filter(r => r >= 1 && r <= 3).length;
     const totalRuns     = results.length;
-    const top3Rate      = totalRuns > 0 ? top3Count / totalRuns : 0;
+    const horseTop3Rate = totalRuns > 0 ? top3Count / totalRuns : 0;
+
+    // 騎手成績は「勝負に行く力」と「崩さず乗る力」を分けて扱う
+    const jockeyWinRate  = Number.isFinite(jockey.win_rate) ? jockey.win_rate : 0;
+    const hasJockeyTop3Rate = Number.isFinite(jockey.top3_rate);
+    const jockeyTop3Rate = hasJockeyTop3Rate ? jockey.top3_rate : 0.5;
+    const winWithinTop3Rate = jockeyWinRate / Math.max(0.01, jockeyTop3Rate);
+    const J_reliability  = hasJockeyTop3Rate ? scaleRate(jockeyTop3Rate, 0.30, 0.65) : 50;
+    const J_aggression   = hasJockeyTop3Rate
+      ? scaleRate(winWithinTop3Rate, 0.25, 0.55)
+      : 50;
 
     // 生スコア計算
     const rawCruise  = (minAve3f  / horse.ave_3f)  * 80 + tweak.cruise  * 2;
-    const rawManeuv  = (jockey.win_rate * 200)      + tweak.maneuv  * 2 + markBonus;
-    const rawSustain = (top3Rate * 50)              
+    const rawManeuv  = (jockeyWinRate * 200)        + tweak.maneuv  * 2 + markBonus;
+    const rawSustain = (horseTop3Rate * 50)              
                      + (minLast3f / horse.last_3f)  * 30 
                      + tweak.sustain * 2;
 
     // [0, 100] に正規化
-    const normalize = v => Math.max(0, Math.min(100, v));
     const S_cruise  = normalize(rawCruise);
     const M_maneuv  = normalize(rawManeuv);
     const S_sustain = normalize(rawSustain);
@@ -113,6 +125,8 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
       S_cruise,
       M_maneuv,
       S_sustain,
+      J_reliability,
+      J_aggression,
       // --- 実行時状態（シミュレーション中に変化） ---
       stamina:        initialStamina,
       initialStamina,

@@ -40,6 +40,11 @@ export function shouldBattle(rng, horses, a, b) {
   return rng() < prob;
 }
 
+function jockeyReliabilityNorm(horse) {
+  const value = Number.isFinite(horse?.J_reliability) ? horse.J_reliability : 50;
+  return Math.max(0, Math.min(1, value / 100));
+}
+
 /**
  * バトルの勝敗を判定し、敗者にペナルティを適用
  * @returns {{ winner: horse, loser: horse, eA: number, eB: number }}
@@ -52,9 +57,11 @@ export function resolveBattle(rng, a, b, phase) {
   const loser  = eA > eB ? b : a;
 
   // 敗者にペナルティ
-  loser.battlePenalty = CONFIG.BATTLE_PENALTY;
+  const reliability = jockeyReliabilityNorm(loser);
+  const penaltyRecovery = reliability * 0.24;
+  loser.battlePenalty = CONFIG.BATTLE_PENALTY + (1 - CONFIG.BATTLE_PENALTY) * penaltyRecovery;
   loser.battleLosses += 1;
-  loser.stamina      -= CONFIG.BATTLE_STAMINA_COST;
+  loser.stamina      -= CONFIG.BATTLE_STAMINA_COST * (1.08 - reliability * 0.26);
   if (loser.stamina < 0) loser.stamina = 0;
 
   return { winner, loser, eA: Math.round(eA * 10) / 10, eB: Math.round(eB * 10) / 10 };

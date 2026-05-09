@@ -326,6 +326,16 @@ function isKickReserveReleased(phase) {
   return phase.ratio >= FINAL_STRAIGHT_RATIO;
 }
 
+function getJockeyReliabilityNorm(horse) {
+  const value = Number.isFinite(horse?.J_reliability) ? horse.J_reliability : 50;
+  return Math.max(0, Math.min(1, value / 100));
+}
+
+function getJockeyAggressionNorm(horse) {
+  const value = Number.isFinite(horse?.J_aggression) ? horse.J_aggression : 50;
+  return Math.max(0, Math.min(1, value / 100));
+}
+
 /** 脚質に依存しない終盤ポテンシャル（持久・末脚・その日の脚）。早期スタミナ消費にのみ効く */
 function initUniversalKickProfile(horse, rng, last3fMin, last3fMax, last3fSpan) {
   const span = Math.max(0.001, last3fSpan);
@@ -1494,12 +1504,14 @@ function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
 
 function calcStartDelayRate(horse) {
   const maneuvWeakness = Math.max(0, (100 - horse.M_maneuv) / 100);
+  const reliability = getJockeyReliabilityNorm(horse);
   const styleAdj = isOonigeStyle(horse.style) ? 0.82
     : isNigeStyle(horse.style) ? 0.86
     : horse.style === '先行' ? 0.92
       : horse.style === '差し' ? 1.05
         : 1.12;
-  const rate = START_DELAY_BASE_RATE * (0.65 + maneuvWeakness * 0.9) * styleAdj;
+  const reliabilityGuard = 1.08 - reliability * 0.28;
+  const rate = START_DELAY_BASE_RATE * (0.65 + maneuvWeakness * 0.9) * styleAdj * reliabilityGuard;
   return Math.max(0.004, Math.min(0.055, rate));
 }
 
@@ -1541,9 +1553,11 @@ function calcOuterNigePressureNorm(lane) {
 
 function calcStumbleRate(horse) {
   const maneuvWeakness = Math.max(0, (100 - horse.M_maneuv) / 100);
+  const reliability = getJockeyReliabilityNorm(horse);
   const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
   const fatigue = Math.max(0, 1 - staminaRatio);
-  const rate = STUMBLE_BASE_RATE * (0.7 + maneuvWeakness * 0.8 + fatigue * 0.45);
+  const reliabilityGuard = 1.06 - reliability * 0.22;
+  const rate = STUMBLE_BASE_RATE * (0.7 + maneuvWeakness * 0.8 + fatigue * 0.45) * reliabilityGuard;
   return Math.max(0.002, Math.min(0.03, rate));
 }
 
@@ -2026,7 +2040,8 @@ function resolveWeightedBattle(rng, a, b, weights, styleBonusFn = () => 0, optio
   const eB = battleScore(rng, b, weights, styleBonusFn);
   const winner = eA > eB ? a : b;
   const loser  = eA > eB ? b : a;
-  loser.battlePenalty = CONFIG.BATTLE_PENALTY;
+  const penaltyRecovery = getJockeyReliabilityNorm(loser) * 0.24;
+  loser.battlePenalty = CONFIG.BATTLE_PENALTY + (1 - CONFIG.BATTLE_PENALTY) * penaltyRecovery;
   loser.battleLosses += 1;
   const impactOptions = options?.impactOptions ?? { loserAlreadyPenalized: false };
   if (options?.skipStaminaImpact !== true) {
@@ -2044,11 +2059,13 @@ function applyBattleStaminaImpact(winner, loser, options = {}) {
   const loserAlreadyPenalized = Boolean(options.loserAlreadyPenalized);
   const winnerMult = Number.isFinite(options.winnerMult) ? options.winnerMult : 1.0;
   const loserMult = Number.isFinite(options.loserMult) ? options.loserMult : 1.0;
-  const winnerDrain = STAMINA_BATTLE_BASE_COST * winnerMult;
+  const winnerReliabilityGuard = 1.03 - getJockeyReliabilityNorm(winner) * 0.14;
+  const loserReliabilityGuard = 1.08 - getJockeyReliabilityNorm(loser) * 0.26;
+  const winnerDrain = STAMINA_BATTLE_BASE_COST * winnerMult * winnerReliabilityGuard;
   const loserExtraDrainBase = loserAlreadyPenalized
     ? Math.max(0, STAMINA_BATTLE_LOSER_EXTRA - CONFIG.BATTLE_STAMINA_COST * 0.55)
     : STAMINA_BATTLE_LOSER_EXTRA;
-  const loserExtraDrain = loserExtraDrainBase * loserMult;
+  const loserExtraDrain = loserExtraDrainBase * loserMult * loserReliabilityGuard;
 
   winner.stamina = Math.max(0, winner.stamina - winnerDrain);
   loser.stamina = Math.max(0, loser.stamina - loserExtraDrain);
@@ -3926,6 +3943,9 @@ class PhaseController {
     const frontBlocked = Boolean(context.frontBlocked);
     const urgeOvertake = Boolean(context.urgeOvertake);
     const stuckMs = Math.max(0, Math.min(2000, context.stuckMs ?? 0));
+    const jockeyReliability = getJockeyReliabilityNorm(horse);
+    const jockeyAggression = getJockeyAggressionNorm(horse);
+    const riderAggression = Math.max(0, Math.min(1, aggression * 0.68 + jockeyAggression * 0.32));
     const horizonSec = GOAL_AI.horizonSec;
 
     // 進路が完全に空いている、または前方馬が自分以上に速い／実質追いつかない場合は
@@ -3971,10 +3991,13 @@ class PhaseController {
       (Number.isFinite(h.S_cruise) ? h.S_cruise : 50) * 0.4;
     const selfEdge = battleEdgeOf(horse);
     const frontEdge = battleEdgeOf(frontInCurrent);
+    const squeezeRequiredStamina = 0.30 + jockeyReliability * 0.03 - jockeyAggression * 0.04;
+    const squeezeSpeedRatio = 1.06 + jockeyReliability * 0.015 - jockeyAggression * 0.025;
+    const squeezeEdge = Math.max(0.8, Math.min(3.2, 2.0 + jockeyReliability * 1.4 - jockeyAggression * 1.6));
     const isCapableOfSqueeze =
-      staminaRatio >= 0.30 &&                     // 余力が残っている
-      selfDesired >= frontDesired * 1.06 &&       // 出したい速度が明確に速い
-      (selfEdge - frontEdge) >= 2.0;              // バトル勝率 ~70%+
+      staminaRatio >= squeezeRequiredStamina &&   // 余力が残っている
+      selfDesired >= frontDesired * squeezeSpeedRatio && // 出したい速度が明確に速い
+      (selfEdge - frontEdge) >= squeezeEdge;      // 騎手の勝負気質に応じたリスク許容
     const squeeze = (isInnerTrapped && isCapableOfSqueeze)
       ? this._goalDetectInnerSqueezeAhead(horses, horse)
       : null;
@@ -4022,6 +4045,7 @@ class PhaseController {
       const moveCost = Math.abs(lane - currentLane) * GOAL_AI.laneMoveCostPerLane;
       const staminaRisk = Math.max(0, moveCost * 0.18 - staminaRatio * 0.35);
       const blockRisk = Math.max(0, 1 - Math.min(1, projectedGap / Math.max(1, GOAL_BLOCK_X_GAP * 1.3)));
+      const safeLaneBonus = jockeyReliability * Math.max(0, projectedGap - baseProjectedGap) * 0.16;
       const styleBonus = lane * styleOutsideBias * (0.45 + last3fWeight * 0.55);
       const projectedGain = Math.min(projectedGap, 92) * GOAL_AI.projectedGapWeight;
       const keepStraightMult = urgeOvertake && !frontBlocked ? 0.36 : 1;
@@ -4048,18 +4072,19 @@ class PhaseController {
         : 0;
       const score =
         projectedGain -
-        projectedDensity * GOAL_AI.densityWeight -
-        blockRisk * GOAL_AI.blockRiskWeight -
-        moveCost -
+        projectedDensity * GOAL_AI.densityWeight * (1 + jockeyReliability * 0.18) -
+        blockRisk * GOAL_AI.blockRiskWeight * (1 + jockeyReliability * 0.28) -
+        moveCost * (1 + jockeyReliability * 0.14 - jockeyAggression * 0.10) -
         staminaRisk -
         keepStraightPenalty -
         collisionHorizonCost -
         staminaLanePenalty +
         styleBonus +
-        aggression * 0.8 +
-        passLaneBonus +
-        innerEscapeBonus +
-        splitThroughBonus;
+        riderAggression * 0.8 +
+        passLaneBonus * (0.85 + riderAggression * 0.35) +
+        innerEscapeBonus * (0.9 + jockeyReliability * 0.3) +
+        safeLaneBonus +
+        splitThroughBonus * (0.78 + jockeyAggression * 0.45);
       if (Math.abs(lane - currentLane) < 0.01) currentScore = score;
       if (score > bestScore) {
         bestScore = score;
