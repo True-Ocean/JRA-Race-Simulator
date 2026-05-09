@@ -2770,9 +2770,8 @@ function renderEntryList(horses) {
   listEl.innerHTML = '';
   horses.forEach(horse => {
     const waku = JRA_WAKU_COLORS[horse.waku] ?? { bg: '#888', text: '#fff' };
-    const staminaRawPct = getStaminaRemainRawPct(horse);
     const staminaDisplayPct = getStaminaDisplayBarPct(horse);
-    const staminaBarClass = getStaminaBarClassName(staminaRawPct);
+    const staminaBarClass = getStaminaBarClassName(staminaDisplayPct);
     const weightLabel = Number.isFinite(horse.weight) ? `${horse.weight}kg` : '';
     const profileLabel = [horse.sexAge, weightLabel].filter(Boolean).join(' ');
     const sexClass = horse.sexAge?.startsWith('牝')
@@ -2809,7 +2808,7 @@ function renderEntryList(horses) {
   });
 }
 
-/** 初期スタミナに対する実残量％（0〜100）。色分けはこの値で判定 */
+/** 初期スタミナに対する実残量％（0〜100） */
 function getStaminaRemainRawPct(horse) {
   if (!horse || horse.initialStamina <= 0) return 0;
   const ratio = (horse.stamina / horse.initialStamina) * 100;
@@ -2827,9 +2826,10 @@ function getStaminaDisplayBarPct(horse) {
   return Math.max(0, Math.min(100, Math.round(t * 100)));
 }
 
-function getStaminaBarClassName(staminaRawPct) {
-  if (staminaRawPct < 25) return 'stamina-remain-bar is-critical';
-  if (staminaRawPct < 50) return 'stamina-remain-bar is-warning';
+/** 表示％（60〜100実残を 0〜100 にマップした値）で色分け。ラベル・バー幅と一致させる */
+function getStaminaBarClassName(staminaDisplayPct) {
+  if (staminaDisplayPct <= 25) return 'stamina-remain-bar is-critical';
+  if (staminaDisplayPct < 50) return 'stamina-remain-bar is-warning';
   return 'stamina-remain-bar';
 }
 
@@ -2837,13 +2837,12 @@ function updateEntryStaminaBars(horses) {
   horses.forEach(horse => {
     const rowEl = document.querySelector(`[data-horse-id="${horse.id}"]`);
     if (!rowEl) return;
-    const rawPct = getStaminaRemainRawPct(horse);
     const displayPct = getStaminaDisplayBarPct(horse);
     const barEl = rowEl.querySelector('.stamina-remain-bar');
     const valEl = rowEl.querySelector('.stamina-remain-val');
     if (barEl) {
       barEl.style.width = `${displayPct}%`;
-      barEl.className = `param-bar ${getStaminaBarClassName(rawPct)}`;
+      barEl.className = `param-bar ${getStaminaBarClassName(displayPct)}`;
     }
     if (valEl) valEl.textContent = `${displayPct}%`;
   });
