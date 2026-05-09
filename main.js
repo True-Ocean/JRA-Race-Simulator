@@ -147,10 +147,6 @@ const GOAL_ANCHOR_FOLLOW_SCALE = 0.92;
 const GOAL_CAMERA_LERP = 0.085;
 const GOAL_CAMERA_LERP_MAX = 0.16;
 const GOAL_ANCHOR_DYNAMIC_BOOST = 0.12;
-const OONIGE_VISUAL_GAP_START = 14;
-const OONIGE_VISUAL_GAP_FULL = 42;
-const OONIGE_VISUAL_SPREAD_MAX_GAIN = 0.28;
-const OONIGE_VISUAL_LERP = 0.10;
 const STAMINA_LANE_CHANGE_COST = 0.45;
 const STAMINA_ACCEL_COST = 0.10;
 const STAMINA_EARLY_ACCEL_MULT = 1.10;
@@ -230,27 +226,6 @@ function getOonigePhaseDrainMult(phase) {
   return isAfterFourthCornerPhase(phase)
     ? OONIGE_PHASE_DRAIN_LATE_MULT
     : OONIGE_PHASE_DRAIN_EARLY_MULT;
-}
-
-function buildOonigeVisualContext(horses, phase) {
-  if (!Array.isArray(horses) || horses.length < 2) return null;
-  const sortedByFront = [...horses].sort((a, b) => b.x - a.x);
-  const leader = sortedByFront[0] ?? null;
-  const runnerUp = sortedByFront[1] ?? null;
-  if (!leader || !runnerUp || !isOonigeStyle(leader.style)) return null;
-
-  const gap = Math.max(0, leader.x - runnerUp.x);
-  const gapSpan = Math.max(1, OONIGE_VISUAL_GAP_FULL - OONIGE_VISUAL_GAP_START);
-  const gapNorm = Math.max(0, Math.min(1, (gap - OONIGE_VISUAL_GAP_START) / gapSpan));
-  if (gapNorm <= 0) return null;
-
-  const ratio = Number.isFinite(phase?.ratio) ? phase.ratio : 0;
-  const phaseGain = ratio < 0.25 ? 0.45 : ratio < 0.75 ? 1.0 : 0.75;
-  return {
-    leaderId: leader.id,
-    spreadMult: 1 + gapNorm * OONIGE_VISUAL_SPREAD_MAX_GAIN * phaseGain,
-    lerp: OONIGE_VISUAL_LERP,
-  };
 }
 
 function sampleInnerRailGap(rng) {
@@ -2482,7 +2457,6 @@ class PhaseController {
             gateOpenProgress: moveProgress <= 0 ? holdProgress * 0.03 : gateOpenProgress,
             gateYOffset: gateSlide * this.renderer.H * 0.22,
             gateOpacity: 1 - gateSlide * 0.95,
-            oonigeVisual: buildOonigeVisualContext(rendered, phase),
           }
         );
         this.lastRenderedHorses = rendered.map(h => ({ ...h }));
@@ -2516,9 +2490,7 @@ class PhaseController {
         };
       });
 
-      this.renderer.draw(tweened, phase, 1, {
-        oonigeVisual: buildOonigeVisualContext(tweened, phase),
-      });
+      this.renderer.draw(tweened, phase, 1);
       this.lastRenderedHorses = tweened.map(h => ({ ...h }));
       updateEntryStaminaBars(tweened);
       if (progress >= 1) {
