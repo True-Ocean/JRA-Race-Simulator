@@ -104,7 +104,7 @@
     #btn-back-to-pre-race {
       position: fixed;
       top: 10px;
-      left: 12px;
+      left: max(12px, calc((100vw - 1660px) / 2));
       z-index: 150;
       padding: 5px 12px;
       font-size: 0.74rem;
@@ -136,11 +136,13 @@
     /* ===== 3カラムメインレイアウト：左右を広く、中央を縦長に ===== */
     #main-layout {
       display: grid;
-      grid-template-columns: 300px 1fr 320px;
+      grid-template-columns: 320px 1fr 320px;
       grid-template-rows: auto 1fr;
       gap: 10px;
       align-items: stretch;
       min-height: 0;
+      width: min(100%, 1660px);
+      margin: 0 auto;
     }
 
     .section-title {
@@ -215,7 +217,7 @@
     .entry-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
     .entry-meta-line {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 6px;
       min-width: 0;
       overflow: hidden;
@@ -254,10 +256,15 @@
       font-size: 0.54rem;
       font-weight: 700;
       border-radius: 999px;
-      padding: 0 6px;
-      line-height: 1.35;
+      padding: 3px 8px;
+      line-height: 1.25;
       flex: 0 0 auto;
       border: 1px solid transparent;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 1.55em;
+      box-sizing: border-box;
     }
     /* 脚質別（先行隊列→後方加速のイメージで暖色→寒色） */
     .entry-style-inline.entry-style--oonige {
@@ -374,10 +381,13 @@
       padding: 6px;
     }
     #race-log-block {
-      flex: 1;
+      flex: 1 1 0;
+      min-height: 0;
     }
+    /* 着順は行数ぶんの高さに収め、余白をレースログへ回す */
     #placing-log-block {
-      flex: 0 0 26rem;
+      flex: 0 0 auto;
+      min-height: 0;
     }
 
     #log-panel {
@@ -386,9 +396,35 @@
       padding-right: 2px;
     }
     #placing-panel {
-      flex: 1;
+      flex: 0 0 auto;
       overflow-y: auto;
-      padding-right: 2px;
+      padding-right: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      /* 極端に背が高い場合のみスクロール（通常18頭は自然高さで収まる想定） */
+      max-height: min(52vh, calc(100dvh - 16rem));
+    }
+    /* ホーム右・着順掲示板：3列（着順・馬番・馬名）コンパクト表示 */
+    #placing-panel .summary-placing-entry {
+      grid-template-columns: 2.35em 1.85em minmax(0, 1fr);
+      gap: 4px;
+      padding: 3px 6px;
+      align-items: center;
+    }
+    #placing-panel .summary-placing-rank {
+      font-size: 0.68rem;
+      line-height: 1.2;
+    }
+    #placing-panel .summary-placing-name {
+      font-size: 0.66rem;
+      line-height: 1.2;
+    }
+    #placing-panel .summary-placing-badge {
+      width: 1.85em;
+      padding: 1px 0;
+      font-size: 0.68em;
+      line-height: 1.15;
     }
 
     .log-entry {
@@ -502,6 +538,15 @@
     .pre-race-header {
       flex: 0 0 auto;
       text-align: center;
+      width: min(100%, 1320px);
+      margin: 0 auto;
+    }
+    .pre-race-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      margin-bottom: 16px;
+      width: 100%;
     }
     #pre-race-race-info {
       font-size: 0.84rem;
@@ -520,7 +565,7 @@
     .pre-race-table-wrap {
       flex: 1;
       min-height: 0;
-      overflow: hidden;
+      overflow: auto;
       border: 1px solid #1e3a5f;
       border-radius: 8px;
       background: #06111e;
@@ -528,10 +573,13 @@
       flex-direction: column;
       align-items: stretch;
       justify-content: flex-start;
+      width: min(100%, 1320px);
+      margin: 0 auto;
     }
     .pre-race-table-inner {
       flex: 0 0 auto;
-      width: 100%;
+      width: calc(100% - 32px);
+      margin: 0 auto;
       display: flex;
       justify-content: center;
       align-items: flex-start;
@@ -539,10 +587,10 @@
     }
     .pre-race-table {
       width: 100%;
-      min-width: 920px;
+      min-width: 980px;
       table-layout: fixed;
       border-collapse: collapse;
-      font-size: 0.58rem;
+      font-size: 0.68rem;
     }
     .pre-race-table col.col-gate { width: 2.6rem; }
     .pre-race-table col.col-name { width: 16%; min-width: 6rem; }
@@ -560,12 +608,12 @@
       display: inline-block;
     }
     .pre-race-readonly {
-      font-size: 0.58rem;
+      font-size: 0.66rem;
       color: #c7dbe8;
       font-variant-numeric: tabular-nums;
     }
     .pre-race-jockey-name {
-      font-size: 0.58rem;
+      font-size: 0.66rem;
       color: #93c5fd;
       text-align: left;
       overflow: hidden;
@@ -589,7 +637,7 @@
       color: #7eb8d4;
       font-weight: 700;
       letter-spacing: 0.06em;
-      font-size: 0.54rem;
+      font-size: 0.63rem;
       padding: 7px 5px;
     }
     .pre-race-table td.pre-race-num-cell {
@@ -616,7 +664,7 @@
       appearance: none;
       -webkit-appearance: none;
       font-family: inherit;
-      font-size: 0.52rem;
+      font-size: 0.62rem;
       font-weight: 700;
       line-height: 1.35;
       padding: 3px 6px;
@@ -650,7 +698,7 @@
     .pre-race-stepper button {
       flex: 0 0 auto;
       padding: 2px 6px;
-      font-size: 0.58rem;
+      font-size: 0.64rem;
       min-width: 1.55rem;
       line-height: 1.25;
     }
@@ -660,30 +708,27 @@
       font-variant-numeric: tabular-nums;
       color: #e7f3fb;
     }
-    .pre-race-footer {
-      flex: 0 0 auto;
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 8px;
-      padding-top: 2px;
-      flex-shrink: 0;
-    }
-    #btn-pre-race-to-stats {
-      min-width: 10rem;
+    #btn-pre-race-confirm {
+      padding: 6px 14px;
       font-size: 0.78rem;
-      padding: 7px 14px;
+      font-family: inherit;
+      letter-spacing: 0;
+      cursor: pointer;
       background: #1e3a52;
       border: 1px solid #445566;
       color: #e7f3fb;
-      cursor: pointer;
-      font-family: inherit;
+      width: 9.4rem;
+      border-radius: 0;
+      transition: none;
     }
-    #btn-pre-race-confirm {
-      min-width: 14rem;
-      font-size: 0.82rem;
-      letter-spacing: 0.12em;
-      padding: 7px 18px;
+    #btn-pre-race-confirm:hover {
+      background: #1e3a52;
+      color: #e7f3fb;
+      filter: brightness(1.08);
+    }
+    #btn-pre-race-confirm:active {
+      background: #1e3a52;
+      color: #e7f3fb;
     }
 
     /* ===== レースサマリー画面（全画面オーバーレイ） ===== */
@@ -703,6 +748,7 @@
       max-width: 100%;
       box-sizing: border-box;
       overflow: hidden;
+      align-items: center;
     }
     #race-summary-screen[hidden] {
       display: none !important;
@@ -713,6 +759,7 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      width: min(100%, 1320px);
     }
     .summary-toolbar {
       display: flex;
@@ -772,9 +819,11 @@
       flex: 1;
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(360px, 1.05fr) minmax(420px, 1.6fr);
+      grid-template-columns: minmax(340px, 500px) minmax(460px, 806px);
       gap: 14px;
       align-items: stretch;
+      width: min(100%, 1320px);
+      justify-content: center;
     }
 
     .summary-board,
@@ -808,7 +857,7 @@
 
     .summary-placing-entry {
       display: grid;
-      grid-template-columns: 3.2em 2.4em minmax(0, 1fr) auto;
+      grid-template-columns: 3.2em 2.4em minmax(0, 1fr) minmax(9.6em, auto);
       align-items: center;
       gap: 8px;
       padding: 8px 10px;
@@ -861,12 +910,34 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .summary-placing-meta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.55em;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .summary-placing-sex-age {
+      font-size: 0.7rem;
+      color: #c8d4e0;
+      letter-spacing: 0.03em;
+      font-weight: 700;
+    }
+    .summary-placing-sex-age.is-male {
+      color: #93c5fd;
+      text-shadow: 0 0 5px rgba(147, 197, 253, 0.28);
+    }
+    .summary-placing-sex-age.is-female {
+      color: #f9a8d4;
+      text-shadow: 0 0 5px rgba(249, 168, 212, 0.28);
+    }
     .summary-placing-jockey {
       font-size: 0.7rem;
       color: #93c5fd;
-      letter-spacing: 0.03em;
-      text-align: right;
-      white-space: nowrap;
+      letter-spacing: 0.02em;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     #summary-horse-events {
@@ -907,12 +978,6 @@
     .summary-horse-head .summary-horse-name {
       font-weight: 700;
       color: #ffffff;
-    }
-    .summary-horse-head .summary-horse-meta {
-      margin-left: auto;
-      font-size: 0.62rem;
-      color: #93b5cf;
-      letter-spacing: 0.03em;
     }
     .summary-horse-events {
       display: flex;
@@ -967,6 +1032,9 @@
   <!-- プレレース：出走パラメータ調整（初期表示） -->
   <div id="pre-race-editor" hidden aria-label="出走パラメータ編集">
     <div class="pre-race-header">
+      <div class="pre-race-toolbar">
+        <button type="button" id="btn-pre-race-confirm">シミュレーター画面</button>
+      </div>
       <h1 class="app-main-title">
         <span class="title-brand-icon" aria-hidden="true">🏇</span>
         <span class="title-text">JRA RACE SIMULATOR</span>
@@ -1006,10 +1074,6 @@
         <tbody id="pre-race-tbody"></tbody>
       </table>
       </div>
-    </div>
-    <div class="pre-race-footer">
-      <button type="button" id="btn-pre-race-to-stats">集計画面へ</button>
-      <button type="button" id="btn-pre-race-confirm">シミュレータへ進む</button>
     </div>
   </div>
 

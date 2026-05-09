@@ -1296,16 +1296,19 @@ function formatLogLineHtml(logLine, horseMetaByName) {
   return `${tagHtml} ${bodyHtml}`;
 }
 
-function formatPlacingLineHtml(rank, horseName, horseMetaByName) {
-  const safeRank = Number.isFinite(rank) ? `${rank}着` : '';
-  const safeName = escapeHtml(horseName ?? '');
-  const meta = horseMetaByName?.get(horseName);
-  if (!meta) {
-    return `<span class="placing-rank">${safeRank}</span> <span class="horse-name">${safeName}</span>`;
-  }
-  const waku = JRA_WAKU_COLORS[meta.waku] ?? { bg: '#888', text: '#fff' };
-  const badge = `<span class="horse-badge" style="background:${waku.bg};color:${waku.text};">${meta.gate}</span>`;
-  return `<span class="placing-rank">${safeRank}</span> ${badge} <span class="horse-name">${safeName}</span>`;
+/** ホーム画面・着順掲示板（着順・馬番・馬名のみ） */
+function formatHomePlacingRowInnerHtml(rank, horse, horseMetaByName) {
+  const meta = horseMetaByName?.get(horse.name);
+  const waku = meta ? (JRA_WAKU_COLORS[meta.waku] ?? { bg: '#888', text: '#fff' }) : null;
+  const badgeHtml =
+    meta && waku
+      ? `<span class="summary-placing-badge" style="background:${waku.bg};color:${waku.text};">${meta.gate}</span>`
+      : '<span class="summary-placing-badge" style="background:#1e3a5f;color:#fff;">-</span>';
+  return `
+      <span class="summary-placing-rank">${rank}着</span>
+      ${badgeHtml}
+      <span class="summary-placing-name">${escapeHtml(horse.name)}</span>
+    `;
 }
 
 /** レースサマリ用ログ行かどうか（イベント抽出から除外する） */
@@ -1413,6 +1416,9 @@ function renderRaceSummaryScreen({
   });
 
   const orderedIds = buildSummaryPlacingOrderIds(finishOrderIds, simResults);
+  const sexAgeById = new Map(
+    (raceData?.entries ?? []).map((entry, idx) => [idx, String(entry?.horse?.sex_age ?? '')]),
+  );
 
   placingsEl.innerHTML = '';
   const placingItems = orderedIds.map((id, idx) => {
@@ -1424,7 +1430,13 @@ function renderRaceSummaryScreen({
     const badgeHtml = meta && waku
       ? `<span class="summary-placing-badge" style="background:${waku.bg};color:${waku.text};">${meta.gate}</span>`
       : '<span class="summary-placing-badge" style="background:#1e3a5f;color:#fff;">-</span>';
-    const jockeyLabel = horse.jockeyName ? `騎手 ${horse.jockeyName}` : '';
+    const sexAgeLabel = sexAgeById.get(id) || String(horse.sexAge ?? '');
+    const sexAgeClass = sexAgeLabel.startsWith('牝')
+      ? ' is-female'
+      : sexAgeLabel.startsWith('牡')
+        ? ' is-male'
+        : '';
+    const jockeyName = horse.jockeyName ? String(horse.jockeyName) : '—';
     const rankClass = rank === 1 ? ' is-top1' : rank === 2 ? ' is-top2' : rank === 3 ? ' is-top3' : '';
     const div = document.createElement('div');
     div.className = `summary-placing-entry${rankClass}`;
@@ -1432,7 +1444,10 @@ function renderRaceSummaryScreen({
       <span class="summary-placing-rank">${rank}着</span>
       ${badgeHtml}
       <span class="summary-placing-name">${escapeHtml(horse.name)}</span>
-      <span class="summary-placing-jockey">${escapeHtml(jockeyLabel)}</span>
+      <span class="summary-placing-meta">
+        <span class="summary-placing-sex-age${sexAgeClass}">${escapeHtml(sexAgeLabel || '—')}</span>
+        <span class="summary-placing-jockey">${escapeHtml(jockeyName)}</span>
+      </span>
     `;
     placingsEl.appendChild(div);
     return { id: horse.id, rank, horse };
@@ -1455,17 +1470,12 @@ function renderRaceSummaryScreen({
     const badgeHtml = meta && waku
       ? `<span class="horse-badge" style="background:${waku.bg};color:${waku.text};">${meta.gate}</span>`
       : '';
-    const styleLabel = horse.style ? horse.style : '';
-    const jockeyLabel = horse.jockeyName ? `騎手 ${horse.jockeyName}` : '';
-    const metaParts = [styleLabel, jockeyLabel].filter(Boolean);
-
     const head = document.createElement('div');
     head.className = 'summary-horse-head';
     head.innerHTML = `
       <span class="summary-horse-rank">${rank}着</span>
       ${badgeHtml}
       <span class="summary-horse-name">${escapeHtml(horse.name)}</span>
-      <span class="summary-horse-meta">${metaParts.map(escapeHtml).join('　')}</span>
     `;
     block.appendChild(head);
 
@@ -2947,7 +2957,7 @@ function round100(n) {
 }
 
 /**
- * プレレース表をビューポート内の領域に収める（内部スクロールを不要にする）
+ * プレレース表の見やすさを保ちつつ、必要時のみ軽く縮小する
  */
 function updatePreRaceTableFit() {
   const editor = document.getElementById('pre-race-editor');
@@ -2961,12 +2971,11 @@ function updatePreRaceTableFit() {
   inner.style.marginBottom = '';
 
   const availH = wrap.clientHeight;
-  const availW = wrap.clientWidth;
   const nh = inner.scrollHeight;
-  const nw = inner.scrollWidth;
-  if (availH < 8 || availW < 8 || nh < 1 || nw < 1) return;
+  if (availH < 8 || nh < 1) return;
 
-  const scale = Math.min(1, availH / nh, availW / nw);
+  const scaleByHeight = availH / nh;
+  const scale = Math.max(0.9, Math.min(1, scaleByHeight));
   if (scale >= 0.999) return;
 
   inner.style.transform = `scale(${scale})`;
@@ -3473,11 +3482,13 @@ class PhaseController {
     this.logPanel.scrollTop = this.logPanel.scrollHeight;
   }
 
-  _appendPlacingLog(line, isTop5 = false) {
+  _appendPlacingRow(rank, horse) {
     if (!this.placingPanel) return;
     const div = document.createElement('div');
-    div.className = isTop5 ? 'placing-entry top5' : 'placing-entry';
-    div.innerHTML = line;
+    const rankClass =
+      rank === 1 ? ' is-top1' : rank === 2 ? ' is-top2' : rank === 3 ? ' is-top3' : '';
+    div.className = `summary-placing-entry${rankClass}`;
+    div.innerHTML = formatHomePlacingRowInnerHtml(rank, horse, this.horseMetaByName);
     this.placingPanel.appendChild(div);
     this.placingPanel.scrollTop = this.placingPanel.scrollHeight;
   }
@@ -3487,11 +3498,8 @@ class PhaseController {
     this.placingPanel.innerHTML = '';
   }
 
-  _setPlacingLog(rank, horseName) {
-    this._appendPlacingLog(
-      formatPlacingLineHtml(rank, horseName, this.horseMetaByName),
-      rank <= 5,
-    );
+  _setPlacingLog(rank, horse) {
+    this._appendPlacingRow(rank, horse);
   }
 
   _playGoalApproach(onDone) {
@@ -4732,7 +4740,7 @@ class PhaseController {
       this._goalRankOrder.push(horse.id);
       if (!this._goalPlacingHeaderLogged) this._goalPlacingHeaderLogged = true;
       const placing = this._goalRankOrder.length;
-      this._setPlacingLog(placing, horse.name);
+      this._setPlacingLog(placing, horse);
     }
   }
 
@@ -5201,17 +5209,6 @@ Promise.all([
       restoreSimulatorStateFromSession();
     }
 
-    document.getElementById('btn-pre-race-to-stats')?.addEventListener('click', () => {
-      try {
-        sessionStorage.setItem(SESSION_KEY_STATS_RETURN_SCREEN, 'pre-race');
-        sessionStorage.removeItem(SESSION_KEY_SIMULATOR_STATE);
-        sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
-      } catch {
-        /* ignore */
-      }
-      persistRaceBundleToSession(runtimeRaceData, userTweaksState, {});
-      window.location.assign('stats.html');
-    });
   })
   .catch(err => {
     console.error('JSONの読み込みに失敗しました:', err);

@@ -203,10 +203,6 @@ function renderTable() {
     return;
   }
   const emptyMetricCells = Array.from({ length: 6 }, () => '<td class="stats-col-metric"></td>').join('');
-  const emptyHorseCells =
-    '<td class="stats-horse-block stats-horse-block-start"></td>' +
-    '<td class="stats-horse-block stats-horse-block-mid"></td>' +
-    '<td class="stats-horse-block stats-horse-block-end"></td>';
   const metricCols = Array.from({ length: 6 }, () => '<col class="stats-col-metric" />').join('');
   const horseCols =
     '<col class="stats-col-horse-main" />' +
@@ -234,7 +230,7 @@ function renderTable() {
         const entry = runtimeRaceData.entries[r.id];
         const statCells =
           trials === 0
-            ? emptyHorseCells + emptyMetricCells
+            ? `${horseBlockCellsHtml(entry, r.gate, fieldSize)}${emptyMetricCells}`
             : `${horseBlockCellsHtml(entry, r.gate, fieldSize)}` +
               `<td class="stats-col-metric">${fmtAvg(r.avgRank)}</td>` +
               `<td class="stats-col-metric">${pct(r.winRate)}</td>` +
