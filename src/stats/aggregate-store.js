@@ -4,6 +4,8 @@
 
 export const STORAGE_KEY_AGGREGATE = 'jra-sim-aggregate-v1';
 export const STORAGE_KEY_BUNDLE = 'jra-sim-bundle-v1';
+/** 集計画面から戻るとき、プレレースではなくシミュレータ本体を開く */
+export const SESSION_KEY_OPEN_SIMULATOR = 'jra-open-simulator';
 
 /** FNV-1a 風の軽量ハッシュ（同期・短いキー用） */
 export function hashString(str) {
@@ -118,10 +120,8 @@ export function computeAggregateRows(p) {
   const { runtimeRaceData, userTweaks, marks } = p;
   const bucketKey = computeBucketKey(runtimeRaceData, userTweaks, marks);
   const state = loadAggregateState();
-  if (!state.runs.length || state.bucketKey !== bucketKey) {
-    return { rows: [], trials: 0, batch: 0, manual: 0 };
-  }
-  const runs = manualRunsOnly(state.runs);
+  const keyOk = Boolean(state.bucketKey) && state.bucketKey === bucketKey;
+  const runs = keyOk ? manualRunsOnly(state.runs) : [];
   const n = runs.length;
   const counts = runCountsBySource(state);
 
@@ -131,6 +131,23 @@ export function computeAggregateRows(p) {
     const entry = runtimeRaceData.entries[id];
     const name = entry?.horse?.name ?? `馬${id + 1}`;
     const gate = entry?.gate ?? id + 1;
+    if (n === 0) {
+      rows.push({
+        id,
+        gate,
+        name,
+        wins: 0,
+        top2: 0,
+        top3: 0,
+        winRate: 0,
+        top2Rate: 0,
+        top3Rate: 0,
+        avgRank: null,
+        bestRank: null,
+        worstRank: null,
+      });
+      continue;
+    }
     let wins = 0;
     let top2 = 0;
     let top3 = 0;
@@ -157,6 +174,9 @@ export function computeAggregateRows(p) {
       wins,
       top2,
       top3,
+      winRate: n ? wins / n : 0,
+      top2Rate: n ? top2 / n : 0,
+      top3Rate: n ? top3 / n : 0,
       avgRank: n ? sumPlace / n : null,
       bestRank: Number.isFinite(best) ? best : null,
       worstRank: n ? worst : null,

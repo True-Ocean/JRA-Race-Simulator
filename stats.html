@@ -14,34 +14,25 @@
       padding: 16px 14px 32px;
     }
     a { color: #7eb8d4; }
-    h1 {
-      color: #f0c040;
-      font-size: clamp(1.05rem, 2vw + 0.6rem, 1.65rem);
-      margin-bottom: 10px;
-      text-shadow: 0 0 10px rgba(240,192,64,0.45);
-    }
-    .stats-top {
+    .stats-toolbar {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
+      justify-content: space-between;
       gap: 10px 16px;
-      margin-bottom: 14px;
+      margin-bottom: 16px;
+      width: 100%;
     }
-    .stats-muted { color: #8899aa; font-size: 0.88rem; }
-    #stats-error { color: #f08080; margin-bottom: 8px; min-height: 1.2em; }
-    #stats-race-info {
-      font-size: 0.72rem;
-      color: #8cb8d1;
-      background: #06111e;
-      border: 1px solid #1e3a5f;
-      border-radius: 8px;
-      padding: 8px 10px;
-      letter-spacing: 0.02em;
-      line-height: 1.4;
-      margin-bottom: 8px;
-      max-width: 100%;
+    #btn-stats-back {
+      padding: 6px 14px;
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+      background: #1e3a52;
+      border: 1px solid #445566;
+      color: #e7f3fb;
     }
-    #stats-race-info b { color: #e7f3fb; font-weight: bold; }
+    #btn-stats-back:hover { filter: brightness(1.08); }
     #btn-stats-reset {
       padding: 6px 14px;
       font-size: 0.78rem;
@@ -52,50 +43,211 @@
       color: #f0d0d0;
     }
     #btn-stats-reset:hover { filter: brightness(1.08); }
+    .stats-page-center {
+      max-width: 1040px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+    h1 {
+      color: #f0c040;
+      font-size: clamp(1.05rem, 2vw + 0.6rem, 1.65rem);
+      margin-bottom: 10px;
+      text-align: center;
+      width: 100%;
+      text-shadow: 0 0 10px rgba(240,192,64,0.45);
+    }
+    #stats-trial-summary {
+      font-size: 0.85rem;
+      color: #aabccc;
+      margin-bottom: 12px;
+      text-align: center;
+      width: 100%;
+    }
+    .stats-muted { color: #8899aa; font-size: 0.88rem; }
+    #stats-error {
+      color: #f08080;
+      margin: 0 auto 10px;
+      min-height: 1.2em;
+      text-align: center;
+      max-width: 1040px;
+    }
+    #stats-race-info {
+      font-size: 0.72rem;
+      color: #8cb8d1;
+      background: #06111e;
+      border: 1px solid #1e3a5f;
+      border-radius: 8px;
+      padding: 8px 10px;
+      letter-spacing: 0.02em;
+      line-height: 1.4;
+      margin-bottom: 14px;
+      width: 100%;
+      max-width: 1040px;
+      text-align: center;
+    }
+    #stats-race-info b { color: #e7f3fb; font-weight: bold; }
+    #stats-table-wrap {
+      width: 100%;
+      max-width: 1040px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #stats-table-wrap > .stats-muted { text-align: center; margin-top: 8px; }
     .stats-table {
       width: 100%;
-      max-width: 900px;
+      max-width: 1040px;
       border-collapse: collapse;
-      font-size: 0.82rem;
+      table-layout: fixed;
+      font-size: 1rem;
+      margin: 0 auto;
     }
+    .stats-table col.stats-col-horse-main { width: 23%; }
+    .stats-table col.stats-col-horse-sex { width: 5%; }
+    .stats-table col.stats-col-horse-jockey { width: 9%; }
+    .stats-table col.stats-col-metric { width: 10.5%; }
     .stats-table th,
     .stats-table td {
       border: 1px solid #2a3f55;
-      padding: 6px 8px;
+      padding: 6px 5px;
       text-align: left;
     }
     .stats-table th {
       background: #152535;
       color: #b8c8d8;
     }
-    .stats-table tr:nth-child(even) td { background: rgba(0,0,0,0.12); }
-    .stats-gate-cell {
-      vertical-align: middle;
+    .stats-table th.stats-col-metric {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      font-size: 0.72rem;
+      line-height: 1.2;
+      padding: 5px 3px;
+      letter-spacing: -0.02em;
     }
+    .stats-table th.stats-sortable:hover {
+      color: #e7f3fb;
+      background: #1a3048;
+    }
+    .stats-table td.stats-col-metric {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.88rem;
+    }
+    .stats-table th.stats-horse-th-merged {
+      text-align: center;
+    }
+    .stats-table th.stats-horse-sort-th {
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      font-size: 0.72rem;
+      line-height: 1.2;
+      padding: 5px 4px;
+      letter-spacing: -0.02em;
+    }
+    .stats-table th.stats-horse-sort-th:hover {
+      color: #e7f3fb;
+      background: #1a3048;
+    }
+    .stats-horse-block {
+      vertical-align: middle;
+      background-clip: padding-box;
+    }
+    /* 3分割したが外枠は1つのセルブロックのように見せる */
+    .stats-table td.stats-horse-block-start {
+      text-align: left;
+      border-right: none;
+      padding-left: 10px;
+      padding-right: 4px;
+    }
+    .stats-table td.stats-horse-block-mid {
+      text-align: center;
+      border-left: none;
+      border-right: none;
+      padding-left: 4px;
+      padding-right: 4px;
+      white-space: nowrap;
+    }
+    .stats-table td.stats-horse-block-end {
+      text-align: left;
+      border-left: none;
+      padding-left: 4px;
+      padding-right: 2px;
+    }
+    .stats-horse-main-inner {
+      display: inline-flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+      max-width: 100%;
+    }
+    .stats-horse-name-inline {
+      font-weight: bold;
+      color: #f0f4f8;
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 100%;
+      white-space: normal;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+    }
+    .stats-sex {
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .stats-sex.is-male {
+      color: #93c5fd;
+      text-shadow: 0 0 5px rgba(147, 197, 253, 0.28);
+    }
+    .stats-sex.is-female {
+      color: #f9a8d4;
+      text-shadow: 0 0 5px rgba(249, 168, 212, 0.28);
+    }
+    .stats-sex:not(.is-male):not(.is-female) {
+      color: #c8d4e0;
+    }
+    .stats-jockey {
+      font-size: 0.82rem;
+      color: #aabccc;
+      white-space: normal;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+    }
+    .stats-table tr:nth-child(even) td { background: rgba(0,0,0,0.12); }
     .entry-gate {
       display: inline-block;
-      width: 24px;
-      height: 24px;
+      width: 26px;
+      height: 26px;
       border-radius: 4px;
       text-align: center;
-      line-height: 24px;
+      line-height: 26px;
       font-weight: bold;
-      font-size: 0.74rem;
+      font-size: 0.8rem;
       flex-shrink: 0;
     }
-    #stats-trial-summary { font-size: 0.85rem; color: #aabccc; margin-bottom: 8px; }
   </style>
 </head>
 <body>
-  <div class="stats-top">
-    <a href="./index.html">← シミュレータに戻る</a>
+  <div class="stats-toolbar">
+    <button type="button" id="btn-stats-back">シミュレータに戻る</button>
     <button type="button" id="btn-stats-reset">集計リセット</button>
   </div>
-  <h1>📈 シミュレーション集計</h1>
   <p id="stats-error" aria-live="polite"></p>
-  <div id="stats-race-info"></div>
-  <p id="stats-trial-summary" class="stats-muted"></p>
-  <div id="stats-table-wrap"></div>
+  <div class="stats-page-center">
+    <h1>📈 シミュレーション集計</h1>
+    <p id="stats-trial-summary" class="stats-muted"></p>
+    <div id="stats-race-info"></div>
+    <div id="stats-table-wrap"></div>
+  </div>
   <script type="module" src="./src/stats/stats-app.js"></script>
 </body>
 </html>

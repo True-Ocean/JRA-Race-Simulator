@@ -12,7 +12,9 @@ import {
   computeBucketKey,
   loadAggregateState,
   persistRaceBundleToSession,
+  SESSION_KEY_OPEN_SIMULATOR,
 } from './src/stats/aggregate-store.js';
+import { formatRaceInfo, resolveCourseDef } from './src/stats/race-display.js';
 
 // JRA枠色（枠番1〜8）
 const JRA_WAKU_COLORS = {
@@ -1302,50 +1304,6 @@ function formatPlacingLineHtml(rank, horseName, horseMetaByName) {
   return `<span class="placing-rank">${safeRank}</span> ${badge} <span class="horse-name">${safeName}</span>`;
 }
 
-function formatRaceInfo(raceData) {
-  const info = raceData.race_info;
-  const formatRaceDate = (value) => {
-    if (!value) return '';
-    if (value instanceof Date && !Number.isNaN(value.getTime())) {
-      return `${value.getFullYear()}年${value.getMonth() + 1}月${value.getDate()}日`;
-    }
-    if (typeof value === 'number') {
-      const raw = String(value);
-      if (/^\d{8}$/.test(raw)) {
-        return `${raw.slice(0, 4)}年${Number(raw.slice(4, 6))}月${Number(raw.slice(6, 8))}日`;
-      }
-      return '';
-    }
-    if (typeof value !== 'string') return '';
-
-    const compact = value.trim();
-    const normalized = compact.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
-    if (normalized) {
-      const [, y, m, d] = normalized;
-      return `${y}年${Number(m)}月${Number(d)}日`;
-    }
-    const compactDigits = compact.match(/^(\d{4})(\d{2})(\d{2})$/);
-    if (compactDigits) {
-      const [, y, m, d] = compactDigits;
-      return `${y}年${Number(m)}月${Number(d)}日`;
-    }
-    return compact;
-  };
-
-  const dateLabel = formatRaceDate(info.date || raceData.race_date);
-  const parts = [
-    dateLabel,
-    info.venue,
-    info.age_condition,
-    info.grade,
-    info.race_name,
-    info.track,
-    Number.isFinite(info.distance) ? `${info.distance}m` : '',
-  ].filter(Boolean);
-
-  return parts.join('　');
-}
-
 /** レースサマリ用ログ行かどうか（イベント抽出から除外する） */
 function isRaceSummaryRelatedLine(line) {
   if (typeof line !== 'string') return true;
@@ -1535,20 +1493,6 @@ function renderRaceSummaryScreen({
 function hideRaceSummaryScreen() {
   const screenEl = document.getElementById('race-summary-screen');
   if (screenEl) screenEl.hidden = true;
-}
-
-function resolveCourseDef(raceData, courseCatalog) {
-  const requestedId = raceData?.race_info?.course_id;
-  const courses = courseCatalog?.courses ?? [];
-  if (requestedId) {
-    const found = courses.find(c => c.id === requestedId);
-    if (found) return found;
-  }
-  if (courseCatalog?.defaultCourseId) {
-    const fallback = courses.find(c => c.id === courseCatalog.defaultCourseId);
-    if (fallback) return fallback;
-  }
-  return null;
 }
 
 function applyStartSlowMotion(progress) {
@@ -3035,7 +2979,7 @@ function schedulePreRaceTableFit() {
 /**
  * 出走表プレレース編集 UI を構築する（runtimeRaceData.entries を直接更新）
  */
-function mountPreRaceEditor(runtimeRaceData, onConfirm, onBeforeConfirm) {
+function mountPreRaceEditor(runtimeRaceData, onConfirm, onBeforeConfirm, options = {}) {
   const tbody = document.getElementById('pre-race-tbody');
   const infoEl = document.getElementById('pre-race-race-info');
   const btn = document.getElementById('btn-pre-race-confirm');
@@ -3230,6 +3174,12 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm, onBeforeConfirm) {
     ro.observe(wrapEl);
   }
   window.addEventListener('resize', schedulePreRaceTableFit);
+
+  if (options.openSimulatorDirect) {
+    if (!(typeof onBeforeConfirm === 'function' && onBeforeConfirm() === false)) {
+      onConfirm();
+    }
+  }
 }
 
 function renderEntryList(horses) {
@@ -5065,13 +5015,25 @@ Promise.all([
       return true;
     }
 
-    mountPreRaceEditor(runtimeRaceData, () => {
-      const preRaceEl = document.getElementById('pre-race-editor');
-      if (preRaceEl) preRaceEl.hidden = true;
-      if (btnBackToPreRace) btnBackToPreRace.hidden = false;
-      applyComputedHorsesToUi();
-      bindRaceControlsOnce();
-    }, preRaceBeforeConfirm);
+    const openSimulatorDirect =
+      typeof sessionStorage !== 'undefined' &&
+      sessionStorage.getItem(SESSION_KEY_OPEN_SIMULATOR) === '1';
+    if (openSimulatorDirect) {
+      sessionStorage.removeItem(SESSION_KEY_OPEN_SIMULATOR);
+    }
+
+    mountPreRaceEditor(
+      runtimeRaceData,
+      () => {
+        const preRaceEl = document.getElementById('pre-race-editor');
+        if (preRaceEl) preRaceEl.hidden = true;
+        if (btnBackToPreRace) btnBackToPreRace.hidden = false;
+        applyComputedHorsesToUi();
+        bindRaceControlsOnce();
+      },
+      preRaceBeforeConfirm,
+      { openSimulatorDirect },
+    );
 
     document.getElementById('btn-pre-race-to-stats')?.addEventListener('click', () => {
       persistRaceBundleToSession(runtimeRaceData, userTweaksState, {});
