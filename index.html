@@ -215,14 +215,49 @@
       flex: 0 0 auto;
     }
     .entry-style-inline {
-      color: #86efac;
       font-size: 0.54rem;
       font-weight: 700;
-      border: 1px solid rgba(134, 239, 172, 0.45);
       border-radius: 999px;
       padding: 0 6px;
       line-height: 1.35;
       flex: 0 0 auto;
+      border: 1px solid transparent;
+    }
+    /* 脚質別（先行隊列→後方加速のイメージで暖色→寒色） */
+    .entry-style-inline.entry-style--oonige {
+      color: #fdba74;
+      border-color: rgba(251, 146, 60, 0.7);
+      background: rgba(234, 88, 12, 0.22);
+      box-shadow: 0 0 8px rgba(249, 115, 22, 0.2);
+    }
+    .entry-style-inline.entry-style--nige {
+      color: #fde047;
+      border-color: rgba(234, 179, 8, 0.65);
+      background: rgba(161, 98, 7, 0.2);
+      box-shadow: 0 0 6px rgba(234, 179, 8, 0.18);
+    }
+    .entry-style-inline.entry-style--senko {
+      color: #7dd3fc;
+      border-color: rgba(56, 189, 248, 0.6);
+      background: rgba(3, 105, 161, 0.22);
+      box-shadow: 0 0 6px rgba(14, 165, 233, 0.18);
+    }
+    .entry-style-inline.entry-style--sashi {
+      color: #86efac;
+      border-color: rgba(74, 222, 128, 0.55);
+      background: rgba(22, 101, 52, 0.22);
+      box-shadow: 0 0 6px rgba(34, 197, 94, 0.15);
+    }
+    .entry-style-inline.entry-style--oikomi {
+      color: #d8b4fe;
+      border-color: rgba(192, 132, 252, 0.65);
+      background: rgba(107, 33, 168, 0.22);
+      box-shadow: 0 0 8px rgba(168, 85, 247, 0.22);
+    }
+    .entry-style-inline.entry-style--default {
+      color: #a7f3d0;
+      border-color: rgba(134, 239, 172, 0.45);
+      background: rgba(16, 185, 129, 0.12);
     }
 
     /* パラメータバー */

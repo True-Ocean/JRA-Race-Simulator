@@ -2764,6 +2764,19 @@ function canInsertIntoInnerPocket(frontGap, rearGap, minXGap, ownBuffer = null, 
 const ENTRY_STAMINA_BAR_RAW_MIN = 60;
 const ENTRY_STAMINA_BAR_RAW_MAX = 100;
 
+/** 出馬表の脚質バッジ用クラス（index.html の .entry-style--* と対応） */
+const ENTRY_STYLE_BADGE_CLASS = {
+  大逃げ: 'entry-style--oonige',
+  逃げ: 'entry-style--nige',
+  先行: 'entry-style--senko',
+  差し: 'entry-style--sashi',
+  追込: 'entry-style--oikomi',
+};
+
+function getEntryStyleBadgeClass(style) {
+  return ENTRY_STYLE_BADGE_CLASS[style] ?? 'entry-style--default';
+}
+
 function renderEntryList(horses) {
   const listEl = document.getElementById('entry-list');
   if (!listEl) return;
@@ -2793,7 +2806,7 @@ function renderEntryList(horses) {
           <span class="entry-name">${horse.name}</span>
           ${profileLabel ? `<span class="entry-demographics ${sexClass}">${profileLabel}</span>` : ''}
           <span class="entry-jockey-inline">🏇 ${horse.jockeyName ?? ''}</span>
-          <span class="entry-style-inline">${horse.style}</span>
+          <span class="entry-style-inline ${getEntryStyleBadgeClass(horse.style)}">${horse.style}</span>
         </div>
         <div class="entry-params">
           <div class="param-row">
