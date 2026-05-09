@@ -2,16 +2,26 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>集計 · JRA RACE SIMULATOR</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
     body {
       background: #0d1b2a;
       color: #e0e0e0;
       font-family: 'Courier New', monospace;
       min-height: 100dvh;
-      padding: 16px 14px 32px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      padding:
+        max(16px, env(safe-area-inset-top, 0px))
+        max(14px, env(safe-area-inset-right, 0px))
+        max(32px, env(safe-area-inset-bottom, 0px))
+        max(14px, env(safe-area-inset-left, 0px));
     }
     a { color: #7eb8d4; }
     .stats-toolbar {
@@ -24,6 +34,9 @@
       width: min(100%, 1040px);
       margin-left: auto;
       margin-right: auto;
+    }
+    button {
+      touch-action: manipulation;
     }
     #btn-stats-back {
       padding: 6px 14px;
@@ -269,6 +282,77 @@
       font-weight: bold;
       font-size: 0.8rem;
       flex-shrink: 0;
+    }
+
+    @media (min-width: 1025px) {
+      #stats-race-info br.race-info-break {
+        display: none;
+      }
+    }
+
+    @media (max-width: 1024px) {
+      .stats-toolbar {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px 8px;
+        flex-direction: unset;
+        flex-wrap: unset;
+        align-items: stretch;
+        justify-content: stretch;
+        width: 100%;
+        max-width: none;
+        margin-bottom: 12px;
+      }
+      #btn-stats-back,
+      #btn-stats-reset {
+        width: 100%;
+        max-width: none;
+        min-height: 34px;
+        padding: 5px 10px;
+        font-size: 0.72rem;
+        box-sizing: border-box;
+      }
+      .stats-page-center {
+        max-width: none;
+        align-items: stretch;
+      }
+      #stats-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        align-items: stretch;
+        max-width: 100%;
+      }
+      .stats-table {
+        font-size: 0.82rem;
+        min-width: 640px;
+      }
+      .stats-table th.stats-col-metric,
+      .stats-table th.stats-horse-sort-th {
+        font-size: 0.62rem;
+        padding: 6px 2px;
+      }
+      .stats-table td.stats-col-metric {
+        font-size: 0.78rem;
+      }
+      #stats-race-info {
+        white-space: normal;
+      }
+      #stats-race-info .race-info-sep {
+        display: none;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .app-main-title {
+        flex-wrap: wrap;
+        white-space: normal;
+        line-height: 1.2;
+        font-size: clamp(0.95rem, 4.2vw + 0.55rem, 2.1rem);
+      }
+      #stats-race-info {
+        font-size: 0.78rem;
+        padding: 8px 10px;
+      }
     }
   </style>
 </head>

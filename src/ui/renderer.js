@@ -71,11 +71,16 @@ export class Renderer {
   }
 
   _resize() {
-    const wrap        = this.canvas.parentElement;
-    this.W            = wrap.clientWidth;
-    this.H            = wrap.clientHeight;
-    this.canvas.width  = this.W;
-    this.canvas.height = this.H;
+    const wrap = this.canvas.parentElement;
+    this.W = wrap.clientWidth;
+    this.H = wrap.clientHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    this._dpr = dpr;
+    this.canvas.style.width = `${this.W}px`;
+    this.canvas.style.height = `${this.H}px`;
+    this.canvas.width = Math.max(1, Math.round(this.W * dpr));
+    this.canvas.height = Math.max(1, Math.round(this.H * dpr));
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // 内外ラチの外側に余白を確保し、ラチ外演出を見切れにくくする
     this.RAIL_MARGIN = Math.max(

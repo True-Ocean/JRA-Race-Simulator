@@ -34,17 +34,33 @@ export function formatRaceInfo(raceData) {
   };
 
   const dateLabel = formatRaceDate(info.date || raceData.race_date);
-  const parts = [
-    dateLabel,
-    info.venue,
+  const restParts = [
     info.age_condition,
     info.grade,
     info.race_name,
     info.track,
     Number.isFinite(info.distance) ? `${info.distance}m` : '',
   ].filter(Boolean);
+  const tail = restParts.join('　');
 
-  return parts.join('　');
+  const headInner = [];
+  if (dateLabel) headInner.push(`<span class="race-info-date">${dateLabel}</span>`);
+  if (info.venue) {
+    if (headInner.length) {
+      headInner.push('<span class="race-info-sep-in-head" aria-hidden="true">　</span>');
+    }
+    headInner.push(`<span class="race-info-venue">${info.venue}</span>`);
+  }
+  const headHtml = headInner.length
+    ? `<span class="race-info-head">${headInner.join('')}</span>`
+    : '';
+  const tailHtml = tail ? `<span class="race-info-tail">${tail}</span>` : '';
+  if (!headHtml && !tailHtml) return '';
+  if (!tailHtml) return headHtml;
+  if (!headHtml) return tailHtml;
+  const lineSep = '<br class="race-info-break" aria-hidden="true">';
+  const between = '<span class="race-info-sep" aria-hidden="true">　</span>';
+  return `${headHtml}${lineSep}${between}${tailHtml}`;
 }
 
 export function resolveCourseDef(raceData, courseCatalog) {

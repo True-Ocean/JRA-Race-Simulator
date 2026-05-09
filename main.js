@@ -1311,6 +1311,35 @@ function formatHomePlacingRowInnerHtml(rank, horse, horseMetaByName) {
     `;
 }
 
+/** 右カラム #placing-panel とコース上オーバーレイ #placing-panel-overlay を同期 */
+function syncPlacingPanelsHtml(html) {
+  const main = document.getElementById('placing-panel');
+  const overlay = document.getElementById('placing-panel-overlay');
+  if (main) main.innerHTML = html;
+  if (overlay) overlay.innerHTML = html;
+}
+
+function appendPlacingRowToPanels(rank, horse, horseMetaByName) {
+  const rankClass =
+    rank === 1 ? ' is-top1' : rank === 2 ? ' is-top2' : rank === 3 ? ' is-top3' : '';
+  const makeDiv = () => {
+    const div = document.createElement('div');
+    div.className = `summary-placing-entry${rankClass}`;
+    div.innerHTML = formatHomePlacingRowInnerHtml(rank, horse, horseMetaByName);
+    return div;
+  };
+  const main = document.getElementById('placing-panel');
+  const overlay = document.getElementById('placing-panel-overlay');
+  if (main) {
+    main.appendChild(makeDiv());
+    main.scrollTop = main.scrollHeight;
+  }
+  if (overlay) {
+    overlay.appendChild(makeDiv());
+    overlay.scrollTop = overlay.scrollHeight;
+  }
+}
+
 /** レースサマリ用ログ行かどうか（イベント抽出から除外する） */
 function isRaceSummaryRelatedLine(line) {
   if (typeof line !== 'string') return true;
@@ -1443,11 +1472,13 @@ function renderRaceSummaryScreen({
     div.innerHTML = `
       <span class="summary-placing-rank">${rank}着</span>
       ${badgeHtml}
-      <span class="summary-placing-name">${escapeHtml(horse.name)}</span>
-      <span class="summary-placing-meta">
-        <span class="summary-placing-sex-age${sexAgeClass}">${escapeHtml(sexAgeLabel || '—')}</span>
-        <span class="summary-placing-jockey">${escapeHtml(jockeyName)}</span>
-      </span>
+      <div class="summary-placing-line">
+        <span class="summary-placing-name">${escapeHtml(horse.name)}</span>
+        <span class="summary-placing-meta">
+          <span class="summary-placing-sex-age${sexAgeClass}">${escapeHtml(sexAgeLabel || '—')}</span>
+          <span class="summary-placing-jockey">${escapeHtml(jockeyName)}</span>
+        </span>
+      </div>
     `;
     placingsEl.appendChild(div);
     return { id: horse.id, rank, horse };
@@ -3219,19 +3250,15 @@ function renderEntryList(horses) {
     row.style.boxShadow  = `inset 3px 0 8px rgba(0,0,0,0.18)`;
     row.innerHTML = `
       <div class="entry-gate" style="background:${waku.bg};color:${waku.text};border:1px solid rgba(255,255,255,0.3);">${horse.gate}</div>
-      <div class="entry-info">
-        <div class="entry-meta-line">
-          <span class="entry-name">${horse.name}</span>
-          ${profileLabel ? `<span class="entry-demographics ${sexClass}">${profileLabel}</span>` : ''}
-          <span class="entry-jockey-inline">🏇 ${horse.jockeyName ?? ''}</span>
-          <span class="entry-style-inline ${getEntryStyleBadgeClass(horse.style)}">${horse.style}</span>
-        </div>
-        <div class="entry-params">
-          <div class="param-row">
-            <span class="param-label">残ST</span>
-            <div class="param-bar-bg"><div class="param-bar ${staminaBarClass}" style="width:${staminaDisplayPct}%"></div></div>
-            <span class="param-val stamina-remain-val">${staminaDisplayPct}%</span>
-          </div>
+      <div class="entry-meta-line">
+        <span class="entry-name">${escapeHtml(horse.name)}</span>
+        ${profileLabel ? `<span class="entry-demographics ${sexClass}">${escapeHtml(profileLabel)}</span>` : ''}
+        <span class="entry-jockey-inline">🏇 ${escapeHtml(horse.jockeyName ?? '')}</span>
+        <span class="entry-style-inline ${getEntryStyleBadgeClass(horse.style)}">${escapeHtml(horse.style)}</span>
+      </div>
+      <div class="entry-params">
+        <div class="param-row param-row--stamina">
+          <div class="param-bar-bg"><div class="param-bar ${staminaBarClass}" style="width:${staminaDisplayPct}%"></div></div>
         </div>
       </div>
     `;
@@ -3270,12 +3297,10 @@ function updateEntryStaminaBars(horses) {
     if (!rowEl) return;
     const displayPct = getStaminaDisplayBarPct(horse);
     const barEl = rowEl.querySelector('.stamina-remain-bar');
-    const valEl = rowEl.querySelector('.stamina-remain-val');
     if (barEl) {
       barEl.style.width = `${displayPct}%`;
       barEl.className = `param-bar ${getStaminaBarClassName(displayPct)}`;
     }
-    if (valEl) valEl.textContent = `${displayPct}%`;
   });
 }
 
@@ -3312,7 +3337,6 @@ class PhaseController {
     this.btnAdvance = document.getElementById('btn-run');
     this.btnReset  = document.getElementById('btn-reset');
     this.logPanel  = document.getElementById('log-panel');
-    this.placingPanel = document.getElementById('placing-panel');
     this.indicator = document.getElementById('phase-indicator');
     this.isAnimating = false;
     this.advanceExternallyLocked = false;
@@ -3508,20 +3532,12 @@ class PhaseController {
   }
 
   _appendPlacingRow(rank, horse) {
-    if (!this.placingPanel) return;
-    const div = document.createElement('div');
-    const rankClass =
-      rank === 1 ? ' is-top1' : rank === 2 ? ' is-top2' : rank === 3 ? ' is-top3' : '';
-    div.className = `summary-placing-entry${rankClass}`;
-    div.innerHTML = formatHomePlacingRowInnerHtml(rank, horse, this.horseMetaByName);
-    this.placingPanel.appendChild(div);
-    this.placingPanel.scrollTop = this.placingPanel.scrollHeight;
+    appendPlacingRowToPanels(rank, horse, this.horseMetaByName);
     this._scrollRaceLogToBottom();
   }
 
   _initializePlacingPanel() {
-    if (!this.placingPanel) return;
-    this.placingPanel.innerHTML = '';
+    syncPlacingPanelsHtml('');
   }
 
   _setPlacingLog(rank, horse) {
@@ -5009,7 +5025,7 @@ Promise.all([
       document.getElementById('phase-indicator').textContent = 'スタート';
       document.getElementById('log-panel').innerHTML =
         '<div class="log-entry" style="color:#334;">待機中...</div>';
-      document.getElementById('placing-panel').innerHTML = '';
+      syncPlacingPanelsHtml('');
 
       renderer.resetHorseRenderState();
       renderer.draw(initialHorses, phases[0], 0);
@@ -5032,6 +5048,17 @@ Promise.all([
       if (btnBackToPreRace) btnBackToPreRace.disabled = false;
     }
 
+    /** index.html のスマホ・狭幅ブレークポイントと揃える */
+    function scrollCourseIntoViewOnNarrowLayout() {
+      if (!window.matchMedia('(max-width: 1024px)').matches) return;
+      const fieldWrap = document.getElementById('field-wrap');
+      if (!fieldWrap) return;
+      const run = () => {
+        fieldWrap.scrollIntoView({ block: 'center', behavior: 'smooth', inline: 'nearest' });
+      };
+      requestAnimationFrame(() => requestAnimationFrame(run));
+    }
+
     let raceControlsBound = false;
     function bindRaceControlsOnce() {
       if (raceControlsBound) return;
@@ -5048,7 +5075,7 @@ Promise.all([
           btnReset.disabled = false;
           if (btnShowSummary) btnShowSummary.disabled = true;
           document.getElementById('log-panel').innerHTML = '';
-          document.getElementById('placing-panel').innerHTML = '';
+          syncPlacingPanelsHtml('');
           btnRun.textContent = '▶▶ 次のフェーズ';
 
           const simOptions = currentOptions();
@@ -5079,6 +5106,7 @@ Promise.all([
             sim.results,
           );
           controller.start();
+          scrollCourseIntoViewOnNarrowLayout();
           currentRaceUsedAutoAdvance = Boolean(autoAdvanceToggle?.checked);
           if (autoAdvanceToggle?.checked) {
             syncSimulatorChromeForAutoMode();
@@ -5282,7 +5310,7 @@ Promise.all([
           document.getElementById('log-panel').innerHTML = ui.logHtml;
         }
         if (typeof ui.placingHtml === 'string') {
-          document.getElementById('placing-panel').innerHTML = ui.placingHtml;
+          syncPlacingPanelsHtml(ui.placingHtml);
         }
         btnRun.textContent = typeof ui.btnRunText === 'string' ? ui.btnRunText : '✅ レース終了';
         btnRun.disabled = ui.btnRunDisabled !== undefined ? Boolean(ui.btnRunDisabled) : true;
