@@ -1405,6 +1405,27 @@ function formatHorseEventTextHtml(line, ownerName, horseMetaByName) {
   return fullHtml;
 }
 
+/**
+ * レースサマリー掲示板と同一ルールの着順ID列。
+ * ゴール演出で記録した通過順を優先し、欠けがあれば simResults（到着順）で補完する。
+ */
+function buildSummaryPlacingOrderIds(finishOrderIds, simResults) {
+  const orderedIds =
+    Array.isArray(finishOrderIds) && finishOrderIds.length > 0
+      ? [...finishOrderIds]
+      : (simResults ?? []).map(h => h.id);
+  const seen = new Set(orderedIds);
+  if (Array.isArray(simResults)) {
+    for (const r of simResults) {
+      if (r && Number.isFinite(r.id) && !seen.has(r.id)) {
+        orderedIds.push(r.id);
+        seen.add(r.id);
+      }
+    }
+  }
+  return orderedIds;
+}
+
 function renderRaceSummaryScreen({
   raceData,
   simResults,
@@ -1429,18 +1450,7 @@ function renderRaceSummaryScreen({
     if (h && Number.isFinite(h.id)) resultsById.set(h.id, h);
   });
 
-  const orderedIds = (Array.isArray(finishOrderIds) && finishOrderIds.length > 0)
-    ? [...finishOrderIds]
-    : (simResults ?? []).map(h => h.id);
-  const seen = new Set(orderedIds);
-  if (Array.isArray(simResults)) {
-    for (const r of simResults) {
-      if (!seen.has(r.id)) {
-        orderedIds.push(r.id);
-        seen.add(r.id);
-      }
-    }
-  }
+  const orderedIds = buildSummaryPlacingOrderIds(finishOrderIds, simResults);
 
   placingsEl.innerHTML = '';
   const placingItems = orderedIds.map((id, idx) => {
@@ -4982,7 +4992,7 @@ Promise.all([
           }
           setTimeout(() => {
             if (!lastRunReproducible && Array.isArray(simResults) && simResults.length) {
-              const orderIds = simResults.map(h => h.id);
+              const orderIds = buildSummaryPlacingOrderIds(lastFinishOrderIds, simResults);
               addAggregateRun({
                 runtimeRaceData,
                 userTweaks: userTweaksState,

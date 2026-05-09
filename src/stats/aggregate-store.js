@@ -106,23 +106,22 @@ export function runCountsBySource(state) {
   return { batch, manual, total: state.runs.length };
 }
 
-function filterRuns(runs, mode) {
-  if (mode === 'batch') return runs.filter(r => r.source === 'batch');
-  if (mode === 'manual') return runs.filter(r => r.source === 'manual');
-  return runs;
+/** 集計対象は手動（ゴール演出順）のみ。過去の一括試行は表示から除外する。 */
+function manualRunsOnly(runs) {
+  return runs.filter(r => r.source === 'manual');
 }
 
 /**
- * @param {{ runtimeRaceData: object, userTweaks: object, marks?: object, mode: 'all'|'batch'|'manual' }} p
+ * @param {{ runtimeRaceData: object, userTweaks: object, marks?: object }} p
  */
 export function computeAggregateRows(p) {
-  const { runtimeRaceData, userTweaks, marks, mode } = p;
+  const { runtimeRaceData, userTweaks, marks } = p;
   const bucketKey = computeBucketKey(runtimeRaceData, userTweaks, marks);
   const state = loadAggregateState();
   if (!state.runs.length || state.bucketKey !== bucketKey) {
     return { rows: [], trials: 0, batch: 0, manual: 0 };
   }
-  const runs = filterRuns(state.runs, mode);
+  const runs = manualRunsOnly(state.runs);
   const n = runs.length;
   const counts = runCountsBySource(state);
 

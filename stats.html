@@ -30,62 +30,14 @@
     .stats-muted { color: #8899aa; font-size: 0.88rem; }
     #stats-error { color: #f08080; margin-bottom: 8px; min-height: 1.2em; }
     #stats-race-info { color: #c5d8e8; font-size: 0.92rem; margin-bottom: 12px; }
-    .stats-tabs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 12px;
-    }
-    .stats-tabs button {
-      background: #1b2838;
-      border: 1px solid #334455;
-      color: #c5d8e8;
-      padding: 6px 12px;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 0.82rem;
-    }
-    .stats-tabs button.is-active {
-      border-color: #f0c040;
-      color: #fff8e0;
-      box-shadow: 0 0 8px rgba(240,192,64,0.25);
-    }
-    .stats-mc {
+    .stats-lead {
       background: #132030;
       border: 1px solid #2a3f55;
-      padding: 12px 14px;
+      padding: 10px 14px;
       border-radius: 4px;
-      margin-bottom: 16px;
-      max-width: 520px;
+      margin-bottom: 14px;
+      max-width: 720px;
     }
-    .stats-mc h2 { font-size: 0.95rem; color: #e7f3fb; margin-bottom: 8px; }
-    .stats-mc-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px 12px;
-      margin-top: 8px;
-    }
-    .stats-mc-row label { font-size: 0.85rem; color: #aabccc; }
-    #stats-mc-count {
-      width: 4.2rem;
-      padding: 4px 6px;
-      background: #0d1b2a;
-      border: 1px solid #445566;
-      color: #e0e0e0;
-      font-family: inherit;
-    }
-    .stats-mc-row button {
-      padding: 6px 12px;
-      font-family: inherit;
-      cursor: pointer;
-      border: 1px solid #445566;
-      background: #1e3a52;
-      color: #e7f3fb;
-    }
-    .stats-mc-row button:disabled { opacity: 0.45; cursor: not-allowed; }
-    #stats-mc-cancel { background: #3a2020; border-color: #664444; }
-    #stats-mc-progress { font-size: 0.82rem; color: #aabccc; margin-top: 6px; }
     .stats-table {
       width: 100%;
       max-width: 900px;
@@ -114,26 +66,10 @@
   <p id="stats-error" aria-live="polite"></p>
   <div id="stats-race-info"></div>
   <p id="stats-trial-summary" class="stats-muted"></p>
-
-  <div class="stats-tabs" role="tablist" aria-label="表示切替">
-    <button type="button" data-stats-mode="all" class="is-active">全体</button>
-    <button type="button" data-stats-mode="batch">一括のみ</button>
-    <button type="button" data-stats-mode="manual">手動のみ</button>
-  </div>
-
-  <section class="stats-mc" aria-labelledby="stats-mc-heading">
-    <h2 id="stats-mc-heading">一括モンテカルロ（最大100回）</h2>
-    <p class="stats-muted">同一レース設定でシミュレーションを繰り返し、上の表に累積します。キャンセルで途中までを集計に残せます。</p>
-    <div class="stats-mc-row">
-      <label>回数 <input type="number" id="stats-mc-count" min="1" max="100" step="1" value="50"></label>
-      <button type="button" id="stats-mc-run">実行</button>
-      <button type="button" id="stats-mc-cancel" disabled>キャンセル</button>
-    </div>
-    <div id="stats-mc-progress"></div>
-  </section>
-
+  <p class="stats-lead stats-muted">
+    シミュレータでレースを最後まで再生し、ゴール演出で決まった着順がレースサマリーと同じ基準でここに蓄積されます。一括の自動試行は行いません。
+  </p>
   <div id="stats-table-wrap"></div>
-
   <script type="module" src="./src/stats/stats-app.js"></script>
 </body>
 </html>
