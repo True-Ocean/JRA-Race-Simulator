@@ -2801,9 +2801,9 @@ function round100(n) {
 }
 
 /**
- * 出走表プレレース編集 UI を構築する（runtimeRaceData.entries / userTweaksState を直接更新）
+ * 出走表プレレース編集 UI を構築する（runtimeRaceData.entries を直接更新）
  */
-function mountPreRaceEditor(runtimeRaceData, userTweaksState, onConfirm) {
+function mountPreRaceEditor(runtimeRaceData, onConfirm) {
   const tbody = document.getElementById('pre-race-tbody');
   const infoEl = document.getElementById('pre-race-race-info');
   const btn = document.getElementById('btn-pre-race-confirm');
@@ -2817,7 +2817,9 @@ function mountPreRaceEditor(runtimeRaceData, userTweaksState, onConfirm) {
 
   function makeStepperCell(get, set, min, max, step, fmt, normalizeValue = round100) {
     const td = document.createElement('td');
-    td.className = 'pre-race-stepper';
+    td.className = 'pre-race-num-cell';
+    const inner = document.createElement('div');
+    inner.className = 'pre-race-stepper';
     const down = document.createElement('button');
     down.type = 'button';
     down.textContent = '−';
@@ -2836,11 +2838,12 @@ function mountPreRaceEditor(runtimeRaceData, userTweaksState, onConfirm) {
     down.addEventListener('click', () => applyDelta(-step));
     up.addEventListener('click', () => applyDelta(step));
     paint();
-    td.append(down, val, up);
+    inner.append(down, val, up);
+    td.appendChild(inner);
     return td;
   }
 
-  runtimeRaceData.entries.forEach((entry, idx) => {
+  runtimeRaceData.entries.forEach(entry => {
     if (!entry.jockey) entry.jockey = {};
     const horse = entry.horse;
     const jockey = entry.jockey;
@@ -2952,26 +2955,6 @@ function mountPreRaceEditor(runtimeRaceData, userTweaksState, onConfirm) {
         round100,
       ),
     );
-
-    const tweak = userTweaksState[idx];
-    const mkTweak = key =>
-      makeStepperCell(
-        () => tweak[key],
-        v => {
-          tweak[key] = v;
-        },
-        -10,
-        10,
-        1,
-        v => {
-          const n = Math.round(v);
-          return `${n > 0 ? '+' : ''}${n}`;
-        },
-        v => Math.round(v),
-      );
-    tr.appendChild(mkTweak('cruise'));
-    tr.appendChild(mkTweak('maneuv'));
-    tr.appendChild(mkTweak('sustain'));
 
     tbody.appendChild(tr);
   });
@@ -4726,7 +4709,7 @@ Promise.all([
       refreshRaceInfo();
     });
 
-    mountPreRaceEditor(runtimeRaceData, userTweaksState, () => {
+    mountPreRaceEditor(runtimeRaceData, () => {
       const preRaceEl = document.getElementById('pre-race-editor');
       if (preRaceEl) preRaceEl.hidden = true;
       applyComputedHorsesToUi();

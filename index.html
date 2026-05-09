@@ -495,17 +495,22 @@
       background: #06111e;
     }
     .pre-race-table {
-      width: max(100%, 920px);
+      width: 100%;
+      min-width: 720px;
+      table-layout: fixed;
       border-collapse: collapse;
       font-size: 0.62rem;
     }
+    .pre-race-table col.col-gate { width: 2.75rem; }
+    .pre-race-table col.col-name { width: 22%; min-width: 7rem; }
+    .pre-race-table col.col-style { width: 4.75rem; }
+    .pre-race-table col.col-num { width: 6.25rem; }
     .pre-race-table th,
     .pre-race-table td {
       border-bottom: 1px solid #142538;
       padding: 4px 5px;
       text-align: center;
       vertical-align: middle;
-      white-space: nowrap;
     }
     .pre-race-table thead th {
       position: sticky;
@@ -517,11 +522,14 @@
       letter-spacing: 0.06em;
       font-size: 0.58rem;
     }
+    .pre-race-table td.pre-race-num-cell {
+      white-space: nowrap;
+    }
     .pre-race-table td.pre-race-name {
       text-align: left;
-      max-width: 8.5rem;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
       color: #fff;
       font-weight: 700;
     }
@@ -539,11 +547,14 @@
       color: #e0e0e0;
       max-width: 4.2rem;
     }
+    /* td は table-cell のまま。中身だけ flex にして列ズレを防ぐ */
     .pre-race-stepper {
-      display: inline-flex;
+      display: flex;
       align-items: center;
       justify-content: center;
       gap: 3px;
+      width: 100%;
+      box-sizing: border-box;
     }
     .pre-race-stepper button {
       flex: 0 0 auto;
@@ -582,19 +593,26 @@
     </div>
     <div class="pre-race-table-wrap">
       <table class="pre-race-table" id="pre-race-entry-table">
+        <colgroup>
+          <col class="col-gate">
+          <col class="col-name">
+          <col class="col-style">
+          <col class="col-num">
+          <col class="col-num">
+          <col class="col-num">
+          <col class="col-num">
+          <col class="col-num">
+        </colgroup>
         <thead>
           <tr>
             <th>馬番</th>
             <th>馬名</th>
             <th>脚質</th>
-            <th>平均3F</th>
-            <th>末脚3F</th>
+            <th>Ave-3F</th>
+            <th>上り3F</th>
             <th>斤量</th>
             <th>騎手勝率</th>
             <th>3着内率</th>
-            <th title="巡航スコアへの補正（内部パラメータ）">巡航±</th>
-            <th title="瞬発・機動力への補正">瞬発±</th>
-            <th title="持久力スコアへの補正">持久±</th>
           </tr>
         </thead>
         <tbody id="pre-race-tbody"></tbody>
