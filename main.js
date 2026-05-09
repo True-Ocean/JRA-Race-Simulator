@@ -1,5 +1,5 @@
 import { createRng }      from './src/engine/rng.js';
-import { calcAllParams }  from './src/engine/params.js';
+import { calcAllParams, calcWaku } from './src/engine/params.js';
 import { buildPhases, calcStaminaCons, applyCornerLoss, laneIndex, getStylePaceMultiplier }
                           from './src/engine/phase.js';
 import { detectContacts, shouldBattle, resolveBattle }
@@ -2843,6 +2843,8 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm) {
     return td;
   }
 
+  const totalEntries = runtimeRaceData.entries.length;
+
   runtimeRaceData.entries.forEach(entry => {
     if (!entry.jockey) entry.jockey = {};
     const horse = entry.horse;
@@ -2852,9 +2854,18 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm) {
 
     const tr = document.createElement('tr');
 
+    const waku = calcWaku(entry.gate, totalEntries);
+    const wakuColors = JRA_WAKU_COLORS[waku] ?? { bg: '#888888', text: '#ffffff' };
+
     const tdGate = document.createElement('td');
-    tdGate.className = 'pre-race-gate';
-    tdGate.textContent = String(entry.gate);
+    tdGate.className = 'pre-race-gate-cell';
+    const gateBadge = document.createElement('span');
+    gateBadge.className = 'entry-gate';
+    gateBadge.textContent = String(entry.gate);
+    gateBadge.style.background = wakuColors.bg;
+    gateBadge.style.color = wakuColors.text;
+    gateBadge.style.border = '1px solid rgba(255,255,255,0.3)';
+    tdGate.appendChild(gateBadge);
     tr.appendChild(tdGate);
 
     const tdName = document.createElement('td');
@@ -2862,6 +2873,28 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm) {
     tdName.textContent = horse.name ?? '';
     tdName.title = horse.name ?? '';
     tr.appendChild(tdName);
+
+    const tdSexAge = document.createElement('td');
+    tdSexAge.className = 'pre-race-readonly';
+    const sexAgeLabel = horse.sex_age ?? '';
+    const sexSpan = document.createElement('span');
+    sexSpan.className = 'entry-demographics';
+    sexSpan.textContent = sexAgeLabel;
+    if (sexAgeLabel.startsWith('牝')) sexSpan.classList.add('is-female');
+    else if (sexAgeLabel.startsWith('牡')) sexSpan.classList.add('is-male');
+    tdSexAge.appendChild(sexSpan);
+    tr.appendChild(tdSexAge);
+
+    const tdWeightRo = document.createElement('td');
+    tdWeightRo.className = 'pre-race-readonly';
+    tdWeightRo.textContent = Number.isFinite(horse.weight) ? `${horse.weight}kg` : '—';
+    tr.appendChild(tdWeightRo);
+
+    const tdJockeyName = document.createElement('td');
+    tdJockeyName.className = 'pre-race-jockey-name';
+    tdJockeyName.textContent = jockey.name ?? '';
+    tdJockeyName.title = jockey.name ?? '';
+    tr.appendChild(tdJockeyName);
 
     const tdStyle = document.createElement('td');
     const sel = document.createElement('select');
@@ -2911,20 +2944,6 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm) {
         0.1,
         v => round1(v).toFixed(1),
         round1,
-      ),
-    );
-
-    tr.appendChild(
-      makeStepperCell(
-        () => (Number.isFinite(horse.weight) ? horse.weight : 57),
-        v => {
-          horse.weight = v;
-        },
-        52,
-        60,
-        1,
-        v => String(Math.round(v)),
-        v => Math.round(v),
       ),
     );
 

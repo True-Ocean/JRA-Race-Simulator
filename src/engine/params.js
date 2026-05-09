@@ -7,7 +7,7 @@ import { CONFIG } from '../config.js';
  * @param {number} total - 出走頭数
  * @returns {number} 枠番（1〜8）
  */
-function calcWaku(gate, total) {
+export function calcWaku(gate, total) {
   // JRAの枠番割り当てルール:
   // - 基本は8枠で、各枠に馬を後ろの枠から順に2頭ずつ積み上げる
   // - 余り頭数 = total - 8

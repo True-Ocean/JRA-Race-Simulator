@@ -496,15 +496,40 @@
     }
     .pre-race-table {
       width: 100%;
-      min-width: 720px;
+      min-width: 920px;
       table-layout: fixed;
       border-collapse: collapse;
       font-size: 0.62rem;
     }
-    .pre-race-table col.col-gate { width: 2.75rem; }
-    .pre-race-table col.col-name { width: 22%; min-width: 7rem; }
-    .pre-race-table col.col-style { width: 4.75rem; }
-    .pre-race-table col.col-num { width: 6.25rem; }
+    .pre-race-table col.col-gate { width: 2.6rem; }
+    .pre-race-table col.col-name { width: 16%; min-width: 6rem; }
+    .pre-race-table col.col-sex { width: 3.1rem; }
+    .pre-race-table col.col-weight-ro { width: 3.1rem; }
+    .pre-race-table col.col-jockey { width: 13%; min-width: 5.5rem; }
+    .pre-race-table col.col-style { width: 4.85rem; }
+    .pre-race-table col.col-num { width: 6.1rem; }
+    .pre-race-gate-cell {
+      text-align: center;
+      vertical-align: middle;
+    }
+    .pre-race-gate-cell .entry-gate {
+      margin: 0 auto;
+      display: inline-block;
+    }
+    .pre-race-readonly {
+      font-size: 0.58rem;
+      color: #c7dbe8;
+      font-variant-numeric: tabular-nums;
+    }
+    .pre-race-jockey-name {
+      font-size: 0.58rem;
+      color: #93c5fd;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
     .pre-race-table th,
     .pre-race-table td {
       border-bottom: 1px solid #142538;
@@ -532,10 +557,6 @@
       white-space: nowrap;
       color: #fff;
       font-weight: 700;
-    }
-    .pre-race-table td.pre-race-gate {
-      font-weight: 800;
-      color: #fde047;
     }
     .pre-race-table select.pre-race-select {
       font-family: inherit;
@@ -588,7 +609,7 @@
   <div id="pre-race-editor" aria-label="出走パラメータ編集">
     <div class="pre-race-header">
       <h2>出走パラメータの調整</h2>
-      <p class="pre-race-lead">数値は ± ボタンで変更できます。脚質はドロップダウンから選択してください。完了したらシミュレータ画面へ進みます。</p>
+      <p class="pre-race-lead">性齢・斤量・騎手名は出走データの表示のみです。Ave-3F・上り3F・騎手指標・脚質はここで調整できます（± は数値項目のみ）。完了したらシミュレータ画面へ進みます。</p>
       <div id="pre-race-race-info"></div>
     </div>
     <div class="pre-race-table-wrap">
@@ -596,8 +617,10 @@
         <colgroup>
           <col class="col-gate">
           <col class="col-name">
+          <col class="col-sex">
+          <col class="col-weight-ro">
+          <col class="col-jockey">
           <col class="col-style">
-          <col class="col-num">
           <col class="col-num">
           <col class="col-num">
           <col class="col-num">
@@ -607,10 +630,12 @@
           <tr>
             <th>馬番</th>
             <th>馬名</th>
+            <th>性齢</th>
+            <th>斤量</th>
+            <th>騎手</th>
             <th>脚質</th>
             <th>Ave-3F</th>
             <th>上り3F</th>
-            <th>斤量</th>
             <th>騎手勝率</th>
             <th>3着内率</th>
           </tr>
