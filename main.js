@@ -5083,4 +5083,4 @@ Promise.all([
   });
 }
 
-export { runSimulation, resolveCourseDef };
+export { runSimulation, resolveCourseDef, formatRaceInfo };

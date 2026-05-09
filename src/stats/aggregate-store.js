@@ -134,6 +134,7 @@ export function computeAggregateRows(p) {
     let wins = 0;
     let top2 = 0;
     let top3 = 0;
+    let sumPlace = 0;
     let best = Infinity;
     let worst = 0;
     for (const run of runs) {
@@ -147,6 +148,7 @@ export function computeAggregateRows(p) {
       if (place <= 3) top3 += 1;
       best = Math.min(best, place);
       worst = Math.max(worst, place);
+      sumPlace += place;
     }
     rows.push({
       id,
@@ -155,9 +157,7 @@ export function computeAggregateRows(p) {
       wins,
       top2,
       top3,
-      winRate: n ? wins / n : 0,
-      top2Rate: n ? top2 / n : 0,
-      top3Rate: n ? top3 / n : 0,
+      avgRank: n ? sumPlace / n : null,
       bestRank: Number.isFinite(best) ? best : null,
       worstRank: n ? worst : null,
     });

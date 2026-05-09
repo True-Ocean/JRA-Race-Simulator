@@ -1,4 +1,5 @@
-import { resolveCourseDef } from '../../main.js';
+import { resolveCourseDef, formatRaceInfo } from '../../main.js';
+import { calcWaku } from '../engine/params.js';
 import {
   loadRaceBundleFromSession,
   persistRaceBundleToSession,
@@ -6,8 +7,19 @@ import {
   loadAggregateState,
   computeAggregateRows,
   clearAggregateState,
-  runCountsBySource,
 } from './aggregate-store.js';
+
+/** main.js の出馬表・掲示板と同じ枠色（馬番バッジ用） */
+const JRA_WAKU_COLORS = {
+  1: { bg: '#FFFFFF', text: '#000000' },
+  2: { bg: '#000000', text: '#FFFFFF' },
+  3: { bg: '#FF0000', text: '#FFFFFF' },
+  4: { bg: '#0000FF', text: '#FFFFFF' },
+  5: { bg: '#FFFF00', text: '#000000' },
+  6: { bg: '#008000', text: '#FFFFFF' },
+  7: { bg: '#FF6600', text: '#FFFFFF' },
+  8: { bg: '#FF5FA2', text: '#000000' },
+};
 
 let runtimeRaceData = null;
 let userTweaks = {};
@@ -18,12 +30,24 @@ function pct(x) {
   return `${Math.round(x * 1000) / 10}%`;
 }
 
+function fmtAvg(x) {
+  if (!Number.isFinite(x)) return '—';
+  return String(Math.round(x * 100) / 100);
+}
+
 function escapeHtml(s) {
   return String(s)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+}
+
+function gateBadgeHtml(gate, fieldSize) {
+  const waku = calcWaku(gate, fieldSize);
+  const c = JRA_WAKU_COLORS[waku] ?? { bg: '#888888', text: '#ffffff' };
+  const g = escapeHtml(String(gate));
+  return `<span class="entry-gate" style="background:${c.bg};color:${c.text};border:1px solid rgba(255,255,255,0.3);">${g}</span>`;
 }
 
 function renderTable() {
@@ -40,19 +64,10 @@ function renderTable() {
     userTweaks,
     marks,
   });
-  const state = loadAggregateState();
-  const { batch: legacyBatch } = runCountsBySource(state);
 
   const summary = document.getElementById('stats-trial-summary');
   if (summary) {
-    let msg =
-      trials > 0
-        ? `試行 ${trials} 回（シミュレータでレース完了のたびに、ゴール演出の着順で蓄積）`
-        : '試行 0 回（シミュレータでレースを最後まで再生すると集計されます）';
-    if (legacyBatch > 0) {
-      msg += ` ※以前の一括試行 ${legacyBatch} 回は表示から除外しています。`;
-    }
-    summary.textContent = msg;
+    summary.textContent = trials > 0 ? `試行 ${trials} 回` : '試行 0 回';
   }
 
   if (!rows.length) {
@@ -60,17 +75,19 @@ function renderTable() {
     return;
   }
 
+  const fieldSize = runtimeRaceData.entries.length;
   const head =
     '<thead><tr>' +
-    '<th>枠</th><th>馬名</th><th>1着率</th><th>連対率</th><th>複勝率</th><th>最良着</th><th>最悪着</th>' +
+    '<th>馬番</th><th>馬名</th><th>平均着順</th><th>1着率</th><th>連対率</th><th>複勝率</th><th>最良着</th><th>最悪着</th>' +
     '</tr></thead>';
   const body =
     '<tbody>' +
     rows
       .map(
         r =>
-          `<tr><td>${escapeHtml(String(r.gate))}</td>` +
+          `<tr><td class="stats-gate-cell">${gateBadgeHtml(r.gate, fieldSize)}</td>` +
           `<td>${escapeHtml(r.name)}</td>` +
+          `<td>${fmtAvg(r.avgRank)}</td>` +
           `<td>${pct(r.winRate)}</td>` +
           `<td>${pct(r.top2Rate)}</td>` +
           `<td>${pct(r.top3Rate)}</td>` +
@@ -86,6 +103,12 @@ async function init() {
   const bundle = loadRaceBundleFromSession();
   const infoEl = document.getElementById('stats-race-info');
   const errEl = document.getElementById('stats-error');
+
+  document.getElementById('btn-stats-reset')?.addEventListener('click', () => {
+    if (!window.confirm('このレース設定の集計をすべて消去しますか？')) return;
+    clearAggregateState();
+    renderTable();
+  });
 
   if (!bundle || !bundle.race_id) {
     if (infoEl) infoEl.innerHTML = '';
@@ -113,8 +136,7 @@ async function init() {
 
   if (errEl) errEl.textContent = '';
   if (infoEl) {
-    const ri = runtimeRaceData.race_info;
-    infoEl.innerHTML = `<b>${escapeHtml(ri?.race_name ?? '')}</b> · ${escapeHtml(ri?.venue ?? '')} · ${escapeHtml(String(ri?.distance ?? ''))}m`;
+    infoEl.innerHTML = formatRaceInfo(runtimeRaceData);
   }
 
   persistRaceBundleToSession(runtimeRaceData, userTweaks, marks);

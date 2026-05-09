@@ -29,15 +29,29 @@
     }
     .stats-muted { color: #8899aa; font-size: 0.88rem; }
     #stats-error { color: #f08080; margin-bottom: 8px; min-height: 1.2em; }
-    #stats-race-info { color: #c5d8e8; font-size: 0.92rem; margin-bottom: 12px; }
-    .stats-lead {
-      background: #132030;
-      border: 1px solid #2a3f55;
-      padding: 10px 14px;
-      border-radius: 4px;
-      margin-bottom: 14px;
-      max-width: 720px;
+    #stats-race-info {
+      font-size: 0.72rem;
+      color: #8cb8d1;
+      background: #06111e;
+      border: 1px solid #1e3a5f;
+      border-radius: 8px;
+      padding: 8px 10px;
+      letter-spacing: 0.02em;
+      line-height: 1.4;
+      margin-bottom: 8px;
+      max-width: 100%;
     }
+    #stats-race-info b { color: #e7f3fb; font-weight: bold; }
+    #btn-stats-reset {
+      padding: 6px 14px;
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+      background: #3a2020;
+      border: 1px solid #664444;
+      color: #f0d0d0;
+    }
+    #btn-stats-reset:hover { filter: brightness(1.08); }
     .stats-table {
       width: 100%;
       max-width: 900px;
@@ -55,20 +69,32 @@
       color: #b8c8d8;
     }
     .stats-table tr:nth-child(even) td { background: rgba(0,0,0,0.12); }
+    .stats-gate-cell {
+      vertical-align: middle;
+    }
+    .entry-gate {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      text-align: center;
+      line-height: 24px;
+      font-weight: bold;
+      font-size: 0.74rem;
+      flex-shrink: 0;
+    }
     #stats-trial-summary { font-size: 0.85rem; color: #aabccc; margin-bottom: 8px; }
   </style>
 </head>
 <body>
   <div class="stats-top">
     <a href="./index.html">← シミュレータに戻る</a>
+    <button type="button" id="btn-stats-reset">集計リセット</button>
   </div>
   <h1>📈 シミュレーション集計</h1>
   <p id="stats-error" aria-live="polite"></p>
   <div id="stats-race-info"></div>
   <p id="stats-trial-summary" class="stats-muted"></p>
-  <p class="stats-lead stats-muted">
-    シミュレータでレースを最後まで再生し、ゴール演出で決まった着順がレースサマリーと同じ基準でここに蓄積されます。一括の自動試行は行いません。
-  </p>
   <div id="stats-table-wrap"></div>
   <script type="module" src="./src/stats/stats-app.js"></script>
 </body>
