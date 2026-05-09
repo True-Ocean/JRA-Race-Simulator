@@ -66,13 +66,13 @@ const OONIGE_LATE_DRAIN_LEAD_GAIN = 1.08;
 /** 安全策: 新スタミナモデル（イベント主導 + 距離微小消費）を段階導入 */
 const USE_SAFE_STAMINA_MODEL = true;
 /** 新モデル: 距離起因の微小消費（1m あたり） */
-const SAFE_BASE_STAMINA_PER_M = 0.0055;
+const SAFE_BASE_STAMINA_PER_M = 0.0072;
 /** 新モデル: 進路変更イベント消費倍率 */
-const SAFE_LANE_EVENT_DRAIN_MULT = 0.58;
+const SAFE_LANE_EVENT_DRAIN_MULT = 0.70;
 /** 新モデル: コーナー外回しイベント消費倍率 */
-const SAFE_CORNER_EVENT_DRAIN_MULT = 0.48;
+const SAFE_CORNER_EVENT_DRAIN_MULT = 0.60;
 /** 新モデル: 余剰加速イベント消費倍率 */
-const SAFE_ACCEL_EVENT_DRAIN_MULT = 0.80;
+const SAFE_ACCEL_EVENT_DRAIN_MULT = 0.95;
 /** 新モデル: 終盤でイベント疲労を速度へ反映する重み */
 const SAFE_GOAL_EVENT_FATIGUE_WEIGHT = 0.42;
 /** 新モデル: 終盤の stamina/m 正規化基準 */
@@ -210,7 +210,7 @@ const COLLISION_REAR_BUFFER_X = 14;
 const INNER_CUTIN_BUFFER_MULT = 1.25;
 const PACK_DENSITY_PENALTY_QUAD = 1.1;
 const STAMINA_CORNER_OUTER_PER_LANE = 0.30;
-const GOAL_STAMINA_DRAIN_MULT = 1.50;
+const GOAL_STAMINA_DRAIN_MULT = 1.70;
 const GOAL_AI = {
   horizonSec: 1.0,
   predictStepSec: 0.10,
