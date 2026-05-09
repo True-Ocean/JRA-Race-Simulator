@@ -88,7 +88,7 @@
     },
     {
       "gate": 18,
-      "horse": { "name": "サイレンススズカ", "style": "大逃げ", "sex_age": "牡3", "weight": 57, "ave_3f": 35.8, "last_3f": 33.4, "results": [1,1,0,1] },
+      "horse": { "name": "サイレンススズカ", "style": "大逃げ", "sex_age": "牡3", "weight": 57, "ave_3f": 34.8, "last_3f": 33.4, "results": [1,1,0,1] },
       "jockey": { "name": "武豊", "win_rate": 0.24, "top3_rate": 0.54 }
     }
   ]
