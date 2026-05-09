@@ -116,8 +116,7 @@ const GOAL_MIN_SPEED_RATIO = 0.58;
 const GOAL_MAX_SPEED_RATIO = 1.95;
 const GOAL_POST_SCROLL_MS = 700;
 const GOAL_POST_CLEAR_METERS = GOAL_FURLONG_METERS * 1.25;
-const RACE_SUMMARY_HEADER_LINE = '=====ここまでのレースサマリ=====';
-const GOAL_BATTLE_HEADER_LINE = '=====ゴール前の攻防=====';
+const RACE_SUMMARY_HEADER_LINE = 'ここまでのレースサマリ';
 const RACE_SUMMARY_SCENE_LABELS = new Set([
   'スタート',
   'ホーム直線',
@@ -927,6 +926,7 @@ function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, rend
 
 function getBattleLogClass(logLine) {
   if (logLine === '＝＝＝＝＝＝＝＝[着順]＝＝＝＝＝＝＝＝') return 'log-entry placing';
+  if (logLine === RACE_SUMMARY_HEADER_LINE) return 'log-entry scene-heading';
   if (logLine.startsWith('[出遅れ]')) return 'log-entry irregular irregular-start';
   if (logLine.startsWith('[好スタート]')) return 'log-entry irregular irregular-start';
   if (logLine.startsWith('[つまずき]')) return 'log-entry irregular irregular-stumble';
@@ -992,12 +992,13 @@ function decorateHorseNames(text, horseMetaByName) {
   return html;
 }
 
+function formatSceneHeadingHtml(title, horseMetaByName) {
+  return `<span class="scene-heading-label">${decorateHorseNames(String(title ?? ''), horseMetaByName)}</span>`;
+}
+
 function formatLogLineHtml(logLine, horseMetaByName) {
   if (logLine === RACE_SUMMARY_HEADER_LINE) {
-    return `<span class="race-summary-header">${escapeHtml(logLine)}</span>`;
-  }
-  if (logLine === GOAL_BATTLE_HEADER_LINE) {
-    return `<span class="goal-battle-header">${escapeHtml(logLine)}</span>`;
+    return formatSceneHeadingHtml(logLine, horseMetaByName);
   }
   const raceSummarySceneLabel = getRaceSummarySceneLabel(logLine);
   if (raceSummarySceneLabel) {
@@ -2514,12 +2515,13 @@ class PhaseController {
       ?? prev?.horses
       ?? this.initialHorses;
 
+    const phaseName = this.renderer.getPhaseName(phase);
+    this.indicator.textContent = phaseName;
+    this._appendSceneHeading(phaseName);
+
     // 馬カードをアニメーション付きで描画（前フェーズ位置から開始）
     // ログは最初の描画フレームと同タイミングで _enqueueLogs する（案A）
     this._animateHorses(fromForAnimation, snap.horses, phase, idx === 0, snap.eventLogs);
-
-    // フェーズ名をインジケーターに反映
-    this.indicator.textContent = this.renderer.getPhaseName(phase);
 
     updateEntryStaminaBars(fromForAnimation ?? snap.horses);
 
@@ -2647,6 +2649,14 @@ class PhaseController {
     const div  = document.createElement('div');
     div.className = getBattleLogClass(line);
     div.innerHTML = formatLogLineHtml(line, this.horseMetaByName);
+    this.logPanel.appendChild(div);
+    this.logPanel.scrollTop = this.logPanel.scrollHeight;
+  }
+
+  _appendSceneHeading(title) {
+    const div = document.createElement('div');
+    div.className = 'log-entry scene-heading';
+    div.innerHTML = formatSceneHeadingHtml(title, this.horseMetaByName);
     this.logPanel.appendChild(div);
     this.logPanel.scrollTop = this.logPanel.scrollHeight;
   }
@@ -2857,7 +2867,7 @@ class PhaseController {
         lastTs = ts;
         goalFrameIndex = 0;
         this.indicator.textContent = 'ゴールシーン';
-        this._appendLog(GOAL_BATTLE_HEADER_LINE);
+        this._appendSceneHeading('ゴールシーン');
       }
 
       const isFirstGoalFrame = goalFrameIndex === 0;
