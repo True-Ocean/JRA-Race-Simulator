@@ -1336,7 +1336,8 @@ function appendPlacingRowToPanels(rank, horse, horseMetaByName) {
   }
   if (overlay) {
     overlay.appendChild(makeDiv());
-    overlay.scrollTop = overlay.scrollHeight;
+    /* オーバーレイは1着側を常に見えるよう先頭固定（下へスクロールで全頭確認） */
+    overlay.scrollTop = 0;
   }
 }
 

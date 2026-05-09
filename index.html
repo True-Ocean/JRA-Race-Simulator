@@ -413,6 +413,7 @@
     #field-canvas {
       position: absolute;
       inset: 0;
+      z-index: 0;
       width: 100%;
       height: 100%;
     }
@@ -422,9 +423,10 @@
       display: none;
     }
 
-    /* コース上オーバーレイ（狭幅のみ表示。着順は JS で #placing-panel と同期） */
+    /* コース上オーバーレイ（#field-viewport 内で Canvas より手前に重ねる / 狭幅のみ表示） */
     #field-placing-overlay {
       display: none;
+      z-index: 2;
     }
 
     /* ===== 右カラム：レースログ / 着順掲示板 ===== */
@@ -1290,27 +1292,50 @@
         align-items: stretch;
         position: absolute;
         inset: 0;
-        z-index: 4;
+        z-index: 2;
         pointer-events: none;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
       }
       #placing-panel-overlay {
         pointer-events: auto;
         flex: 0 1 auto;
         min-height: 0;
-        max-height: min(48dvh, 52%);
+        /* コース枠内の大部分を使い、18頭は縦スクロールで一覧可能に */
+        max-height: min(88%, 78dvh);
         overflow-y: auto;
         overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
         padding: 6px 8px 8px;
         margin-top: auto;
+        /* コースが背景に見えるよう帯はさらに弱く */
         background: linear-gradient(
           180deg,
           transparent 0%,
-          rgba(6, 17, 30, 0.52) 22%,
-          rgba(6, 17, 30, 0.88) 100%
+          rgba(6, 17, 30, 0.06) 30%,
+          rgba(6, 17, 30, 0.14) 100%
         );
-        border-top: 1px solid rgba(30, 58, 95, 0.85);
+        border-top: 1px solid rgba(30, 58, 95, 0.28);
         box-sizing: border-box;
+      }
+      #placing-panel-overlay .summary-placing-entry {
+        background: rgba(10, 24, 40, 0.38);
+        border: 1px solid rgba(21, 50, 77, 0.35);
+        -webkit-backdrop-filter: blur(5px);
+        backdrop-filter: blur(5px);
+      }
+      #placing-panel-overlay .summary-placing-entry.is-top1 {
+        border-color: rgba(253, 224, 71, 0.42);
+        background: rgba(12, 28, 42, 0.48);
+        box-shadow: 0 0 12px rgba(253, 224, 71, 0.1);
+      }
+      #placing-panel-overlay .summary-placing-entry.is-top2 {
+        border-color: rgba(207, 216, 220, 0.35);
+        background: rgba(10, 24, 40, 0.4);
+      }
+      #placing-panel-overlay .summary-placing-entry.is-top3 {
+        border-color: rgba(214, 163, 115, 0.35);
+        background: rgba(10, 24, 40, 0.4);
       }
       #placing-panel-overlay:empty {
         display: none;
@@ -1632,11 +1657,11 @@
     <div id="field-wrap">
       <div id="field-viewport">
         <canvas id="field-canvas"></canvas>
+        <div id="field-placing-overlay" aria-live="polite" aria-label="着順">
+          <div id="placing-panel-overlay"></div>
+        </div>
       </div>
       <div id="phase-indicator">スタート</div>
-      <div id="field-placing-overlay" aria-live="polite" aria-label="着順">
-        <div id="placing-panel-overlay"></div>
-      </div>
     </div>
 
     <!-- 右：レースログ -->
