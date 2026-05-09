@@ -1339,6 +1339,187 @@ function formatRaceInfo(raceData) {
   return parts.join('　');
 }
 
+/** レースサマリ用ログ行かどうか（イベント抽出から除外する） */
+function isRaceSummaryRelatedLine(line) {
+  if (typeof line !== 'string') return true;
+  if (line === RACE_SUMMARY_HEADER_LINE) return true;
+  if (getRaceSummarySceneLabel(line)) return true;
+  return false;
+}
+
+/**
+ * 各馬に紐づくイベントログをスナップショットから抽出する。
+ * 1ログ行に複数馬が含まれる場合（例: バトル行）は登場馬全員に同じ行を割り当てる。
+ *
+ * @returns {Map<string, Array<{ phaseLabel: string, text: string }>>}
+ */
+function extractHorseEventsBySnapshots(snapshots, phases, horseNames, getPhaseLabel) {
+  const eventsByName = new Map();
+  horseNames.forEach(name => {
+    if (typeof name === 'string' && name.length > 0) {
+      eventsByName.set(name, []);
+    }
+  });
+  if (!Array.isArray(snapshots) || snapshots.length === 0) return eventsByName;
+
+  const sortedNames = [...eventsByName.keys()].sort((a, b) => b.length - a.length);
+  if (sortedNames.length === 0) return eventsByName;
+
+  const escapedAlt = sortedNames.map(escapeRegExp).join('|');
+  const namePattern = new RegExp(escapedAlt, 'g');
+
+  for (let i = 0; i < snapshots.length; i++) {
+    const snap = snapshots[i];
+    const phase = phases?.[i] ?? null;
+    const phaseLabel = phase ? (getPhaseLabel?.(phase) ?? '') : '';
+    const lines = Array.isArray(snap?.eventLogs) ? snap.eventLogs : [];
+    for (const line of lines) {
+      if (isRaceSummaryRelatedLine(line)) continue;
+      const matched = new Set();
+      let m;
+      namePattern.lastIndex = 0;
+      while ((m = namePattern.exec(line)) !== null) {
+        matched.add(m[0]);
+        if (m.index === namePattern.lastIndex) namePattern.lastIndex++;
+      }
+      if (matched.size === 0) continue;
+      matched.forEach(name => {
+        const arr = eventsByName.get(name);
+        if (arr) arr.push({ phaseLabel, text: line });
+      });
+    }
+  }
+  return eventsByName;
+}
+
+/** イベント1行のテキスト部分から、対象馬本人の馬名を強調表示用に整形する。 */
+function formatHorseEventTextHtml(line, ownerName, horseMetaByName) {
+  const fullHtml = formatLogLineHtml(line, horseMetaByName);
+  return fullHtml;
+}
+
+function renderRaceSummaryScreen({
+  raceData,
+  simResults,
+  finishOrderIds,
+  horseMetaByName,
+  snapshots,
+  phases,
+  getPhaseLabel,
+}) {
+  const screenEl = document.getElementById('race-summary-screen');
+  if (!screenEl) return;
+
+  const infoEl = document.getElementById('summary-race-info');
+  if (infoEl) infoEl.innerHTML = formatRaceInfo(raceData);
+
+  const placingsEl = document.getElementById('summary-placings');
+  const eventsEl = document.getElementById('summary-horse-events');
+  if (!placingsEl || !eventsEl) return;
+
+  const resultsById = new Map();
+  (simResults ?? []).forEach(h => {
+    if (h && Number.isFinite(h.id)) resultsById.set(h.id, h);
+  });
+
+  const orderedIds = (Array.isArray(finishOrderIds) && finishOrderIds.length > 0)
+    ? [...finishOrderIds]
+    : (simResults ?? []).map(h => h.id);
+  const seen = new Set(orderedIds);
+  if (Array.isArray(simResults)) {
+    for (const r of simResults) {
+      if (!seen.has(r.id)) {
+        orderedIds.push(r.id);
+        seen.add(r.id);
+      }
+    }
+  }
+
+  placingsEl.innerHTML = '';
+  const placingItems = orderedIds.map((id, idx) => {
+    const horse = resultsById.get(id);
+    if (!horse) return null;
+    const rank = idx + 1;
+    const meta = horseMetaByName?.get(horse.name);
+    const waku = meta ? (JRA_WAKU_COLORS[meta.waku] ?? { bg: '#888', text: '#fff' }) : null;
+    const badgeHtml = meta && waku
+      ? `<span class="summary-placing-badge" style="background:${waku.bg};color:${waku.text};">${meta.gate}</span>`
+      : '<span class="summary-placing-badge" style="background:#1e3a5f;color:#fff;">-</span>';
+    const jockeyLabel = horse.jockeyName ? `騎手 ${horse.jockeyName}` : '';
+    const rankClass = rank === 1 ? ' is-top1' : rank === 2 ? ' is-top2' : rank === 3 ? ' is-top3' : '';
+    const div = document.createElement('div');
+    div.className = `summary-placing-entry${rankClass}`;
+    div.innerHTML = `
+      <span class="summary-placing-rank">${rank}着</span>
+      ${badgeHtml}
+      <span class="summary-placing-name">${escapeHtml(horse.name)}</span>
+      <span class="summary-placing-jockey">${escapeHtml(jockeyLabel)}</span>
+    `;
+    placingsEl.appendChild(div);
+    return { id: horse.id, rank, horse };
+  }).filter(Boolean);
+
+  const horseNames = placingItems
+    .map(item => item.horse.name)
+    .filter(name => typeof name === 'string' && name.length > 0);
+  const eventsByName = extractHorseEventsBySnapshots(snapshots, phases, horseNames, getPhaseLabel);
+
+  eventsEl.innerHTML = '';
+  placingItems.forEach(item => {
+    const { rank, horse } = item;
+    const block = document.createElement('div');
+    const rankClass = rank === 1 ? ' is-top1' : rank <= 3 ? ' is-top3' : '';
+    block.className = `summary-horse-block${rankClass}`;
+
+    const meta = horseMetaByName?.get(horse.name);
+    const waku = meta ? (JRA_WAKU_COLORS[meta.waku] ?? { bg: '#888', text: '#fff' }) : null;
+    const badgeHtml = meta && waku
+      ? `<span class="horse-badge" style="background:${waku.bg};color:${waku.text};">${meta.gate}</span>`
+      : '';
+    const styleLabel = horse.style ? horse.style : '';
+    const jockeyLabel = horse.jockeyName ? `騎手 ${horse.jockeyName}` : '';
+    const metaParts = [styleLabel, jockeyLabel].filter(Boolean);
+
+    const head = document.createElement('div');
+    head.className = 'summary-horse-head';
+    head.innerHTML = `
+      <span class="summary-horse-rank">${rank}着</span>
+      ${badgeHtml}
+      <span class="summary-horse-name">${escapeHtml(horse.name)}</span>
+      <span class="summary-horse-meta">${metaParts.map(escapeHtml).join('　')}</span>
+    `;
+    block.appendChild(head);
+
+    const list = document.createElement('div');
+    list.className = 'summary-horse-events';
+    const events = eventsByName.get(horse.name) ?? [];
+    if (events.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'summary-horse-event-empty';
+      empty.textContent = '目立ったイベントはありませんでした';
+      list.appendChild(empty);
+    } else {
+      events.forEach(ev => {
+        const row = document.createElement('div');
+        row.className = 'summary-horse-event';
+        const phaseLabel = ev.phaseLabel ? `<span class="summary-event-phase">${escapeHtml(ev.phaseLabel)}</span>` : '';
+        const bodyHtml = formatHorseEventTextHtml(ev.text, horse.name, horseMetaByName);
+        row.innerHTML = `${phaseLabel}<span class="summary-event-body">${bodyHtml}</span>`;
+        list.appendChild(row);
+      });
+    }
+    block.appendChild(list);
+    eventsEl.appendChild(block);
+  });
+
+  screenEl.hidden = false;
+}
+
+function hideRaceSummaryScreen() {
+  const screenEl = document.getElementById('race-summary-screen');
+  if (screenEl) screenEl.hidden = true;
+}
+
 function resolveCourseDef(raceData, courseCatalog) {
   const requestedId = raceData?.race_info?.course_id;
   const courses = courseCatalog?.courses ?? [];
@@ -4668,9 +4849,13 @@ Promise.all([
     let controller = null;
     let simResults = null;
     let simLogs    = null;
+    let simSnapshots = null;
+    let lastFinishOrderIds = [];
 
     const btnRun   = document.getElementById('btn-run');
     const btnReset = document.getElementById('btn-reset');
+    const btnShowSummary = document.getElementById('btn-show-summary');
+    const btnBackToSimulator = document.getElementById('btn-back-to-simulator');
     const btnBackToPreRace = document.getElementById('btn-back-to-pre-race');
     const reproducibleToggle = document.getElementById('toggle-reproducible');
     const raceInfoEl = document.getElementById('race-info');
@@ -4713,6 +4898,7 @@ Promise.all([
       btnRun.disabled   = false;
       btnReset.disabled = true;
       btnRun.textContent = '▶ レース開始';
+      if (btnShowSummary) btnShowSummary.disabled = true;
       document.getElementById('phase-indicator').textContent = 'スタート';
       document.getElementById('log-panel').innerHTML =
         '<div class="log-entry" style="color:#334;">待機中...</div>';
@@ -4722,6 +4908,11 @@ Promise.all([
       renderer.draw(initialHorses, phases[0], 0);
       updateEntryStaminaBars(initialHorses);
       controller = null;
+      simResults = null;
+      simLogs = null;
+      simSnapshots = null;
+      lastFinishOrderIds = [];
+      hideRaceSummaryScreen();
     }
 
     let raceControlsBound = false;
@@ -4732,6 +4923,7 @@ Promise.all([
       btnRun.addEventListener('click', () => {
         if (!controller) {
           btnReset.disabled = false;
+          if (btnShowSummary) btnShowSummary.disabled = true;
           document.getElementById('log-panel').innerHTML = '';
           document.getElementById('placing-panel').innerHTML = '';
           btnRun.textContent = '▶▶ 次のフェーズ';
@@ -4741,6 +4933,8 @@ Promise.all([
           const sim  = runSimulation(runtimeRaceData, simOptions, userTweaksState, {}, renderer);
           simResults = sim.results;
           simLogs    = sim.logs;
+          simSnapshots = sim.snapshots;
+          lastFinishOrderIds = [];
 
           runtimeRaceData.entries.forEach((entry, idx) => {
             if (simResults[idx]) {
@@ -4765,10 +4959,14 @@ Promise.all([
         }
 
         controller.next(() => {
+          if (controller && Array.isArray(controller._goalRankOrder)) {
+            lastFinishOrderIds = [...controller._goalRankOrder];
+          }
           setTimeout(() => {
             btnRun.disabled    = true;
             btnReset.disabled  = false;
             btnRun.textContent = '✅ レース終了';
+            if (btnShowSummary) btnShowSummary.disabled = false;
             controller = null;
           }, 300);
         });
@@ -4776,6 +4974,23 @@ Promise.all([
 
       btnReset.addEventListener('click', () => {
         resetSimulatorToIdle();
+      });
+
+      btnShowSummary?.addEventListener('click', () => {
+        if (!simResults || !simSnapshots) return;
+        renderRaceSummaryScreen({
+          raceData: runtimeRaceData,
+          simResults,
+          finishOrderIds: lastFinishOrderIds,
+          horseMetaByName,
+          snapshots: simSnapshots,
+          phases,
+          getPhaseLabel: (phase) => renderer.getPhaseName(phase),
+        });
+      });
+
+      btnBackToSimulator?.addEventListener('click', () => {
+        hideRaceSummaryScreen();
       });
     }
 
@@ -4785,6 +5000,7 @@ Promise.all([
 
     btnBackToPreRace?.addEventListener('click', () => {
       resetSimulatorToIdle();
+      hideRaceSummaryScreen();
       const preRaceEl = document.getElementById('pre-race-editor');
       if (preRaceEl) preRaceEl.hidden = false;
       if (btnBackToPreRace) btnBackToPreRace.hidden = true;
