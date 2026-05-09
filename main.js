@@ -6,6 +6,13 @@ import { detectContacts, shouldBattle, resolveBattle }
                           from './src/engine/battle.js';
 import { CONFIG }         from './src/config.js';
 import { Renderer }       from './src/ui/renderer.js';
+import {
+  addAggregateRun,
+  clearAggregateState,
+  computeBucketKey,
+  loadAggregateState,
+  persistRaceBundleToSession,
+} from './src/stats/aggregate-store.js';
 
 // JRA枠色（枠番1〜8）
 const JRA_WAKU_COLORS = {
@@ -3018,7 +3025,7 @@ function schedulePreRaceTableFit() {
 /**
  * 出走表プレレース編集 UI を構築する（runtimeRaceData.entries を直接更新）
  */
-function mountPreRaceEditor(runtimeRaceData, onConfirm) {
+function mountPreRaceEditor(runtimeRaceData, onConfirm, onBeforeConfirm) {
   const tbody = document.getElementById('pre-race-tbody');
   const infoEl = document.getElementById('pre-race-race-info');
   const btn = document.getElementById('btn-pre-race-confirm');
@@ -3201,7 +3208,10 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm) {
     tbody.appendChild(tr);
   });
 
-  btn.addEventListener('click', onConfirm);
+  btn.addEventListener('click', () => {
+    if (typeof onBeforeConfirm === 'function' && onBeforeConfirm() === false) return;
+    onConfirm();
+  });
 
   schedulePreRaceTableFit();
   const wrapEl = document.querySelector('.pre-race-table-wrap');
@@ -4813,9 +4823,14 @@ class PhaseController {
   }
 }
 
+const SIMULATOR_BOOT =
+  typeof document !== 'undefined' &&
+  Boolean(document.getElementById('field-canvas'));
+
 // =====================
 //  エントリーポイント
 // =====================
+if (SIMULATOR_BOOT) {
 Promise.all([
   fetch('./src/data/race-info.json').then(res => res.json()),
   fetch('./src/data/race-entries.json').then(res => res.json()),
@@ -4851,6 +4866,7 @@ Promise.all([
     let simLogs    = null;
     let simSnapshots = null;
     let lastFinishOrderIds = [];
+    let lastRunReproducible = false;
 
     const btnRun   = document.getElementById('btn-run');
     const btnReset = document.getElementById('btn-reset');
@@ -4892,6 +4908,7 @@ Promise.all([
       renderer.resetHorseRenderState();
       renderer.draw(initialHorses, phases[0], 0);
       refreshRaceInfo();
+      persistRaceBundleToSession(runtimeRaceData, userTweaksState, {});
     }
 
     function resetSimulatorToIdle() {
@@ -4929,6 +4946,7 @@ Promise.all([
           btnRun.textContent = '▶▶ 次のフェーズ';
 
           const simOptions = currentOptions();
+          lastRunReproducible = simOptions.reproducible;
           refreshRaceInfo();
           const sim  = runSimulation(runtimeRaceData, simOptions, userTweaksState, {}, renderer);
           simResults = sim.results;
@@ -4963,6 +4981,16 @@ Promise.all([
             lastFinishOrderIds = [...controller._goalRankOrder];
           }
           setTimeout(() => {
+            if (!lastRunReproducible && Array.isArray(simResults) && simResults.length) {
+              const orderIds = simResults.map(h => h.id);
+              addAggregateRun({
+                runtimeRaceData,
+                userTweaks: userTweaksState,
+                marks: {},
+                source: 'manual',
+                orderIds,
+              });
+            }
             btnRun.disabled    = true;
             btnReset.disabled  = false;
             btnRun.textContent = '✅ レース終了';
@@ -4992,6 +5020,13 @@ Promise.all([
       btnBackToSimulator?.addEventListener('click', () => {
         hideRaceSummaryScreen();
       });
+
+      const openStatsPage = () => {
+        persistRaceBundleToSession(runtimeRaceData, userTweaksState, {});
+        window.location.assign('stats.html');
+      };
+      document.getElementById('btn-open-stats')?.addEventListener('click', openStatsPage);
+      document.getElementById('btn-open-stats-summary')?.addEventListener('click', openStatsPage);
     }
 
     reproducibleToggle?.addEventListener('change', () => {
@@ -5007,14 +5042,35 @@ Promise.all([
       schedulePreRaceTableFit();
     });
 
+    function preRaceBeforeConfirm() {
+      const nextKey = computeBucketKey(runtimeRaceData, userTweaksState, {});
+      const agg = loadAggregateState();
+      if (agg.runs.length > 0 && agg.bucketKey && agg.bucketKey !== nextKey) {
+        const ok = window.confirm(
+          'パラメータ（出走内容や微調整）が変わります。これまでの集計はリセットされ、シミュレータ画面へ進みます。よろしいですか？',
+        );
+        if (!ok) return false;
+        clearAggregateState();
+      }
+      return true;
+    }
+
     mountPreRaceEditor(runtimeRaceData, () => {
       const preRaceEl = document.getElementById('pre-race-editor');
       if (preRaceEl) preRaceEl.hidden = true;
       if (btnBackToPreRace) btnBackToPreRace.hidden = false;
       applyComputedHorsesToUi();
       bindRaceControlsOnce();
+    }, preRaceBeforeConfirm);
+
+    document.getElementById('btn-pre-race-to-stats')?.addEventListener('click', () => {
+      persistRaceBundleToSession(runtimeRaceData, userTweaksState, {});
+      window.location.assign('stats.html');
     });
   })
   .catch(err => {
     console.error('JSONの読み込みに失敗しました:', err);
   });
+}
+
+export { runSimulation, resolveCourseDef };

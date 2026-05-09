@@ -655,9 +655,21 @@
     .pre-race-footer {
       flex: 0 0 auto;
       display: flex;
+      flex-wrap: wrap;
       justify-content: center;
+      gap: 8px;
       padding-top: 2px;
       flex-shrink: 0;
+    }
+    #btn-pre-race-to-stats {
+      min-width: 10rem;
+      font-size: 0.78rem;
+      padding: 7px 14px;
+      background: #1e3a52;
+      border: 1px solid #445566;
+      color: #e7f3fb;
+      cursor: pointer;
+      font-family: inherit;
     }
     #btn-pre-race-confirm {
       min-width: 14rem;
@@ -713,6 +725,17 @@
       padding: 8px 16px;
       font-size: 0.78rem;
       letter-spacing: 0.06em;
+    }
+    .summary-header-row #btn-open-stats-summary {
+      justify-self: end;
+      padding: 8px 12px;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      background: #1e3a52;
+      border: 1px solid #445566;
+      color: #e7f3fb;
+      cursor: pointer;
+      font-family: inherit;
     }
     .summary-header-spacer {
       display: block;
@@ -966,6 +989,7 @@
       </div>
     </div>
     <div class="pre-race-footer">
+      <button type="button" id="btn-pre-race-to-stats">集計画面へ</button>
       <button type="button" id="btn-pre-race-confirm">シミュレータへ進む</button>
     </div>
   </div>
@@ -978,7 +1002,7 @@
       <div class="summary-header-row">
         <button type="button" id="btn-back-to-simulator">← シミュレーターに戻る</button>
         <h2>レースサマリー</h2>
-        <span class="summary-header-spacer" aria-hidden="true"></span>
+        <button type="button" id="btn-open-stats-summary">📈 集計画面へ</button>
       </div>
       <div id="summary-race-info"></div>
     </div>
@@ -1004,6 +1028,7 @@
     <button id="btn-run">▶ レース開始</button>
     <button id="btn-reset" disabled>↺ リセット</button>
     <button id="btn-show-summary" type="button" disabled>📊 レースサマリー</button>
+    <button id="btn-open-stats" type="button">📈 集計画面へ</button>
     <label id="sim-options">
       <input id="toggle-reproducible" type="checkbox">
       再現性モード

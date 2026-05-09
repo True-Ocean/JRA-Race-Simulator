@@ -1,0 +1,167 @@
+/**
+ * モンテカルロ／手動シミュレーションの集計（sessionStorage、タブを閉じると消える）
+ */
+
+export const STORAGE_KEY_AGGREGATE = 'jra-sim-aggregate-v1';
+export const STORAGE_KEY_BUNDLE = 'jra-sim-bundle-v1';
+
+/** FNV-1a 風の軽量ハッシュ（同期・短いキー用） */
+export function hashString(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h.toString(16);
+}
+
+/**
+ * race_id + レースJSON相当（出馬・条件・ユーザー微調整・印）のバケットキー
+ */
+export function computeBucketKey(raceData, userTweaks, marks = {}) {
+  const payload = {
+    race_id: raceData.race_id,
+    race_info: raceData.race_info,
+    entries: raceData.entries,
+    userTweaks: userTweaks ?? {},
+    marks: marks ?? {},
+  };
+  return `${raceData.race_id}:${hashString(JSON.stringify(payload))}`;
+}
+
+export function buildRaceBundlePayload(runtimeRaceData, userTweaks, marks = {}) {
+  return {
+    race_id: runtimeRaceData.race_id,
+    race_info: runtimeRaceData.race_info,
+    entries: runtimeRaceData.entries,
+    userTweaks: userTweaks ?? {},
+    marks: marks ?? {},
+  };
+}
+
+export function persistRaceBundleToSession(runtimeRaceData, userTweaks, marks = {}) {
+  const payload = buildRaceBundlePayload(runtimeRaceData, userTweaks, marks);
+  sessionStorage.setItem(STORAGE_KEY_BUNDLE, JSON.stringify(payload));
+}
+
+export function loadRaceBundleFromSession() {
+  const raw = sessionStorage.getItem(STORAGE_KEY_BUNDLE);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function loadAggregateState() {
+  const raw = sessionStorage.getItem(STORAGE_KEY_AGGREGATE);
+  if (!raw) {
+    return { bucketKey: '', runs: [] };
+  }
+  try {
+    const o = JSON.parse(raw);
+    return {
+      bucketKey: o.bucketKey ?? '',
+      runs: Array.isArray(o.runs) ? o.runs : [],
+    };
+  } catch {
+    return { bucketKey: '', runs: [] };
+  }
+}
+
+export function saveAggregateState(state) {
+  sessionStorage.setItem(
+    STORAGE_KEY_AGGREGATE,
+    JSON.stringify({ bucketKey: state.bucketKey, runs: state.runs }),
+  );
+}
+
+export function clearAggregateState() {
+  sessionStorage.removeItem(STORAGE_KEY_AGGREGATE);
+}
+
+/**
+ * @param {{ runtimeRaceData: object, userTweaks: object, marks?: object, source: 'batch'|'manual', orderIds: number[] }} p
+ */
+export function addAggregateRun(p) {
+  const { runtimeRaceData, userTweaks, marks, source, orderIds } = p;
+  const bucketKey = computeBucketKey(runtimeRaceData, userTweaks, marks);
+  let state = loadAggregateState();
+  if (!state.runs) state.runs = [];
+  if (!state.bucketKey || state.bucketKey !== bucketKey) {
+    state = { bucketKey, runs: [] };
+  }
+  state.runs.push({ source, order: [...orderIds] });
+  saveAggregateState(state);
+}
+
+export function runCountsBySource(state) {
+  let batch = 0;
+  let manual = 0;
+  for (const r of state.runs) {
+    if (r.source === 'batch') batch += 1;
+    else if (r.source === 'manual') manual += 1;
+  }
+  return { batch, manual, total: state.runs.length };
+}
+
+function filterRuns(runs, mode) {
+  if (mode === 'batch') return runs.filter(r => r.source === 'batch');
+  if (mode === 'manual') return runs.filter(r => r.source === 'manual');
+  return runs;
+}
+
+/**
+ * @param {{ runtimeRaceData: object, userTweaks: object, marks?: object, mode: 'all'|'batch'|'manual' }} p
+ */
+export function computeAggregateRows(p) {
+  const { runtimeRaceData, userTweaks, marks, mode } = p;
+  const bucketKey = computeBucketKey(runtimeRaceData, userTweaks, marks);
+  const state = loadAggregateState();
+  if (!state.runs.length || state.bucketKey !== bucketKey) {
+    return { rows: [], trials: 0, batch: 0, manual: 0 };
+  }
+  const runs = filterRuns(state.runs, mode);
+  const n = runs.length;
+  const counts = runCountsBySource(state);
+
+  const rows = [];
+  const fieldSize = runtimeRaceData.entries.length;
+  for (let id = 0; id < fieldSize; id++) {
+    const entry = runtimeRaceData.entries[id];
+    const name = entry?.horse?.name ?? `馬${id + 1}`;
+    const gate = entry?.gate ?? id + 1;
+    let wins = 0;
+    let top2 = 0;
+    let top3 = 0;
+    let best = Infinity;
+    let worst = 0;
+    for (const run of runs) {
+      const order = run.order;
+      if (!Array.isArray(order)) continue;
+      const rank = order.indexOf(id);
+      if (rank < 0) continue;
+      const place = rank + 1;
+      if (place === 1) wins += 1;
+      if (place <= 2) top2 += 1;
+      if (place <= 3) top3 += 1;
+      best = Math.min(best, place);
+      worst = Math.max(worst, place);
+    }
+    rows.push({
+      id,
+      gate,
+      name,
+      wins,
+      top2,
+      top3,
+      winRate: n ? wins / n : 0,
+      top2Rate: n ? top2 / n : 0,
+      top3Rate: n ? top3 / n : 0,
+      bestRank: Number.isFinite(best) ? best : null,
+      worstRank: n ? worst : null,
+    });
+  }
+  return { rows, trials: n, batch: counts.batch, manual: counts.manual };
+}
