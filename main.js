@@ -12,7 +12,11 @@ import {
   computeBucketKey,
   loadAggregateState,
   persistRaceBundleToSession,
+  SESSION_KEY_OPEN_SCREEN,
   SESSION_KEY_OPEN_SIMULATOR,
+  SESSION_KEY_SIMULATOR_STATE,
+  SESSION_KEY_STATS_RETURN_SCREEN,
+  SESSION_KEY_SUMMARY_STATE,
 } from './src/stats/aggregate-store.js';
 import { formatRaceInfo, resolveCourseDef } from './src/stats/race-display.js';
 
@@ -4890,6 +4894,12 @@ Promise.all([
       simSnapshots = null;
       lastFinishOrderIds = [];
       hideRaceSummaryScreen();
+      try {
+        sessionStorage.removeItem(SESSION_KEY_SIMULATOR_STATE);
+        sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
+      } catch {
+        /* ignore */
+      }
     }
 
     let raceControlsBound = false;
@@ -4899,6 +4909,12 @@ Promise.all([
 
       btnRun.addEventListener('click', () => {
         if (!controller) {
+          try {
+            sessionStorage.removeItem(SESSION_KEY_SIMULATOR_STATE);
+            sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
+          } catch {
+            /* ignore */
+          }
           btnReset.disabled = false;
           if (btnShowSummary) btnShowSummary.disabled = true;
           document.getElementById('log-panel').innerHTML = '';
@@ -4981,12 +4997,69 @@ Promise.all([
         hideRaceSummaryScreen();
       });
 
-      const openStatsPage = () => {
+      const saveStatsReturnScreen = (screen) => {
+        try {
+          sessionStorage.setItem(SESSION_KEY_STATS_RETURN_SCREEN, screen);
+        } catch {
+          /* ignore */
+        }
+      };
+
+      const saveSummaryStateForReturn = () => {
+        if (!simResults || !simSnapshots) return;
+        const payload = {
+          simResults,
+          finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
+          snapshots: simSnapshots,
+        };
+        try {
+          sessionStorage.setItem(SESSION_KEY_SUMMARY_STATE, JSON.stringify(payload));
+        } catch {
+          /* ignore */
+        }
+      };
+
+      const saveSimulatorStateForReturn = () => {
+        if (!Array.isArray(simResults) || simResults.length === 0 || controller) return;
+        const payload = {
+          simResults,
+          simLogs,
+          snapshots: simSnapshots,
+          finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
+          ui: {
+            phaseText: document.getElementById('phase-indicator')?.textContent ?? 'スタート',
+            logHtml: document.getElementById('log-panel')?.innerHTML ?? '',
+            placingHtml: document.getElementById('placing-panel')?.innerHTML ?? '',
+            btnRunText: btnRun.textContent ?? '✅ レース終了',
+            btnRunDisabled: Boolean(btnRun.disabled),
+            btnResetDisabled: Boolean(btnReset.disabled),
+            btnShowSummaryDisabled: Boolean(btnShowSummary?.disabled),
+          },
+        };
+        try {
+          sessionStorage.setItem(SESSION_KEY_SIMULATOR_STATE, JSON.stringify(payload));
+        } catch {
+          /* ignore */
+        }
+      };
+
+      const openStatsPage = (returnScreen = 'simulator') => {
+        saveStatsReturnScreen(returnScreen);
+        saveSimulatorStateForReturn();
+        if (returnScreen === 'summary') {
+          saveSummaryStateForReturn();
+        } else {
+          try {
+            sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
+          } catch {
+            /* ignore */
+          }
+        }
         persistRaceBundleToSession(runtimeRaceData, userTweaksState, {});
         window.location.assign('stats.html');
       };
-      document.getElementById('btn-open-stats')?.addEventListener('click', openStatsPage);
-      document.getElementById('btn-open-stats-summary')?.addEventListener('click', openStatsPage);
+      document.getElementById('btn-open-stats')?.addEventListener('click', () => openStatsPage('simulator'));
+      document.getElementById('btn-open-stats-summary')?.addEventListener('click', () => openStatsPage('summary'));
     }
 
     reproducibleToggle?.addEventListener('change', () => {
@@ -5015,27 +5088,127 @@ Promise.all([
       return true;
     }
 
+    const openScreen =
+      typeof sessionStorage !== 'undefined'
+        ? sessionStorage.getItem(SESSION_KEY_OPEN_SCREEN)
+        : '';
     const openSimulatorDirect =
-      typeof sessionStorage !== 'undefined' &&
-      sessionStorage.getItem(SESSION_KEY_OPEN_SIMULATOR) === '1';
-    if (openSimulatorDirect) {
+      openScreen === 'simulator' ||
+      openScreen === 'summary' ||
+      (typeof sessionStorage !== 'undefined' &&
+        sessionStorage.getItem(SESSION_KEY_OPEN_SIMULATOR) === '1');
+    if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem(SESSION_KEY_OPEN_SIMULATOR);
+      sessionStorage.removeItem(SESSION_KEY_OPEN_SCREEN);
     }
+
+    const openSimulatorScreen = () => {
+      const preRaceEl = document.getElementById('pre-race-editor');
+      if (preRaceEl) preRaceEl.hidden = true;
+      if (btnBackToPreRace) btnBackToPreRace.hidden = false;
+      applyComputedHorsesToUi();
+      bindRaceControlsOnce();
+    };
 
     mountPreRaceEditor(
       runtimeRaceData,
-      () => {
-        const preRaceEl = document.getElementById('pre-race-editor');
-        if (preRaceEl) preRaceEl.hidden = true;
-        if (btnBackToPreRace) btnBackToPreRace.hidden = false;
-        applyComputedHorsesToUi();
-        bindRaceControlsOnce();
-      },
+      openSimulatorScreen,
       preRaceBeforeConfirm,
       { openSimulatorDirect },
     );
 
+    const openPreRaceScreen = () => {
+      resetSimulatorToIdle();
+      hideRaceSummaryScreen();
+      const preRaceEl = document.getElementById('pre-race-editor');
+      if (preRaceEl) preRaceEl.hidden = false;
+      if (btnBackToPreRace) btnBackToPreRace.hidden = true;
+      schedulePreRaceTableFit();
+    };
+
+    const tryRestoreSummaryScreen = () => {
+      if (openScreen !== 'summary' || !simResults || !simSnapshots) return false;
+      renderRaceSummaryScreen({
+        raceData: runtimeRaceData,
+        simResults,
+        finishOrderIds: lastFinishOrderIds,
+        horseMetaByName,
+        snapshots: simSnapshots,
+        phases,
+        getPhaseLabel: (phase) => renderer.getPhaseName(phase),
+      });
+      return true;
+    };
+
+    const restoreSimulatorStateFromSession = () => {
+      if (typeof sessionStorage === 'undefined') return false;
+      const raw = sessionStorage.getItem(SESSION_KEY_SIMULATOR_STATE);
+      if (!raw) return false;
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed?.simResults) || !Array.isArray(parsed?.snapshots)) return false;
+        simResults = parsed.simResults;
+        simLogs = Array.isArray(parsed.simLogs) ? parsed.simLogs : null;
+        simSnapshots = parsed.snapshots;
+        lastFinishOrderIds = Array.isArray(parsed.finishOrderIds) ? parsed.finishOrderIds : [];
+        const ui = parsed.ui ?? {};
+        document.getElementById('phase-indicator').textContent = ui.phaseText ?? 'ゴール';
+        if (typeof ui.logHtml === 'string') {
+          document.getElementById('log-panel').innerHTML = ui.logHtml;
+        }
+        if (typeof ui.placingHtml === 'string') {
+          document.getElementById('placing-panel').innerHTML = ui.placingHtml;
+        }
+        btnRun.textContent = typeof ui.btnRunText === 'string' ? ui.btnRunText : '✅ レース終了';
+        btnRun.disabled = ui.btnRunDisabled !== undefined ? Boolean(ui.btnRunDisabled) : true;
+        btnReset.disabled = ui.btnResetDisabled !== undefined ? Boolean(ui.btnResetDisabled) : false;
+        if (btnShowSummary) {
+          btnShowSummary.disabled =
+            ui.btnShowSummaryDisabled !== undefined ? Boolean(ui.btnShowSummaryDisabled) : false;
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    if (openScreen === 'pre-race') {
+      openPreRaceScreen();
+    } else if (openScreen === 'summary') {
+      openSimulatorScreen();
+      const simulatorRestored = restoreSimulatorStateFromSession();
+      let restored = false;
+      if (typeof sessionStorage !== 'undefined') {
+        const raw = sessionStorage.getItem(SESSION_KEY_SUMMARY_STATE);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed?.simResults) && Array.isArray(parsed?.snapshots)) {
+              simResults = parsed.simResults;
+              simSnapshots = parsed.snapshots;
+              lastFinishOrderIds = Array.isArray(parsed.finishOrderIds) ? parsed.finishOrderIds : [];
+              restored = tryRestoreSummaryScreen();
+            }
+          } catch {
+            /* ignore parse error */
+          }
+        }
+        sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
+      }
+      if (!restored && simulatorRestored) restored = tryRestoreSummaryScreen();
+    } else {
+      openSimulatorScreen();
+      restoreSimulatorStateFromSession();
+    }
+
     document.getElementById('btn-pre-race-to-stats')?.addEventListener('click', () => {
+      try {
+        sessionStorage.setItem(SESSION_KEY_STATS_RETURN_SCREEN, 'pre-race');
+        sessionStorage.removeItem(SESSION_KEY_SIMULATOR_STATE);
+        sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
+      } catch {
+        /* ignore */
+      }
       persistRaceBundleToSession(runtimeRaceData, userTweaksState, {});
       window.location.assign('stats.html');
     });

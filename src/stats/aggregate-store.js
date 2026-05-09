@@ -6,6 +6,14 @@ export const STORAGE_KEY_AGGREGATE = 'jra-sim-aggregate-v1';
 export const STORAGE_KEY_BUNDLE = 'jra-sim-bundle-v1';
 /** 集計画面から戻るとき、プレレースではなくシミュレータ本体を開く */
 export const SESSION_KEY_OPEN_SIMULATOR = 'jra-open-simulator';
+/** 集計画面へ遷移する前に、どの画面にいたかを保存 */
+export const SESSION_KEY_STATS_RETURN_SCREEN = 'jra-stats-return-screen';
+/** 集計画面から戻るときに index 側で開く画面 */
+export const SESSION_KEY_OPEN_SCREEN = 'jra-open-screen';
+/** 集計→戻るでサマリー復元するための最小状態 */
+export const SESSION_KEY_SUMMARY_STATE = 'jra-summary-state';
+/** 集計→戻るでシミュレーター結果（ログ/掲示板/完了状態）を復元 */
+export const SESSION_KEY_SIMULATOR_STATE = 'jra-simulator-state';
 
 /** FNV-1a 風の軽量ハッシュ（同期・短いキー用） */
 export function hashString(str) {

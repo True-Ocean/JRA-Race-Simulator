@@ -7,7 +7,8 @@ import {
   loadAggregateState,
   computeAggregateRows,
   clearAggregateState,
-  SESSION_KEY_OPEN_SIMULATOR,
+  SESSION_KEY_OPEN_SCREEN,
+  SESSION_KEY_STATS_RETURN_SCREEN,
 } from './aggregate-store.js';
 
 /** main.js の出馬表・掲示板と同じ枠色（馬番バッジ用） */
@@ -257,7 +258,9 @@ async function init() {
 
   document.getElementById('btn-stats-back')?.addEventListener('click', () => {
     try {
-      sessionStorage.setItem(SESSION_KEY_OPEN_SIMULATOR, '1');
+      const returnScreen = sessionStorage.getItem(SESSION_KEY_STATS_RETURN_SCREEN) ?? 'simulator';
+      sessionStorage.setItem(SESSION_KEY_OPEN_SCREEN, returnScreen);
+      sessionStorage.removeItem(SESSION_KEY_STATS_RETURN_SCREEN);
     } catch {
       /* ignore */
     }
