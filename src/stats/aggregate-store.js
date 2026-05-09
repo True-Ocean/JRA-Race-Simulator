@@ -92,7 +92,7 @@ export function clearAggregateState() {
 }
 
 /**
- * @param {{ runtimeRaceData: object, userTweaks: object, marks?: object, source: 'batch'|'manual', orderIds: number[] }} p
+ * @param {{ runtimeRaceData: object, userTweaks: object, marks?: object, source: 'batch'|'manual'|'auto', orderIds: number[] }} p
  */
 export function addAggregateRun(p) {
   const { runtimeRaceData, userTweaks, marks, source, orderIds } = p;
@@ -109,16 +109,18 @@ export function addAggregateRun(p) {
 export function runCountsBySource(state) {
   let batch = 0;
   let manual = 0;
+  let auto = 0;
   for (const r of state.runs) {
     if (r.source === 'batch') batch += 1;
     else if (r.source === 'manual') manual += 1;
+    else if (r.source === 'auto') auto += 1;
   }
-  return { batch, manual, total: state.runs.length };
+  return { batch, manual, auto, total: state.runs.length };
 }
 
-/** 集計対象は手動（ゴール演出順）のみ。過去の一括試行は表示から除外する。 */
+/** 集計対象は手動・自動（ゴール演出順）のみ。過去の一括試行は表示から除外する。 */
 function manualRunsOnly(runs) {
-  return runs.filter(r => r.source === 'manual');
+  return runs.filter(r => r.source === 'manual' || r.source === 'auto');
 }
 
 /**
@@ -190,5 +192,5 @@ export function computeAggregateRows(p) {
       worstRank: n ? worst : null,
     });
   }
-  return { rows, trials: n, batch: counts.batch, manual: counts.manual };
+  return { rows, trials: n, batch: counts.batch, manual: counts.manual, auto: counts.auto };
 }

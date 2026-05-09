@@ -3315,8 +3315,19 @@ class PhaseController {
     this.placingPanel = document.getElementById('placing-panel');
     this.indicator = document.getElementById('phase-indicator');
     this.isAnimating = false;
+    this.advanceExternallyLocked = false;
     this.frameCount  = 24; // 1フェーズを細かく刻む
     this.frameMs     = 70; // 1コマの表示時間
+  }
+
+  _syncAdvanceButton() {
+    if (!this.btnAdvance) return;
+    this.btnAdvance.disabled = this.isAnimating || this.advanceExternallyLocked;
+  }
+
+  setAdvanceExternallyLocked(locked) {
+    this.advanceExternallyLocked = Boolean(locked);
+    this._syncAdvanceButton();
   }
 
   start() {
@@ -3324,8 +3335,8 @@ class PhaseController {
     this.renderer.resetHorseRenderState();
     this._initializePlacingPanel();
     this._renderPhase(0);
-    this.btnAdvance.disabled = false;
     this.btnAdvance.textContent = '▶▶ 次のフェーズ';
+    this._syncAdvanceButton();
   }
 
   _renderPhase(idx) {
@@ -3355,7 +3366,7 @@ class PhaseController {
   // 馬カードをアニメーションで表示（段階的に進行度を上げる）
   _animateHorses(fromHorses, toHorses, phase, isFirstPhase = false, eventLogs = null) {
     this.isAnimating      = true;
-    this.btnAdvance.disabled = true;
+    this._syncAdvanceButton();
 
     // 初回のみスタート演出（スタート隊列→第1フェーズ）
     if (isFirstPhase) {
@@ -3406,7 +3417,7 @@ class PhaseController {
         if (frame >= totalFrames) {
           this.lastRenderedHorses = toHorses.map(h => ({ ...h }));
           this.isAnimating = false;
-          this.btnAdvance.disabled = false;
+          this._syncAdvanceButton();
           return;
         }
         setTimeout(stepFirst, this.frameMs);
@@ -3441,7 +3452,7 @@ class PhaseController {
       if (progress >= 1) {
         this.lastRenderedHorses = toHorses.map(h => ({ ...h }));
         this.isAnimating = false;
-        this.btnAdvance.disabled = false;
+        this._syncAdvanceButton();
         return;
       }
       setTimeout(step, this.frameMs);
@@ -3464,6 +3475,20 @@ class PhaseController {
     const line = this._logQueue.shift();
     this._appendLog(line);
     this._logTimer = setTimeout(() => this._flushNextLog(), 80);
+  }
+
+  /** 着順枠の伸縮でログ欄が縮んでも、最新行が見えるよう末尾へスクロール */
+  _scrollRaceLogToBottom() {
+    if (!this.logPanel) return;
+    const el = this.logPanel;
+    const sync = () => {
+      el.scrollTop = el.scrollHeight;
+    };
+    sync();
+    requestAnimationFrame(() => {
+      sync();
+      requestAnimationFrame(sync);
+    });
   }
 
   _appendLog(line) {
@@ -3491,6 +3516,7 @@ class PhaseController {
     div.innerHTML = formatHomePlacingRowInnerHtml(rank, horse, this.horseMetaByName);
     this.placingPanel.appendChild(div);
     this.placingPanel.scrollTop = this.placingPanel.scrollHeight;
+    this._scrollRaceLogToBottom();
   }
 
   _initializePlacingPanel() {
@@ -3653,7 +3679,7 @@ class PhaseController {
     let goalFrameIndex = 0;
 
     this.isAnimating = true;
-    this.btnAdvance.disabled = true;
+    this._syncAdvanceButton();
     this.indicator.textContent = this.renderer.getPhaseName(phase);
     this._goalRankLogged = new Set();
     this._goalRankOrder = [];
@@ -4787,7 +4813,7 @@ class PhaseController {
     if (this.isAnimating) return;
     this.currentIdx++;
     if (this.currentIdx >= this.snapshots.length) {
-      this.btnAdvance.disabled = true;
+      this._syncAdvanceButton();
       this._playGoalApproach(() => onFinish());
       return;
     }
@@ -4846,8 +4872,98 @@ Promise.all([
     const btnBackToSimulator = document.getElementById('btn-back-to-simulator');
     const btnBackToPreRace = document.getElementById('btn-back-to-pre-race');
     const reproducibleToggle = document.getElementById('toggle-reproducible');
+    const autoAdvanceToggle = document.getElementById('toggle-auto-advance');
     const raceInfoEl = document.getElementById('race-info');
     let lastSeed = runtimeRaceData.race_id;
+    let autoAdvanceRafId = 0;
+    let currentRaceUsedAutoAdvance = false;
+
+    function stopAutoAdvanceLoop() {
+      if (autoAdvanceRafId) {
+        cancelAnimationFrame(autoAdvanceRafId);
+        autoAdvanceRafId = 0;
+      }
+    }
+
+    function isAutoDrivingRace() {
+      return Boolean(controller && autoAdvanceToggle?.checked);
+    }
+
+    function syncSimulatorChromeForAutoMode() {
+      const btnOpenStats = document.getElementById('btn-open-stats');
+      const driving = isAutoDrivingRace();
+      if (controller && driving) {
+        controller.setAdvanceExternallyLocked(true);
+        btnRun.disabled = true;
+        btnReset.disabled = true;
+        if (btnShowSummary) btnShowSummary.disabled = true;
+        if (btnOpenStats) btnOpenStats.disabled = true;
+        if (reproducibleToggle) reproducibleToggle.disabled = true;
+        if (btnBackToPreRace && !btnBackToPreRace.hidden) btnBackToPreRace.disabled = true;
+      } else if (controller) {
+        controller.setAdvanceExternallyLocked(false);
+        btnReset.disabled = false;
+        if (btnShowSummary) btnShowSummary.disabled = true;
+        if (btnOpenStats) btnOpenStats.disabled = false;
+        if (reproducibleToggle) reproducibleToggle.disabled = false;
+        if (btnBackToPreRace) btnBackToPreRace.disabled = false;
+        controller._syncAdvanceButton();
+      } else {
+        if (btnOpenStats) btnOpenStats.disabled = false;
+        if (reproducibleToggle) reproducibleToggle.disabled = false;
+        if (btnBackToPreRace) btnBackToPreRace.disabled = false;
+      }
+    }
+
+    function scheduleAutoAdvanceLoop() {
+      if (!controller || !autoAdvanceToggle?.checked) return;
+      stopAutoAdvanceLoop();
+      const tick = () => {
+        if (!controller || !autoAdvanceToggle?.checked) {
+          autoAdvanceRafId = 0;
+          syncSimulatorChromeForAutoMode();
+          return;
+        }
+        if (!controller.isAnimating) {
+          controller.next(completeRaceAfterGoal);
+        }
+        autoAdvanceRafId = requestAnimationFrame(tick);
+      };
+      autoAdvanceRafId = requestAnimationFrame(tick);
+    }
+
+    function completeRaceAfterGoal() {
+      stopAutoAdvanceLoop();
+      if (controller && Array.isArray(controller._goalRankOrder)) {
+        lastFinishOrderIds = [...controller._goalRankOrder];
+      }
+      setTimeout(() => {
+        const shouldAggregate =
+          Array.isArray(simResults) &&
+          simResults.length &&
+          (!lastRunReproducible || currentRaceUsedAutoAdvance);
+        if (shouldAggregate) {
+          const orderIds = buildSummaryPlacingOrderIds(lastFinishOrderIds, simResults);
+          addAggregateRun({
+            runtimeRaceData,
+            userTweaks: userTweaksState,
+            marks: {},
+            source: currentRaceUsedAutoAdvance ? 'auto' : 'manual',
+            orderIds,
+          });
+        }
+        btnRun.disabled = true;
+        btnReset.disabled = false;
+        btnRun.textContent = '✅ レース終了';
+        if (btnShowSummary) btnShowSummary.disabled = false;
+        const btnOpenStatsEnd = document.getElementById('btn-open-stats');
+        if (btnOpenStatsEnd) btnOpenStatsEnd.disabled = false;
+        if (reproducibleToggle) reproducibleToggle.disabled = false;
+        if (btnBackToPreRace) btnBackToPreRace.disabled = false;
+        controller = null;
+        currentRaceUsedAutoAdvance = false;
+      }, 300);
+    }
 
     const currentOptions = () => {
       const reproducible = Boolean(reproducibleToggle?.checked);
@@ -4884,6 +5000,8 @@ Promise.all([
     }
 
     function resetSimulatorToIdle() {
+      stopAutoAdvanceLoop();
+      currentRaceUsedAutoAdvance = false;
       btnRun.disabled   = false;
       btnReset.disabled = true;
       btnRun.textContent = '▶ レース開始';
@@ -4908,6 +5026,10 @@ Promise.all([
       } catch {
         /* ignore */
       }
+      const btnOpenStatsIdle = document.getElementById('btn-open-stats');
+      if (btnOpenStatsIdle) btnOpenStatsIdle.disabled = false;
+      if (reproducibleToggle) reproducibleToggle.disabled = false;
+      if (btnBackToPreRace) btnBackToPreRace.disabled = false;
     }
 
     let raceControlsBound = false;
@@ -4957,31 +5079,15 @@ Promise.all([
             sim.results,
           );
           controller.start();
+          currentRaceUsedAutoAdvance = Boolean(autoAdvanceToggle?.checked);
+          if (autoAdvanceToggle?.checked) {
+            syncSimulatorChromeForAutoMode();
+            scheduleAutoAdvanceLoop();
+          }
           return;
         }
 
-        controller.next(() => {
-          if (controller && Array.isArray(controller._goalRankOrder)) {
-            lastFinishOrderIds = [...controller._goalRankOrder];
-          }
-          setTimeout(() => {
-            if (!lastRunReproducible && Array.isArray(simResults) && simResults.length) {
-              const orderIds = buildSummaryPlacingOrderIds(lastFinishOrderIds, simResults);
-              addAggregateRun({
-                runtimeRaceData,
-                userTweaks: userTweaksState,
-                marks: {},
-                source: 'manual',
-                orderIds,
-              });
-            }
-            btnRun.disabled    = true;
-            btnReset.disabled  = false;
-            btnRun.textContent = '✅ レース終了';
-            if (btnShowSummary) btnShowSummary.disabled = false;
-            controller = null;
-          }, 300);
-        });
+        controller.next(completeRaceAfterGoal);
       });
 
       btnReset.addEventListener('click', () => {
@@ -5072,6 +5178,17 @@ Promise.all([
 
     reproducibleToggle?.addEventListener('change', () => {
       refreshRaceInfo();
+    });
+
+    autoAdvanceToggle?.addEventListener('change', () => {
+      if (autoAdvanceToggle.checked && controller) {
+        currentRaceUsedAutoAdvance = true;
+        syncSimulatorChromeForAutoMode();
+        scheduleAutoAdvanceLoop();
+      } else {
+        stopAutoAdvanceLoop();
+        syncSimulatorChromeForAutoMode();
+      }
     });
 
     btnBackToPreRace?.addEventListener('click', () => {

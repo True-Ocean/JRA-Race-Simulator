@@ -74,15 +74,33 @@
     }
 
     #sim-options {
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: center;
       gap: 6px;
+      width: 100%;
       color: #9ec3d8;
       letter-spacing: 0.03em;
       border: 1px solid #2c5275;
       border-radius: 6px;
       background: rgba(16, 40, 63, 0.65);
+      cursor: default;
+    }
+    #sim-options label {
+      display: grid;
+      grid-template-columns: 1em minmax(0, 1fr);
+      align-items: center;
+      column-gap: 6px;
+      width: 100%;
       cursor: pointer;
     }
-    #sim-options input { accent-color: #f0c040; }
+    #sim-options input[type="checkbox"] {
+      accent-color: #f0c040;
+      margin: 0;
+      width: 1em;
+      height: 1em;
+      justify-self: start;
+    }
 
     button {
       background: #1e3a5f;
@@ -119,18 +137,23 @@
       display: none !important;
     }
 
-    /* タイトル直下の3つ（開始・リセット・再現性）を同一サイズのボックスに */
+    /* タイトル直下：ボタンとオプション群を同一サイズのボックスに */
     #controls > button,
     #controls > #sim-options {
       flex: 0 0 12rem;
       width: 12rem;
-      min-height: 2.75rem;
+      min-height: 3.35rem;
       padding: 8px 10px;
       font-size: 0.85rem;
       box-sizing: border-box;
       display: inline-flex;
-      align-items: center;
       justify-content: center;
+    }
+    #controls > button {
+      align-items: center;
+    }
+    #controls > #sim-options {
+      align-items: flex-start;
     }
 
     /* ===== 3カラムメインレイアウト：左右を広く、中央を縦長に ===== */
@@ -1120,10 +1143,16 @@
     <button id="btn-reset" disabled>↺ リセット</button>
     <button id="btn-show-summary" type="button" disabled>📊 レースサマリー</button>
     <button id="btn-open-stats" type="button">📈 集計画面</button>
-    <label id="sim-options">
-      <input id="toggle-reproducible" type="checkbox">
-      再現性モード
-    </label>
+    <div id="sim-options" role="group" aria-label="シミュレーションオプション">
+      <label>
+        <input id="toggle-reproducible" type="checkbox">
+        再現性モード
+      </label>
+      <label>
+        <input id="toggle-auto-advance" type="checkbox">
+        自動モード
+      </label>
+    </div>
   </div>
 
   <!-- 3カラムレイアウト -->
