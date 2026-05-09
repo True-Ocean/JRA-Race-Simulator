@@ -2801,6 +2801,40 @@ function round100(n) {
 }
 
 /**
+ * プレレース表をビューポート内の領域に収める（内部スクロールを不要にする）
+ */
+function updatePreRaceTableFit() {
+  const editor = document.getElementById('pre-race-editor');
+  const wrap = document.querySelector('.pre-race-table-wrap');
+  const inner = document.querySelector('.pre-race-table-inner');
+  if (!editor || !wrap || !inner) return;
+  if (editor.hidden) return;
+
+  inner.style.zoom = '';
+  inner.style.transform = '';
+  inner.style.marginBottom = '';
+
+  const availH = wrap.clientHeight;
+  const availW = wrap.clientWidth;
+  const nh = inner.scrollHeight;
+  const nw = inner.scrollWidth;
+  if (availH < 8 || availW < 8 || nh < 1 || nw < 1) return;
+
+  const scale = Math.min(1, availH / nh, availW / nw);
+  if (scale >= 0.999) return;
+
+  inner.style.transform = `scale(${scale})`;
+  inner.style.transformOrigin = 'top center';
+  inner.style.marginBottom = `${-(nh * (1 - scale))}px`;
+}
+
+function schedulePreRaceTableFit() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => updatePreRaceTableFit());
+  });
+}
+
+/**
  * 出走表プレレース編集 UI を構築する（runtimeRaceData.entries を直接更新）
  */
 function mountPreRaceEditor(runtimeRaceData, onConfirm) {
@@ -2897,6 +2931,12 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm) {
     tr.appendChild(tdJockeyName);
 
     const tdStyle = document.createElement('td');
+    const styleWrap = document.createElement('span');
+    const syncStyleBadgeClass = () => {
+      styleWrap.className = `entry-style-inline pre-race-style-wrap ${getEntryStyleBadgeClass(horse.style)}`;
+    };
+    syncStyleBadgeClass();
+
     const sel = document.createElement('select');
     sel.className = 'pre-race-select';
     const styleSet = new Set(PRE_RACE_STYLE_OPTIONS);
@@ -2915,8 +2955,10 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm) {
     });
     sel.addEventListener('change', () => {
       horse.style = sel.value;
+      syncStyleBadgeClass();
     });
-    tdStyle.appendChild(sel);
+    styleWrap.appendChild(sel);
+    tdStyle.appendChild(styleWrap);
     tr.appendChild(tdStyle);
 
     tr.appendChild(
@@ -2956,7 +2998,7 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm) {
         0.05,
         0.45,
         0.01,
-        v => round100(v).toFixed(2),
+        v => `${Math.round(round100(v) * 100)}%`,
         round100,
       ),
     );
@@ -2970,7 +3012,7 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm) {
         0.3,
         0.7,
         0.01,
-        v => round100(v).toFixed(2),
+        v => `${Math.round(round100(v) * 100)}%`,
         round100,
       ),
     );
@@ -2979,6 +3021,14 @@ function mountPreRaceEditor(runtimeRaceData, onConfirm) {
   });
 
   btn.addEventListener('click', onConfirm);
+
+  schedulePreRaceTableFit();
+  const wrapEl = document.querySelector('.pre-race-table-wrap');
+  if (wrapEl && typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(() => schedulePreRaceTableFit());
+    ro.observe(wrapEl);
+  }
+  window.addEventListener('resize', schedulePreRaceTableFit);
 }
 
 function renderEntryList(horses) {
@@ -4621,6 +4671,7 @@ Promise.all([
 
     const btnRun   = document.getElementById('btn-run');
     const btnReset = document.getElementById('btn-reset');
+    const btnBackToPreRace = document.getElementById('btn-back-to-pre-race');
     const reproducibleToggle = document.getElementById('toggle-reproducible');
     const raceInfoEl = document.getElementById('race-info');
     let lastSeed = runtimeRaceData.race_id;
@@ -4656,6 +4707,21 @@ Promise.all([
       renderer.resetHorseRenderState();
       renderer.draw(initialHorses, phases[0], 0);
       refreshRaceInfo();
+    }
+
+    function resetSimulatorToIdle() {
+      btnRun.disabled   = false;
+      btnReset.disabled = true;
+      btnRun.textContent = '▶ レース開始';
+      document.getElementById('phase-indicator').textContent = 'スタート';
+      document.getElementById('log-panel').innerHTML =
+        '<div class="log-entry" style="color:#334;">待機中...</div>';
+      document.getElementById('placing-panel').innerHTML = '';
+
+      renderer.resetHorseRenderState();
+      renderer.draw(initialHorses, phases[0], 0);
+      updateEntryStaminaBars(initialHorses);
+      controller = null;
     }
 
     let raceControlsBound = false;
@@ -4709,18 +4775,7 @@ Promise.all([
       });
 
       btnReset.addEventListener('click', () => {
-        btnRun.disabled   = false;
-        btnReset.disabled = true;
-        btnRun.textContent = '▶ レース開始';
-        document.getElementById('phase-indicator').textContent = 'スタート';
-        document.getElementById('log-panel').innerHTML =
-          '<div class="log-entry" style="color:#334;">待機中...</div>';
-        document.getElementById('placing-panel').innerHTML = '';
-
-        renderer.resetHorseRenderState();
-        renderer.draw(initialHorses, phases[0], 0);
-        updateEntryStaminaBars(initialHorses);
-        controller = null;
+        resetSimulatorToIdle();
       });
     }
 
@@ -4728,9 +4783,18 @@ Promise.all([
       refreshRaceInfo();
     });
 
+    btnBackToPreRace?.addEventListener('click', () => {
+      resetSimulatorToIdle();
+      const preRaceEl = document.getElementById('pre-race-editor');
+      if (preRaceEl) preRaceEl.hidden = false;
+      if (btnBackToPreRace) btnBackToPreRace.hidden = true;
+      schedulePreRaceTableFit();
+    });
+
     mountPreRaceEditor(runtimeRaceData, () => {
       const preRaceEl = document.getElementById('pre-race-editor');
       if (preRaceEl) preRaceEl.hidden = true;
+      if (btnBackToPreRace) btnBackToPreRace.hidden = false;
       applyComputedHorsesToUi();
       bindRaceControlsOnce();
     });
