@@ -15,6 +15,7 @@ import {
   SESSION_KEY_OPEN_SCREEN,
   SESSION_KEY_OPEN_SIMULATOR,
   SESSION_KEY_SIMULATOR_STATE,
+  SESSION_KEY_SIMULATOR_GOAL_RECORDING,
   SESSION_KEY_STATS_RETURN_SCREEN,
   SESSION_KEY_SUMMARY_STATE,
 } from './src/stats/aggregate-store.js';
@@ -163,6 +164,48 @@ const GOAL_MIN_SPEED_RATIO = 0.58;
 const GOAL_MAX_SPEED_RATIO = 1.95;
 const GOAL_POST_SCROLL_MS = 700;
 const GOAL_POST_CLEAR_METERS = GOAL_FURLONG_METERS * 1.25;
+
+function mapIdEntriesToMap(entries) {
+  if (entries instanceof Map) return entries;
+  if (Array.isArray(entries)) return new Map(entries);
+  if (entries && typeof entries === 'object') return new Map(Object.entries(entries));
+  return new Map();
+}
+
+function lastGoalRecordingFrame(recording) {
+  if (!Array.isArray(recording) || recording.length === 0) return null;
+  return recording[recording.length - 1];
+}
+
+/** ゴール演出の記録フレームをコース Canvas に描画（全馬ゴール後の空コース含む） */
+function drawGoalCourseFrame(renderer, frame, phase) {
+  if (!frame || !renderer || !phase) return false;
+  const horses = (frame.horses ?? []).map(h => ({ ...h }));
+  if (frame.kind === 'transition') {
+    renderer.draw(horses, phase, 1, {
+      sceneTransition: {
+        t: frame.transitionT ?? 0,
+        maxAlpha: GOAL_SCENE_TRANSITION_MAX_ALPHA,
+      },
+    });
+    return true;
+  }
+  const goalRun = frame.drawOptions?.goalRun ?? {};
+  renderer.draw(horses, phase, 1, {
+    phaseLabel: goalRun.phaseLabel ?? 'ゴールシーン',
+    furlong: goalRun.furlong ?? { t: frame.rawT ?? 0 },
+    goalLine: goalRun.goalLine ?? frame.rawT ?? 0,
+    sceneTransition: frame.drawOptions?.sceneTransition ?? undefined,
+    goalRun: {
+      ...goalRun,
+      progressById: mapIdEntriesToMap(goalRun.progressById),
+      laneIntentById: mapIdEntriesToMap(goalRun.laneIntentById),
+      overtakePressureById: mapIdEntriesToMap(goalRun.overtakePressureById),
+    },
+  });
+  return true;
+}
+
 const RACE_SUMMARY_HEADER_LINE = 'ここまでのレースサマリ';
 const RACE_SUMMARY_SCENE_LABELS = new Set([
   'スタート',
@@ -5056,9 +5099,11 @@ Promise.all([
     let lastFinishOrderIds = [];
     let hasAggregatedThisRun = false;
     let isReplayPlayback = false;
-    /** @type {{ snapshots: object[], simResults: object[], finishOrderIds: number[], initialHorses?: object[], goalRecording?: object[] } | null} */
+    /** @type {{ snapshots: object[], simResults: object[], finishOrderIds: number[], initialHorses?: object[], goalRecording?: object[], postGoalCourseFrame?: object } | null} */
     let replayBundle = null;
     let raceStartInitialHorses = null;
+    /** 全馬ゴール後・画面外へ抜けた直後のコース描画（集計画面からの復元用） */
+    let postGoalCourseFrame = null;
 
     const btnPlayStep = document.getElementById('btn-play-step');
     const btnPlayAuto = document.getElementById('btn-play-auto');
@@ -5122,6 +5167,13 @@ Promise.all([
       if (!Array.isArray(simResults) || simResults.length === 0) return;
       try {
         const horsesSource = raceStartInitialHorses ?? initialHorses;
+        const recording = Array.isArray(goalRecording)
+          ? goalRecording
+          : replayBundle?.goalRecording ?? null;
+        const lastFrame = lastGoalRecordingFrame(recording);
+        const postGoal = lastFrame
+          ? JSON.parse(JSON.stringify(lastFrame))
+          : replayBundle?.postGoalCourseFrame ?? postGoalCourseFrame ?? null;
         replayBundle = {
           snapshots: JSON.parse(JSON.stringify(simSnapshots)),
           simResults: JSON.parse(JSON.stringify(simResults)),
@@ -5129,10 +5181,12 @@ Promise.all([
           initialHorses: Array.isArray(horsesSource)
             ? JSON.parse(JSON.stringify(horsesSource))
             : [],
-          goalRecording: Array.isArray(goalRecording)
-            ? JSON.parse(JSON.stringify(goalRecording))
-            : replayBundle?.goalRecording ?? null,
+          goalRecording: Array.isArray(recording)
+            ? JSON.parse(JSON.stringify(recording))
+            : null,
+          postGoalCourseFrame: postGoal,
         };
+        postGoalCourseFrame = replayBundle.postGoalCourseFrame ?? null;
       } catch {
         replayBundle = null;
       }
@@ -5258,24 +5312,83 @@ Promise.all([
       if (raceInfoEl) raceInfoEl.innerHTML = formatRaceInfo(runtimeRaceData);
     };
 
-    function applyComputedHorsesToUi() {
-      initialHorses = calcAllParams(runtimeRaceData, userTweaksState, {});
+    function rebuildHorseMetaByName(horses = initialHorses) {
       horseMetaByName = new Map();
       runtimeRaceData.entries.forEach((entry, idx) => {
-        if (initialHorses[idx]) {
-          initialHorses[idx].jockeyName = entry.jockey.name;
-          horseMetaByName.set(initialHorses[idx].name, {
-            gate: initialHorses[idx].gate,
-            waku: initialHorses[idx].waku,
-          });
-        }
+        const horse = horses[idx] ?? initialHorses[idx];
+        if (!horse) return;
+        horse.jockeyName = entry.jockey.name;
+        horseMetaByName.set(horse.name, {
+          gate: horse.gate,
+          waku: horse.waku,
+        });
       });
+    }
+
+    function applyComputedHorsesToUi() {
+      initialHorses = calcAllParams(runtimeRaceData, userTweaksState, {});
+      rebuildHorseMetaByName(initialHorses);
       renderEntryList(initialHorses);
       updateEntryStaminaBars(initialHorses);
       renderer.resetHorseRenderState();
       renderer.draw(initialHorses, phases[0], 0);
       refreshRaceInfo();
       persistRaceBundleToSession(runtimeRaceData, userTweaksState, {});
+    }
+
+    /** 集計画面から戻ったときなど、保存済みのレース結果表示を復元する */
+    function applyRestoredRaceVisuals() {
+      if (!Array.isArray(simSnapshots) || simSnapshots.length === 0) {
+        applyComputedHorsesToUi();
+        return;
+      }
+      const lastIdx = simSnapshots.length - 1;
+      const lastSnap = simSnapshots[lastIdx];
+      const phase = phases[lastIdx];
+      const finalHorses = Array.isArray(lastSnap?.horses)
+        ? lastSnap.horses.map(h => ({ ...h }))
+        : null;
+      if (!finalHorses?.length) {
+        applyComputedHorsesToUi();
+        return;
+      }
+
+      if (Array.isArray(replayBundle?.initialHorses) && replayBundle.initialHorses.length > 0) {
+        initialHorses = replayBundle.initialHorses.map(h => ({ ...h }));
+      } else {
+        initialHorses = calcAllParams(runtimeRaceData, userTweaksState, {});
+      }
+      rebuildHorseMetaByName(finalHorses);
+      finalHorses.forEach(horse => {
+        const entry = runtimeRaceData.entries.find((_, i) => i === horse.id);
+        if (entry) horse.jockeyName = entry.jockey.name;
+      });
+      renderEntryList(finalHorses);
+      updateEntryStaminaBars(finalHorses);
+      renderer.resetHorseRenderState();
+
+      const courseFrame =
+        playbackDockMode === 'complete'
+          ? (postGoalCourseFrame ??
+            replayBundle?.postGoalCourseFrame ??
+            lastGoalRecordingFrame(
+              replayBundle?.goalRecording ?? loadGoalRecordingFromSession(),
+            ))
+          : null;
+
+      const drawRestoredCourse = () => {
+        if (courseFrame && drawGoalCourseFrame(renderer, courseFrame, phase)) {
+          return;
+        }
+        renderer.draw(finalHorses, phase, 1);
+      };
+
+      drawRestoredCourse();
+      refreshRaceInfo();
+      // iOS Safari ではレイアウト確定前の draw が待機画面に戻って見えることがある
+      if (window.matchMedia('(max-width: 1024px)').matches) {
+        requestAnimationFrame(() => requestAnimationFrame(drawRestoredCourse));
+      }
     }
 
     function resetSimulatorToIdle() {
@@ -5287,6 +5400,7 @@ Promise.all([
       hasAggregatedThisRun = false;
       replayBundle = null;
       raceStartInitialHorses = null;
+      postGoalCourseFrame = null;
       if (btnShowSummary) btnShowSummary.disabled = true;
       document.getElementById('phase-indicator').textContent = 'スタート';
       document.getElementById('log-panel').innerHTML =
@@ -5304,11 +5418,151 @@ Promise.all([
       hideRaceSummaryScreen();
       try {
         sessionStorage.removeItem(SESSION_KEY_SIMULATOR_STATE);
+        sessionStorage.removeItem(SESSION_KEY_SIMULATOR_GOAL_RECORDING);
         sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
       } catch {
         /* ignore */
       }
       syncSimulatorChromeForAutoMode();
+    }
+
+    function loadGoalRecordingFromSession() {
+      if (typeof sessionStorage === 'undefined') return null;
+      try {
+        const raw = sessionStorage.getItem(SESSION_KEY_SIMULATOR_GOAL_RECORDING);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function rebuildReplayBundleFromSessionParts(parsed, goalRecordingOverride = undefined) {
+      if (!Array.isArray(parsed?.snapshots) || !Array.isArray(parsed?.simResults)) return;
+      const finishIds = Array.isArray(parsed.finishOrderIds) ? [...parsed.finishOrderIds] : [];
+      const legacy = parsed.replayBundle;
+      const meta = parsed.replayMeta ?? {};
+      let goalRecording = goalRecordingOverride;
+      if (goalRecording === undefined) {
+        if (Array.isArray(legacy?.goalRecording) && legacy.goalRecording.length > 0) {
+          goalRecording = legacy.goalRecording;
+        } else {
+          goalRecording = loadGoalRecordingFromSession();
+        }
+      }
+      const initialHorsesSource =
+        (Array.isArray(meta.initialHorses) && meta.initialHorses.length > 0)
+          ? meta.initialHorses
+          : (Array.isArray(legacy?.initialHorses) && legacy.initialHorses.length > 0)
+            ? legacy.initialHorses
+            : [];
+      const explicitPostGoal = parsed.postGoalCourseFrame ?? legacy?.postGoalCourseFrame ?? null;
+      const resolvedPostGoal =
+        explicitPostGoal ?? lastGoalRecordingFrame(goalRecording) ?? null;
+      replayBundle = {
+        snapshots: JSON.parse(JSON.stringify(parsed.snapshots)),
+        simResults: JSON.parse(JSON.stringify(parsed.simResults)),
+        finishOrderIds: Array.isArray(legacy?.finishOrderIds) && legacy.finishOrderIds.length
+          ? [...legacy.finishOrderIds]
+          : finishIds,
+        initialHorses: initialHorsesSource.length
+          ? JSON.parse(JSON.stringify(initialHorsesSource))
+          : [],
+        goalRecording: Array.isArray(goalRecording)
+          ? JSON.parse(JSON.stringify(goalRecording))
+          : null,
+        postGoalCourseFrame: resolvedPostGoal
+          ? JSON.parse(JSON.stringify(resolvedPostGoal))
+          : null,
+      };
+      postGoalCourseFrame = replayBundle.postGoalCourseFrame ?? null;
+    }
+
+    function persistSimulatorStateToSession() {
+      if (typeof sessionStorage === 'undefined') return false;
+      if (!Array.isArray(simResults) || simResults.length === 0) return false;
+      if (!Array.isArray(simSnapshots) || simSnapshots.length === 0) return false;
+
+      const goalRecording = replayBundle?.goalRecording ?? null;
+      const postGoal =
+        postGoalCourseFrame ??
+        replayBundle?.postGoalCourseFrame ??
+        lastGoalRecordingFrame(goalRecording);
+      const payload = {
+        simResults,
+        simLogs,
+        snapshots: simSnapshots,
+        finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
+        postGoalCourseFrame: postGoal ? JSON.parse(JSON.stringify(postGoal)) : null,
+        replayMeta: {
+          initialHorses: Array.isArray(replayBundle?.initialHorses)
+            ? JSON.parse(JSON.stringify(replayBundle.initialHorses))
+            : (raceStartInitialHorses
+              ? JSON.parse(JSON.stringify(raceStartInitialHorses))
+              : []),
+          finishOrderIds: Array.isArray(replayBundle?.finishOrderIds)
+            ? [...replayBundle.finishOrderIds]
+            : [],
+        },
+        ui: {
+          phaseText: document.getElementById('phase-indicator')?.textContent ?? 'スタート',
+          logHtml: document.getElementById('log-panel')?.innerHTML ?? '',
+          placingHtml: document.getElementById('placing-panel')?.innerHTML ?? '',
+          playbackDockMode: playbackDockMode === 'complete' ? 'complete' : 'play',
+          btnShowSummaryDisabled: Boolean(btnShowSummary?.disabled),
+        },
+      };
+
+      const tryWrite = (key, value) => {
+        sessionStorage.setItem(key, value);
+      };
+
+      try {
+        sessionStorage.removeItem(SESSION_KEY_SIMULATOR_GOAL_RECORDING);
+      } catch {
+        /* ignore */
+      }
+
+      const slimPayload = {
+        ...payload,
+        simLogs: null,
+      };
+
+      const writeAttempts = [
+        () => tryWrite(SESSION_KEY_SIMULATOR_STATE, JSON.stringify(payload)),
+        () => tryWrite(SESSION_KEY_SIMULATOR_STATE, JSON.stringify(slimPayload)),
+      ];
+
+      let coreSaved = false;
+      for (const attempt of writeAttempts) {
+        try {
+          attempt();
+          coreSaved = true;
+          break;
+        } catch {
+          /* QuotaExceededError 等（モバイル Safari で起きやすい） */
+        }
+      }
+
+      if (!coreSaved) return false;
+
+      if (Array.isArray(goalRecording) && goalRecording.length > 0) {
+        const fullJson = JSON.stringify(goalRecording);
+        const thinned = goalRecording.filter((_, i) => i % 2 === 0);
+        const thinnedJson = JSON.stringify(thinned);
+        const goalAttempts = [fullJson, thinnedJson];
+        for (const json of goalAttempts) {
+          try {
+            tryWrite(SESSION_KEY_SIMULATOR_GOAL_RECORDING, json);
+            break;
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+
+      return true;
     }
 
     function createPhaseControllerFromSnapshots(snapshotSource, resultsSource, replayOpts = {}) {
@@ -5536,27 +5790,7 @@ Promise.all([
 
       const saveSimulatorStateForReturn = () => {
         if (!Array.isArray(simResults) || simResults.length === 0 || controller) return;
-        const payload = {
-          simResults,
-          simLogs,
-          snapshots: simSnapshots,
-          finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
-          replayBundle: replayBundle
-            ? JSON.parse(JSON.stringify(replayBundle))
-            : null,
-          ui: {
-            phaseText: document.getElementById('phase-indicator')?.textContent ?? 'スタート',
-            logHtml: document.getElementById('log-panel')?.innerHTML ?? '',
-            placingHtml: document.getElementById('placing-panel')?.innerHTML ?? '',
-            playbackDockMode: 'complete',
-            btnShowSummaryDisabled: Boolean(btnShowSummary?.disabled),
-          },
-        };
-        try {
-          sessionStorage.setItem(SESSION_KEY_SIMULATOR_STATE, JSON.stringify(payload));
-        } catch {
-          /* ignore */
-        }
+        persistSimulatorStateToSession();
       };
 
       const openStatsPage = (returnScreen = 'simulator') => {
@@ -5614,23 +5848,6 @@ Promise.all([
       sessionStorage.removeItem(SESSION_KEY_OPEN_SCREEN);
     }
 
-    const openSimulatorScreen = () => {
-      const preRaceEl = document.getElementById('pre-race-editor');
-      if (preRaceEl) preRaceEl.hidden = true;
-      if (btnBackToPreRace) btnBackToPreRace.hidden = false;
-      applyComputedHorsesToUi();
-      syncSimulatorChromeForAutoMode();
-    };
-
-    bindRaceControlsOnce();
-
-    mountPreRaceEditor(
-      runtimeRaceData,
-      openSimulatorScreen,
-      preRaceBeforeConfirm,
-      { openSimulatorDirect },
-    );
-
     const openPreRaceScreen = () => {
       resetSimulatorToIdle();
       hideRaceSummaryScreen();
@@ -5665,9 +5882,8 @@ Promise.all([
         simLogs = Array.isArray(parsed.simLogs) ? parsed.simLogs : null;
         simSnapshots = parsed.snapshots;
         lastFinishOrderIds = Array.isArray(parsed.finishOrderIds) ? parsed.finishOrderIds : [];
-        if (parsed.replayBundle?.snapshots?.length && parsed.replayBundle?.simResults?.length) {
-          replayBundle = parsed.replayBundle;
-        }
+        postGoalCourseFrame = parsed.postGoalCourseFrame ?? null;
+        rebuildReplayBundleFromSessionParts(parsed);
         const ui = parsed.ui ?? {};
         document.getElementById('phase-indicator').textContent = ui.phaseText ?? 'ゴール';
         if (typeof ui.logHtml === 'string') {
@@ -5682,24 +5898,42 @@ Promise.all([
             : 'play';
         hasAggregatedThisRun = true;
         if (playbackDockMode === 'complete') {
-          saveReplayBundle();
+          saveReplayBundle(replayBundle?.goalRecording ?? null);
         }
         if (btnShowSummary) {
           btnShowSummary.disabled =
             ui.btnShowSummaryDisabled !== undefined ? Boolean(ui.btnShowSummaryDisabled) : false;
         }
-        syncSimulatorChromeForAutoMode();
         return true;
       } catch {
         return false;
       }
     };
 
+    let simulatorScreenOpened = false;
+
+    const openSimulatorScreen = () => {
+      const preRaceEl = document.getElementById('pre-race-editor');
+      if (preRaceEl) preRaceEl.hidden = true;
+      if (btnBackToPreRace) btnBackToPreRace.hidden = false;
+      if (!simulatorScreenOpened) {
+        simulatorScreenOpened = true;
+        const restored = restoreSimulatorStateFromSession();
+        if (restored) {
+          applyRestoredRaceVisuals();
+        } else {
+          applyComputedHorsesToUi();
+        }
+      }
+      syncSimulatorChromeForAutoMode();
+    };
+
+    bindRaceControlsOnce();
+
     if (openScreen === 'pre-race') {
       openPreRaceScreen();
     } else if (openScreen === 'summary') {
       openSimulatorScreen();
-      const simulatorRestored = restoreSimulatorStateFromSession();
       let restored = false;
       if (typeof sessionStorage !== 'undefined') {
         const raw = sessionStorage.getItem(SESSION_KEY_SUMMARY_STATE);
@@ -5718,11 +5952,29 @@ Promise.all([
         }
         sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
       }
-      if (!restored && simulatorRestored) restored = tryRestoreSummaryScreen();
-    } else {
+      if (!restored && Array.isArray(simResults) && Array.isArray(simSnapshots)) {
+        restored = tryRestoreSummaryScreen();
+      }
+    } else if (!openSimulatorDirect) {
       openSimulatorScreen();
-      restoreSimulatorStateFromSession();
     }
+
+    mountPreRaceEditor(
+      runtimeRaceData,
+      openSimulatorScreen,
+      preRaceBeforeConfirm,
+      { openSimulatorDirect },
+    );
+
+    // iOS の bfcache 復帰時も完了画面の描画を維持
+    window.addEventListener('pageshow', (ev) => {
+      if (!ev.persisted) return;
+      if (playbackDockMode !== 'complete' || !Array.isArray(simSnapshots) || !simSnapshots.length) {
+        return;
+      }
+      applyRestoredRaceVisuals();
+      syncSimulatorChromeForAutoMode();
+    });
 
   })
   .catch(err => {

@@ -14,6 +14,8 @@ export const SESSION_KEY_OPEN_SCREEN = 'jra-open-screen';
 export const SESSION_KEY_SUMMARY_STATE = 'jra-summary-state';
 /** 集計→戻るでシミュレーター結果（ログ/掲示板/完了状態）を復元 */
 export const SESSION_KEY_SIMULATOR_STATE = 'jra-simulator-state';
+/** ゴール演出フレーム（本体 state とは別キーで保存し、モバイルの容量制限を回避） */
+export const SESSION_KEY_SIMULATOR_GOAL_RECORDING = 'jra-simulator-goal-recording';
 
 /** FNV-1a 風の軽量ハッシュ（同期・短いキー用） */
 export function hashString(str) {
