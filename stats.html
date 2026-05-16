@@ -353,6 +353,90 @@
         font-size: 0.78rem;
         padding: 8px 10px;
       }
+      /* 出馬情報（馬名・性齢・騎手）を1行・内容幅に収める */
+      .stats-table {
+        table-layout: auto;
+        width: max-content;
+        min-width: 100%;
+        font-size: 0.68rem;
+      }
+      .stats-table col.stats-col-horse-main,
+      .stats-table col.stats-col-horse-sex,
+      .stats-table col.stats-col-horse-jockey {
+        width: auto;
+      }
+      .stats-table col.stats-col-metric {
+        width: auto;
+      }
+      .stats-table td.stats-horse-block-start,
+      .stats-table td.stats-horse-block-mid,
+      .stats-table td.stats-horse-block-end {
+        width: 1%;
+        white-space: nowrap;
+      }
+      .stats-table th.stats-col-metric,
+      .stats-table td.stats-col-metric {
+        min-width: 2.75rem;
+      }
+      .stats-table th,
+      .stats-table td {
+        padding: 4px 2px;
+      }
+      .stats-table th.stats-col-metric,
+      .stats-table th.stats-horse-sort-th {
+        font-size: 0.56rem;
+        padding: 5px 1px;
+        letter-spacing: -0.04em;
+      }
+      .stats-table td.stats-col-metric {
+        font-size: 0.62rem;
+        padding-left: 1px;
+        padding-right: 1px;
+      }
+      .stats-table td.stats-horse-block-start {
+        padding-left: 5px;
+        padding-right: 0;
+      }
+      .stats-table td.stats-horse-block-mid {
+        padding-left: 4px;
+        padding-right: 4px;
+        text-align: left;
+      }
+      .stats-table td.stats-horse-block-end {
+        padding-left: 4px;
+        padding-right: 5px;
+      }
+      .stats-horse-main-inner {
+        gap: 4px;
+        max-width: none;
+      }
+      .stats-horse-name-inline {
+        flex-shrink: 0;
+        min-width: auto;
+        white-space: nowrap;
+        word-break: keep-all;
+        overflow-wrap: normal;
+        font-size: 0.6rem;
+        line-height: 1.2;
+      }
+      .stats-table td.stats-horse-block-mid.stats-sex {
+        white-space: nowrap;
+        font-size: 0.58rem;
+        line-height: 1.2;
+      }
+      .stats-jockey {
+        white-space: nowrap;
+        word-break: keep-all;
+        overflow-wrap: normal;
+        font-size: 0.58rem;
+        line-height: 1.2;
+      }
+      .entry-gate {
+        width: 20px;
+        height: 20px;
+        line-height: 20px;
+        font-size: 0.62rem;
+      }
     }
   </style>
 </head>
