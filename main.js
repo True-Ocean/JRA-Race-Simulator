@@ -5049,15 +5049,73 @@ Promise.all([
       if (btnBackToPreRace) btnBackToPreRace.disabled = false;
     }
 
-    /** index.html のスマホ・狭幅ブレークポイントと揃える */
-    function scrollCourseIntoViewOnNarrowLayout() {
+    /**
+     * 狭い画面でレース開始直後:
+     * - #field-viewport が十分見えるよう下方向にスクロール
+     * - #btn-run の上端が必ずノッチ下（body の safe-area padding + 余白）より下になるよう delta を上限キャップ
+     */
+    function scrollAfterRaceStartOnNarrowLayout() {
       if (!window.matchMedia('(max-width: 1024px)').matches) return;
-      const fieldWrap = document.getElementById('field-wrap');
-      if (!fieldWrap) return;
-      const run = () => {
-        fieldWrap.scrollIntoView({ block: 'center', behavior: 'smooth', inline: 'nearest' });
+      const btnRunEl = document.getElementById('btn-run');
+      const fieldViewport = document.getElementById('field-viewport');
+      if (!btnRunEl || !fieldViewport) return;
+
+      const getBtnRunTopThresholdPx = () => {
+        const pad = parseFloat(getComputedStyle(document.body).paddingTop);
+        const base = Number.isFinite(pad) ? pad : 0;
+        return base + 10;
       };
-      requestAnimationFrame(() => requestAnimationFrame(run));
+
+      const getViewportBottomPx = () => {
+        const vv = window.visualViewport;
+        if (vv != null) return vv.offsetTop + vv.height;
+        return window.innerHeight;
+      };
+
+      const applyScroll = () => {
+        void fieldViewport.offsetHeight;
+        void btnRunEl.offsetHeight;
+        const scrollRoot = document.scrollingElement ?? document.documentElement;
+        const y0 = scrollRoot.scrollTop;
+        const maxTop = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight);
+        const T = getBtnRunTopThresholdPx();
+        const Vbottom = getViewportBottomPx();
+
+        const bTop = btnRunEl.getBoundingClientRect().top;
+        const f = fieldViewport.getBoundingClientRect();
+
+        // 進行ボタンがノッチ下に残るための最大下方向スクロール量: bTop - delta >= T  =>  delta <= bTop - T
+        const deltaBtnMax = bTop - T;
+
+        // コースが見える範囲に入るための下方向スクロールの目安下限（画面上部〜の割合で最低限入る）
+        const enterLine = Math.min(Vbottom * 0.42, Vbottom - 80);
+        const deltaRaceMin = Math.max(0, Math.ceil(f.top - enterLine));
+
+        // コース下端を画面下端付近へ寄せたい量
+        const deltaAlignBottom = Math.ceil(f.bottom - Vbottom + 10);
+
+        let delta = Math.min(deltaBtnMax, Math.max(deltaRaceMin, deltaAlignBottom));
+        let nextTop = Math.min(Math.max(0, y0 + delta), maxTop);
+        scrollRoot.scrollTo({ top: nextTop, behavior: 'auto' });
+
+        // レイアウト直後の誤差を1フレーム後に補正（マスト条件の再チェック）
+        requestAnimationFrame(() => {
+          const maxTop2 = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight);
+          const b2 = btnRunEl.getBoundingClientRect().top;
+          if (b2 < T - 0.5) {
+            const fix = b2 - T;
+            const y1 = scrollRoot.scrollTop;
+            scrollRoot.scrollTo({
+              top: Math.min(Math.max(0, y1 + fix), maxTop2),
+              behavior: 'auto',
+            });
+          }
+        });
+      };
+
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => requestAnimationFrame(applyScroll)),
+      );
     }
 
     let raceControlsBound = false;
@@ -5107,7 +5165,7 @@ Promise.all([
             sim.results,
           );
           controller.start();
-          scrollCourseIntoViewOnNarrowLayout();
+          scrollAfterRaceStartOnNarrowLayout();
           currentRaceUsedAutoAdvance = Boolean(autoAdvanceToggle?.checked);
           if (autoAdvanceToggle?.checked) {
             syncSimulatorChromeForAutoMode();

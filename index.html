@@ -17,7 +17,7 @@
         max(14px, env(safe-area-inset-bottom, 0px))
         max(12px, env(safe-area-inset-left, 0px));
       display: grid;
-      grid-template-rows: auto auto 1fr;
+      grid-template-rows: auto 1fr;
       gap: 0;
       overflow: hidden;
     }
@@ -68,12 +68,15 @@
 
     /* ===== コントロール ===== */
     #controls {
+      grid-column: 1 / -1;
       display: flex;
       justify-content: center;
       align-items: center;
       flex-wrap: wrap;
       gap: 10px;
-      margin-bottom: 12px;
+      margin: 0 auto 12px;
+      width: 100%;
+      max-width: min(100%, 1660px);
     }
 
     #sim-options {
@@ -164,7 +167,7 @@
     #main-layout {
       display: grid;
       grid-template-columns: 320px 1fr 320px;
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto auto 1fr;
       gap: 10px;
       align-items: stretch;
       min-height: 0;
@@ -1119,27 +1122,41 @@
         overflow-x: hidden;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
+        scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
       }
       body {
         height: auto;
         min-height: 100dvh;
         max-height: none;
         overflow-x: hidden;
-        overflow-y: auto;
-        grid-template-rows: auto auto auto;
+        /* 縦スクロールは html のみ（scrollTop / scrollingElement と一致させる） */
+        overflow-y: visible;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        grid-template-areas:
+          "back"
+          "title"
+          "race"
+          "controls"
+          "entry"
+          "field"
+          "side";
+        gap: 8px;
         align-content: start;
       }
 
       body > h1:first-of-type {
-        margin-bottom: 8px;
+        grid-area: title;
+        margin-bottom: 0;
       }
 
       /* パラメーター調整はページと一緒にスクロール */
       #btn-back-to-pre-race {
+        grid-area: back;
         position: static;
         width: max-content;
         max-width: 100%;
-        margin-bottom: 6px;
+        margin-bottom: 0;
         opacity: 1;
         min-height: 30px;
         padding: 4px 10px;
@@ -1147,18 +1164,9 @@
         letter-spacing: 0.03em;
       }
 
+      /* メインレイアウトはラッパーを無視し、子を body グリッドに載せる（モバイルの並び替え用） */
       #main-layout {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto auto auto auto;
-        grid-template-areas:
-          "race"
-          "entry"
-          "field"
-          "side";
-        width: 100%;
-        gap: 8px;
-        min-height: auto;
-        align-items: stretch;
+        display: contents;
       }
       #race-info {
         grid-column: auto;
@@ -1341,11 +1349,21 @@
         display: none;
       }
 
+      /* 4ボタンの左上（#btn-run）を scrollIntoView の基準にしやすいよう margin（※メインは main.js の scrollTo） */
+      #controls > #btn-run {
+        scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 18px);
+      }
+
+      /* 4ボタン 2×2 → 下にモード選択（フル幅） */
       #controls {
+        grid-area: controls;
+        width: 100%;
+        min-width: 0;
+        align-self: stretch;
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px 8px;
-        margin-bottom: 8px;
+        margin-bottom: 0;
         justify-content: stretch;
         align-items: stretch;
       }
@@ -1625,27 +1643,27 @@
     <span class="title-text">JRA RACE SIMULATOR</span>
   </h1>
 
-  <!-- コントロール -->
-  <div id="controls">
-    <button id="btn-run">▶ レース開始</button>
-    <button id="btn-reset" disabled>↺ リセット</button>
-    <button id="btn-show-summary" type="button" disabled>📊 レースサマリー</button>
-    <button id="btn-open-stats" type="button">📈 集計画面</button>
-    <div id="sim-options" role="group" aria-label="シミュレーションオプション">
-      <label>
-        <input id="toggle-reproducible" type="checkbox">
-        再現性モード
-      </label>
-      <label>
-        <input id="toggle-auto-advance" type="checkbox">
-        自動モード
-      </label>
-    </div>
-  </div>
-
   <!-- 3カラムレイアウト -->
   <div id="main-layout">
     <div id="race-info"></div>
+
+    <!-- コントロール（レース情報の直下／狭い画面では body グリッドで並べ替え） -->
+    <div id="controls">
+      <button id="btn-run">▶ レース開始</button>
+      <button id="btn-reset" disabled>↺ リセット</button>
+      <button id="btn-show-summary" type="button" disabled>📊 レースサマリー</button>
+      <button id="btn-open-stats" type="button">📈 集計画面</button>
+      <div id="sim-options" role="group" aria-label="シミュレーションオプション">
+        <label>
+          <input id="toggle-reproducible" type="checkbox">
+          再現性モード
+        </label>
+        <label>
+          <input id="toggle-auto-advance" type="checkbox">
+          自動モード
+        </label>
+      </div>
+    </div>
 
     <!-- 左：出馬表 -->
     <div id="entry-panel">
