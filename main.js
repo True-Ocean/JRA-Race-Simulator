@@ -3316,8 +3316,11 @@ class PhaseController {
     initialHorses = [],
     horseMetaByName = new Map(),
     simResults = null,
+    playbackHooks = {},
   ) {
     this.snapshots   = snapshots;
+    this.playbackHooks = playbackHooks ?? {};
+    this.goalSceneActive = false;
     this.phases      = phases;
     this.renderer    = renderer;
     this.simResults  = simResults;
@@ -3334,9 +3337,16 @@ class PhaseController {
     this._goalAllFinishedAtMs = null;
     this._goalCameraRawProgress = null;
     this._goalBattledPairs = new Set();
+    this.isReplayPlayback = Boolean(playbackHooks.isReplayPlayback);
+    this.recordGoalPlayback = Boolean(playbackHooks.recordGoalPlayback);
+    this.goalRecording = Array.isArray(playbackHooks.goalRecording)
+      ? playbackHooks.goalRecording
+      : null;
+    this.raceData = { race_id: playbackHooks.raceId ?? 1 };
+    this._pendingGoalRecording = [];
+    this._replayGoalRankSynced = 0;
 
-    this.btnAdvance = document.getElementById('btn-run');
-    this.btnReset  = document.getElementById('btn-reset');
+    this.btnAdvance = document.getElementById('btn-play-step');
     this.logPanel  = document.getElementById('log-panel');
     this.indicator = document.getElementById('phase-indicator');
     this.isAnimating = false;
@@ -3360,7 +3370,6 @@ class PhaseController {
     this.renderer.resetHorseRenderState();
     this._initializePlacingPanel();
     this._renderPhase(0);
-    this.btnAdvance.textContent = '▶▶ 次のフェーズ';
     this._syncAdvanceButton();
   }
 
@@ -3381,11 +3390,6 @@ class PhaseController {
     this._animateHorses(fromForAnimation, snap.horses, phase, idx === 0, snap.eventLogs);
 
     updateEntryStaminaBars(fromForAnimation ?? snap.horses);
-
-    // 最終フェーズの次は「ゴール判定」
-    if (idx === this.snapshots.length - 1) {
-      this.btnAdvance.textContent = '🏁 ゴール判定';
-    }
   }
 
   // 馬カードをアニメーションで表示（段階的に進行度を上げる）
@@ -3545,9 +3549,152 @@ class PhaseController {
     this._appendPlacingRow(rank, horse);
   }
 
+  getGoalRecording() {
+    return this._pendingGoalRecording.length > 0 ? this._pendingGoalRecording : null;
+  }
+
+  _serializeGoalHorse(horse) {
+    return {
+      id: horse.id,
+      name: horse.name,
+      x: horse.x,
+      y: horse.y,
+      stamina: horse.stamina,
+      initialStamina: horse.initialStamina,
+      goalMeters: horse.goalMeters,
+      goalFinished: horse.goalFinished,
+      goalIntrinsicMps: horse.goalIntrinsicMps,
+      goalProgressScale: horse.goalProgressScale,
+      style: horse.style,
+      gate: horse.gate,
+      waku: horse.waku,
+      battleFatigue: horse.battleFatigue,
+      jockeyName: horse.jockeyName,
+    };
+  }
+
+  _mapEntriesToMap(entries) {
+    if (entries instanceof Map) return entries;
+    if (Array.isArray(entries)) return new Map(entries);
+    if (entries && typeof entries === 'object') return new Map(Object.entries(entries));
+    return new Map();
+  }
+
+  _captureGoalPlaybackFrame(frame) {
+    if (!this.recordGoalPlayback) return;
+    this._pendingGoalRecording.push(frame);
+  }
+
+  _syncReplayGoalPlacing(horses, goalRankOrderSnapshot) {
+    if (!Array.isArray(goalRankOrderSnapshot)) return;
+    const synced = this._replayGoalRankSynced;
+    if (goalRankOrderSnapshot.length <= synced) return;
+    const horsesById = new Map(horses.map(h => [h.id, h]));
+    for (let i = synced; i < goalRankOrderSnapshot.length; i++) {
+      const id = goalRankOrderSnapshot[i];
+      if (this._goalRankLogged.has(id)) continue;
+      const horse = horsesById.get(id);
+      if (!horse) continue;
+      this._goalRankLogged.add(id);
+      this._goalRankOrder.push(id);
+      this._setPlacingLog(this._goalRankOrder.length, horse);
+    }
+    this._replayGoalRankSynced = goalRankOrderSnapshot.length;
+  }
+
+  _playGoalApproachFromRecording(onDone) {
+    const frames = this.goalRecording;
+    if (!Array.isArray(frames) || frames.length === 0) {
+      onDone?.();
+      return;
+    }
+
+    const lastIdx = this.snapshots.length - 1;
+    const phase = this.phases[lastIdx];
+    const transitionStartedAt = performance.now();
+    const lastFrame = frames[frames.length - 1];
+    const endElapsedMs =
+      (Number.isFinite(lastFrame?.elapsedMs) ? lastFrame.elapsedMs : 0) +
+      GOAL_POST_SCROLL_MS +
+      120;
+
+    this.isAnimating = true;
+    this.goalSceneActive = true;
+    this._syncAdvanceButton();
+    this.playbackHooks.onGoalSceneStart?.();
+    this.indicator.textContent = 'ゴールシーン';
+    this._appendSceneHeading('ゴールシーン');
+    this._goalRankLogged = new Set();
+    this._goalRankOrder = [];
+    this._goalPlacingHeaderLogged = false;
+    this._goalLineDiffById = new Map();
+    this._goalAllFinishedAtMs = null;
+    this._goalCameraRawProgress = null;
+    this._goalBattledPairs = new Set();
+    this._replayGoalRankSynced = 0;
+
+    const step = (ts) => {
+      const elapsedMs = ts - transitionStartedAt;
+      let idx = 0;
+      while (idx < frames.length - 1 && frames[idx + 1].elapsedMs <= elapsedMs) {
+        idx += 1;
+      }
+      const frame = frames[idx];
+      const horses = (frame.horses ?? []).map(h => ({ ...h }));
+
+      if (frame.kind === 'transition') {
+        this.renderer.draw(horses, phase, 1, {
+          sceneTransition: {
+            t: frame.transitionT ?? 0,
+            maxAlpha: GOAL_SCENE_TRANSITION_MAX_ALPHA,
+          },
+        });
+      } else {
+        const goalRun = frame.drawOptions?.goalRun ?? {};
+        const progressById = this._mapEntriesToMap(goalRun.progressById);
+        const laneIntentById = this._mapEntriesToMap(goalRun.laneIntentById);
+        const overtakePressureById = this._mapEntriesToMap(goalRun.overtakePressureById);
+        this.renderer.draw(horses, phase, 1, {
+          phaseLabel: goalRun.phaseLabel ?? 'ゴールシーン',
+          furlong: goalRun.furlong ?? { t: frame.rawT ?? 0 },
+          goalLine: goalRun.goalLine ?? frame.rawT ?? 0,
+          sceneTransition: frame.drawOptions?.sceneTransition ?? undefined,
+          goalRun: {
+            ...goalRun,
+            progressById,
+            laneIntentById,
+            overtakePressureById,
+          },
+        });
+        this._syncReplayGoalPlacing(horses, frame.goalRankOrderSnapshot);
+        if (frame.goalAllFinishedAtMs != null) {
+          this._goalAllFinishedAtMs = frame.goalAllFinishedAtMs;
+        }
+      }
+
+      this.lastRenderedHorses = horses.map(h => ({ ...h }));
+      updateEntryStaminaBars(horses);
+
+      if (elapsedMs >= endElapsedMs) {
+        this.isAnimating = false;
+        this.goalSceneActive = false;
+        this.lastRenderedHorses = horses.map(h => ({ ...h }));
+        onDone?.();
+        return;
+      }
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
   _playGoalApproach(onDone) {
     if (!Array.isArray(this.simResults) || this.simResults.length === 0) {
       onDone?.();
+      return;
+    }
+
+    if (this.isReplayPlayback && Array.isArray(this.goalRecording) && this.goalRecording.length > 0) {
+      this._playGoalApproachFromRecording(onDone);
       return;
     }
 
@@ -3696,7 +3843,9 @@ class PhaseController {
     let goalFrameIndex = 0;
 
     this.isAnimating = true;
+    this.goalSceneActive = true;
     this._syncAdvanceButton();
+    this.playbackHooks.onGoalSceneStart?.();
     this.indicator.textContent = this.renderer.getPhaseName(phase);
     this._goalRankLogged = new Set();
     this._goalRankOrder = [];
@@ -3721,6 +3870,12 @@ class PhaseController {
             },
           });
           this.lastRenderedHorses = baseHorses.map(h => ({ ...h }));
+          this._captureGoalPlaybackFrame({
+            elapsedMs: transitionElapsed,
+            kind: 'transition',
+            horses: baseHorses.map(h => this._serializeGoalHorse(h)),
+            transitionT,
+          });
           requestAnimationFrame(step);
           return;
         }
@@ -4152,7 +4307,7 @@ class PhaseController {
         });
       }
 
-      this.renderer.draw(simHorses, phase, 1, {
+      const drawOptions = {
         phaseLabel: 'ゴールシーン',
         furlong: { t },
         goalLine: rawT,
@@ -4173,9 +4328,27 @@ class PhaseController {
           laneIntentById,
           overtakePressureById,
         },
-      });
+      };
+      this.renderer.draw(simHorses, phase, 1, drawOptions);
       this.lastRenderedHorses = simHorses.map(h => ({ ...h }));
       updateEntryStaminaBars(simHorses);
+      this._captureGoalPlaybackFrame({
+        elapsedMs: transitionHalfMs + elapsed,
+        kind: 'goal',
+        horses: simHorses.map(h => this._serializeGoalHorse(h)),
+        rawT,
+        drawOptions: {
+          ...drawOptions,
+          goalRun: {
+            ...drawOptions.goalRun,
+            progressById: [...goalRenderProgressById.entries()],
+            laneIntentById: [...laneIntentById.entries()],
+            overtakePressureById: [...overtakePressureById.entries()],
+          },
+        },
+        goalRankOrderSnapshot: [...this._goalRankOrder],
+        goalAllFinishedAtMs: this._goalAllFinishedAtMs,
+      });
 
       const allFinished = simHorses.every(h => h.goalFinished);
       // 既定の演出尺を超えても残っている馬がいる場合、テレポートはせず
@@ -4881,19 +5054,26 @@ Promise.all([
     let simLogs    = null;
     let simSnapshots = null;
     let lastFinishOrderIds = [];
-    let lastRunReproducible = false;
+    let hasAggregatedThisRun = false;
+    let isReplayPlayback = false;
+    /** @type {{ snapshots: object[], simResults: object[], finishOrderIds: number[], initialHorses?: object[], goalRecording?: object[] } | null} */
+    let replayBundle = null;
+    let raceStartInitialHorses = null;
 
-    const btnRun   = document.getElementById('btn-run');
-    const btnReset = document.getElementById('btn-reset');
+    const btnPlayStep = document.getElementById('btn-play-step');
+    const btnPlayAuto = document.getElementById('btn-play-auto');
+    const btnPlayReplay = document.getElementById('btn-play-replay');
+    const btnPlayReset = document.getElementById('btn-play-reset');
+    const playbackDock = document.getElementById('field-playback-dock');
     const btnShowSummary = document.getElementById('btn-show-summary');
     const btnBackToSimulator = document.getElementById('btn-back-to-simulator');
     const btnBackToPreRace = document.getElementById('btn-back-to-pre-race');
-    const reproducibleToggle = document.getElementById('toggle-reproducible');
-    const autoAdvanceToggle = document.getElementById('toggle-auto-advance');
     const raceInfoEl = document.getElementById('race-info');
-    let lastSeed = runtimeRaceData.race_id;
     let autoAdvanceRafId = 0;
+    let autoAdvanceActive = false;
     let currentRaceUsedAutoAdvance = false;
+    /** @type {'play' | 'complete'} */
+    let playbackDockMode = 'play';
 
     function stopAutoAdvanceLoop() {
       if (autoAdvanceRafId) {
@@ -4903,40 +5083,124 @@ Promise.all([
     }
 
     function isAutoDrivingRace() {
-      return Boolean(controller && autoAdvanceToggle?.checked);
+      return Boolean(controller && autoAdvanceActive);
+    }
+
+    function syncStepButtonLabel() {
+      if (!btnPlayStep) return;
+      if (!controller && playbackDockMode !== 'complete') {
+        btnPlayStep.textContent = '▶ スタート';
+        btnPlayStep.setAttribute('aria-label', 'レースを開始');
+      } else {
+        btnPlayStep.textContent = '⏭ 次へ';
+        btnPlayStep.setAttribute('aria-label', '次のフェーズへ');
+      }
+    }
+
+    function syncAutoButtonLabel() {
+      if (!btnPlayAuto) return;
+      if (autoAdvanceActive) {
+        btnPlayAuto.textContent = '⏸ 停止';
+        btnPlayAuto.classList.add('is-auto-active');
+        btnPlayAuto.setAttribute('aria-label', 'オート再生を停止');
+      } else {
+        btnPlayAuto.textContent = '▶ オート';
+        btnPlayAuto.classList.remove('is-auto-active');
+        btnPlayAuto.setAttribute('aria-label', 'オート再生');
+      }
+    }
+
+    function syncPlaybackDock() {
+      if (!playbackDock) return;
+      playbackDock.dataset.mode = playbackDockMode === 'complete' ? 'complete' : 'play';
+      syncStepButtonLabel();
+      syncAutoButtonLabel();
+    }
+
+    function saveReplayBundle(goalRecording = null) {
+      if (!Array.isArray(simSnapshots) || simSnapshots.length === 0) return;
+      if (!Array.isArray(simResults) || simResults.length === 0) return;
+      try {
+        const horsesSource = raceStartInitialHorses ?? initialHorses;
+        replayBundle = {
+          snapshots: JSON.parse(JSON.stringify(simSnapshots)),
+          simResults: JSON.parse(JSON.stringify(simResults)),
+          finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
+          initialHorses: Array.isArray(horsesSource)
+            ? JSON.parse(JSON.stringify(horsesSource))
+            : [],
+          goalRecording: Array.isArray(goalRecording)
+            ? JSON.parse(JSON.stringify(goalRecording))
+            : replayBundle?.goalRecording ?? null,
+        };
+      } catch {
+        replayBundle = null;
+      }
     }
 
     function syncSimulatorChromeForAutoMode() {
       const btnOpenStats = document.getElementById('btn-open-stats');
+      const inGoalScene = Boolean(controller?.goalSceneActive);
       const driving = isAutoDrivingRace();
-      if (controller && driving) {
-        controller.setAdvanceExternallyLocked(true);
-        btnRun.disabled = true;
-        btnReset.disabled = true;
+      const raceComplete = playbackDockMode === 'complete';
+      if (inGoalScene) {
+        stopAutoAdvanceLoop();
+        autoAdvanceActive = false;
+        controller?.setAdvanceExternallyLocked(true);
+        if (btnPlayStep) btnPlayStep.disabled = true;
+        if (btnPlayAuto) btnPlayAuto.disabled = true;
         if (btnShowSummary) btnShowSummary.disabled = true;
         if (btnOpenStats) btnOpenStats.disabled = true;
-        if (reproducibleToggle) reproducibleToggle.disabled = true;
+        if (btnBackToPreRace && !btnBackToPreRace.hidden) btnBackToPreRace.disabled = true;
+        syncPlaybackDock();
+        return;
+      }
+      if (controller && driving) {
+        controller.setAdvanceExternallyLocked(true);
+        if (btnPlayStep) btnPlayStep.disabled = true;
+        if (btnPlayAuto) btnPlayAuto.disabled = false;
+        if (btnPlayReplay) btnPlayReplay.disabled = true;
+        if (btnPlayReset) btnPlayReset.disabled = true;
+        if (btnShowSummary) btnShowSummary.disabled = true;
+        if (btnOpenStats) btnOpenStats.disabled = true;
         if (btnBackToPreRace && !btnBackToPreRace.hidden) btnBackToPreRace.disabled = true;
       } else if (controller) {
         controller.setAdvanceExternallyLocked(false);
-        btnReset.disabled = false;
+        if (btnPlayStep) btnPlayStep.disabled = false;
+        if (btnPlayAuto) btnPlayAuto.disabled = false;
+        if (btnPlayReplay) btnPlayReplay.disabled = true;
+        if (btnPlayReset) btnPlayReset.disabled = true;
         if (btnShowSummary) btnShowSummary.disabled = true;
         if (btnOpenStats) btnOpenStats.disabled = false;
-        if (reproducibleToggle) reproducibleToggle.disabled = false;
         if (btnBackToPreRace) btnBackToPreRace.disabled = false;
         controller._syncAdvanceButton();
-      } else {
+      } else if (raceComplete) {
+        if (btnPlayStep) btnPlayStep.disabled = true;
+        if (btnPlayAuto) btnPlayAuto.disabled = true;
+        if (btnPlayReplay) btnPlayReplay.disabled = !replayBundle;
+        if (btnPlayReset) btnPlayReset.disabled = false;
+        if (btnShowSummary) {
+          btnShowSummary.disabled = !simResults || !simSnapshots;
+        }
         if (btnOpenStats) btnOpenStats.disabled = false;
-        if (reproducibleToggle) reproducibleToggle.disabled = false;
+        if (btnBackToPreRace) btnBackToPreRace.disabled = false;
+      } else {
+        if (btnPlayStep) btnPlayStep.disabled = false;
+        if (btnPlayAuto) btnPlayAuto.disabled = false;
+        if (btnPlayReplay) btnPlayReplay.disabled = true;
+        if (btnPlayReset) btnPlayReset.disabled = true;
+        if (btnShowSummary) btnShowSummary.disabled = true;
+        if (btnOpenStats) btnOpenStats.disabled = false;
         if (btnBackToPreRace) btnBackToPreRace.disabled = false;
       }
+      syncPlaybackDock();
     }
 
     function scheduleAutoAdvanceLoop() {
-      if (!controller || !autoAdvanceToggle?.checked) return;
+      if (!controller || !autoAdvanceActive) return;
       stopAutoAdvanceLoop();
       const tick = () => {
-        if (!controller || !autoAdvanceToggle?.checked) {
+        if (!controller || !autoAdvanceActive) {
           autoAdvanceRafId = 0;
           syncSimulatorChromeForAutoMode();
           return;
@@ -4951,14 +5215,17 @@ Promise.all([
 
     function completeRaceAfterGoal() {
       stopAutoAdvanceLoop();
-      if (controller && Array.isArray(controller._goalRankOrder)) {
-        lastFinishOrderIds = [...controller._goalRankOrder];
+      const finishingController = controller;
+      if (finishingController && Array.isArray(finishingController._goalRankOrder)) {
+        lastFinishOrderIds = [...finishingController._goalRankOrder];
       }
+      const recordedGoalPlayback = finishingController?.getGoalRecording?.() ?? null;
       setTimeout(() => {
         const shouldAggregate =
           Array.isArray(simResults) &&
           simResults.length &&
-          (!lastRunReproducible || currentRaceUsedAutoAdvance);
+          !hasAggregatedThisRun &&
+          !isReplayPlayback;
         if (shouldAggregate) {
           const orderIds = buildSummaryPlacingOrderIds(lastFinishOrderIds, simResults);
           addAggregateRun({
@@ -4968,29 +5235,24 @@ Promise.all([
             source: currentRaceUsedAutoAdvance ? 'auto' : 'manual',
             orderIds,
           });
+          hasAggregatedThisRun = true;
         }
-        btnRun.disabled = true;
-        btnReset.disabled = false;
-        btnRun.textContent = '✅ レース終了';
-        if (btnShowSummary) btnShowSummary.disabled = false;
-        const btnOpenStatsEnd = document.getElementById('btn-open-stats');
-        if (btnOpenStatsEnd) btnOpenStatsEnd.disabled = false;
-        if (reproducibleToggle) reproducibleToggle.disabled = false;
-        if (btnBackToPreRace) btnBackToPreRace.disabled = false;
+        if (!isReplayPlayback) {
+          saveReplayBundle(recordedGoalPlayback);
+        }
+        isReplayPlayback = false;
+        playbackDockMode = 'complete';
         controller = null;
+        autoAdvanceActive = false;
         currentRaceUsedAutoAdvance = false;
+        syncSimulatorChromeForAutoMode();
       }, 300);
     }
 
-    const currentOptions = () => {
-      const reproducible = Boolean(reproducibleToggle?.checked);
-      if (reproducible) {
-        lastSeed = runtimeRaceData.race_id;
-      } else {
-        lastSeed = (Date.now() ^ Math.floor(Math.random() * 0xFFFFFFFF)) >>> 0;
-      }
-      return { reproducible, seed: lastSeed };
-    };
+    const currentOptions = () => ({
+      reproducible: true,
+      seed: runtimeRaceData.race_id,
+    });
 
     const refreshRaceInfo = () => {
       if (raceInfoEl) raceInfoEl.innerHTML = formatRaceInfo(runtimeRaceData);
@@ -5018,10 +5280,13 @@ Promise.all([
 
     function resetSimulatorToIdle() {
       stopAutoAdvanceLoop();
+      autoAdvanceActive = false;
       currentRaceUsedAutoAdvance = false;
-      btnRun.disabled   = false;
-      btnReset.disabled = true;
-      btnRun.textContent = '▶ レース開始';
+      isReplayPlayback = false;
+      playbackDockMode = 'play';
+      hasAggregatedThisRun = false;
+      replayBundle = null;
+      raceStartInitialHorses = null;
       if (btnShowSummary) btnShowSummary.disabled = true;
       document.getElementById('phase-indicator').textContent = 'スタート';
       document.getElementById('log-panel').innerHTML =
@@ -5043,28 +5308,124 @@ Promise.all([
       } catch {
         /* ignore */
       }
-      const btnOpenStatsIdle = document.getElementById('btn-open-stats');
-      if (btnOpenStatsIdle) btnOpenStatsIdle.disabled = false;
-      if (reproducibleToggle) reproducibleToggle.disabled = false;
-      if (btnBackToPreRace) btnBackToPreRace.disabled = false;
+      syncSimulatorChromeForAutoMode();
     }
 
-    /**
-     * 狭い画面でレース開始直後:
-     * - #field-viewport が十分見えるよう下方向にスクロール
-     * - #btn-run の上端が必ずノッチ下（body の safe-area padding + 余白）より下になるよう delta を上限キャップ
-     */
+    function createPhaseControllerFromSnapshots(snapshotSource, resultsSource, replayOpts = {}) {
+      const horsesForPlayback = Array.isArray(replayOpts.initialHorses)
+        ? replayOpts.initialHorses
+        : initialHorses;
+      return new PhaseController(
+        snapshotSource,
+        phases,
+        renderer,
+        horsesForPlayback,
+        horseMetaByName,
+        resultsSource,
+        {
+          onGoalSceneStart: () => {
+            stopAutoAdvanceLoop();
+            autoAdvanceActive = false;
+            syncSimulatorChromeForAutoMode();
+          },
+          isReplayPlayback: Boolean(replayOpts.isReplayPlayback),
+          recordGoalPlayback: Boolean(replayOpts.recordGoalPlayback),
+          goalRecording: replayOpts.goalRecording ?? null,
+          raceId: runtimeRaceData.race_id,
+        },
+      );
+    }
+
+    function startNewRaceSimulation() {
+      isReplayPlayback = false;
+      try {
+        sessionStorage.removeItem(SESSION_KEY_SIMULATOR_STATE);
+        sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
+      } catch {
+        /* ignore */
+      }
+      if (btnShowSummary) btnShowSummary.disabled = true;
+      document.getElementById('log-panel').innerHTML = '';
+      syncPlacingPanelsHtml('');
+
+      refreshRaceInfo();
+      const sim = runSimulation(runtimeRaceData, currentOptions(), userTweaksState, {}, renderer);
+      simResults = sim.results;
+      simLogs = sim.logs;
+      simSnapshots = sim.snapshots;
+      lastFinishOrderIds = [];
+      hasAggregatedThisRun = false;
+
+      simResults.forEach(horse => {
+        const entry = runtimeRaceData.entries.find((_, i) => i === horse.id);
+        if (entry) horse.jockeyName = entry.jockey.name;
+      });
+
+      raceStartInitialHorses = JSON.parse(JSON.stringify(initialHorses));
+      controller = createPhaseControllerFromSnapshots(simSnapshots, simResults, {
+        recordGoalPlayback: true,
+      });
+      controller.start();
+      playbackDockMode = 'play';
+      syncSimulatorChromeForAutoMode();
+      scrollAfterRaceStartOnNarrowLayout();
+      return true;
+    }
+
+    function startReplay() {
+      if (!replayBundle?.snapshots?.length || !replayBundle?.simResults?.length) return;
+      isReplayPlayback = true;
+      stopAutoAdvanceLoop();
+      playbackDockMode = 'play';
+      document.getElementById('log-panel').innerHTML = '';
+      syncPlacingPanelsHtml('');
+      document.getElementById('phase-indicator').textContent = 'スタート';
+
+      let replaySnapshots;
+      let replayResults;
+      try {
+        replaySnapshots = JSON.parse(JSON.stringify(replayBundle.snapshots));
+        replayResults = JSON.parse(JSON.stringify(replayBundle.simResults));
+      } catch {
+        isReplayPlayback = false;
+        playbackDockMode = 'complete';
+        syncSimulatorChromeForAutoMode();
+        return;
+      }
+
+      simSnapshots = replaySnapshots;
+      simResults = replayResults;
+      lastFinishOrderIds = Array.isArray(replayBundle.finishOrderIds)
+        ? [...replayBundle.finishOrderIds]
+        : [];
+
+      replayResults.forEach(horse => {
+        const entry = runtimeRaceData.entries.find((_, i) => i === horse.id);
+        if (entry) horse.jockeyName = entry.jockey.name;
+      });
+
+      renderer.resetHorseRenderState();
+      const replayInitialHorses = Array.isArray(replayBundle.initialHorses) &&
+        replayBundle.initialHorses.length > 0
+        ? replayBundle.initialHorses
+        : initialHorses;
+      controller = createPhaseControllerFromSnapshots(replaySnapshots, replayResults, {
+        isReplayPlayback: true,
+        goalRecording: Array.isArray(replayBundle.goalRecording) ? replayBundle.goalRecording : null,
+        initialHorses: replayInitialHorses,
+      });
+      controller.start();
+      autoAdvanceActive = true;
+      syncSimulatorChromeForAutoMode();
+      scheduleAutoAdvanceLoop();
+      syncAutoButtonLabel();
+    }
+
+    /** 狭い画面でレース開始直後にコースが十分見えるようスクロール */
     function scrollAfterRaceStartOnNarrowLayout() {
       if (!window.matchMedia('(max-width: 1024px)').matches) return;
-      const btnRunEl = document.getElementById('btn-run');
       const fieldViewport = document.getElementById('field-viewport');
-      if (!btnRunEl || !fieldViewport) return;
-
-      const getBtnRunTopThresholdPx = () => {
-        const pad = parseFloat(getComputedStyle(document.body).paddingTop);
-        const base = Number.isFinite(pad) ? pad : 0;
-        return base + 10;
-      };
+      if (!fieldViewport) return;
 
       const getViewportBottomPx = () => {
         const vv = window.visualViewport;
@@ -5074,43 +5435,17 @@ Promise.all([
 
       const applyScroll = () => {
         void fieldViewport.offsetHeight;
-        void btnRunEl.offsetHeight;
         const scrollRoot = document.scrollingElement ?? document.documentElement;
         const y0 = scrollRoot.scrollTop;
         const maxTop = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight);
-        const T = getBtnRunTopThresholdPx();
         const Vbottom = getViewportBottomPx();
-
-        const bTop = btnRunEl.getBoundingClientRect().top;
         const f = fieldViewport.getBoundingClientRect();
-
-        // 進行ボタンがノッチ下に残るための最大下方向スクロール量: bTop - delta >= T  =>  delta <= bTop - T
-        const deltaBtnMax = bTop - T;
-
-        // コースが見える範囲に入るための下方向スクロールの目安下限（画面上部〜の割合で最低限入る）
         const enterLine = Math.min(Vbottom * 0.42, Vbottom - 80);
         const deltaRaceMin = Math.max(0, Math.ceil(f.top - enterLine));
-
-        // コース下端を画面下端付近へ寄せたい量
         const deltaAlignBottom = Math.ceil(f.bottom - Vbottom + 10);
-
-        let delta = Math.min(deltaBtnMax, Math.max(deltaRaceMin, deltaAlignBottom));
-        let nextTop = Math.min(Math.max(0, y0 + delta), maxTop);
+        const delta = Math.max(deltaRaceMin, deltaAlignBottom);
+        const nextTop = Math.min(Math.max(0, y0 + delta), maxTop);
         scrollRoot.scrollTo({ top: nextTop, behavior: 'auto' });
-
-        // レイアウト直後の誤差を1フレーム後に補正（マスト条件の再チェック）
-        requestAnimationFrame(() => {
-          const maxTop2 = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight);
-          const b2 = btnRunEl.getBoundingClientRect().top;
-          if (b2 < T - 0.5) {
-            const fix = b2 - T;
-            const y1 = scrollRoot.scrollTop;
-            scrollRoot.scrollTo({
-              top: Math.min(Math.max(0, y1 + fix), maxTop2),
-              behavior: 'auto',
-            });
-          }
-        });
       };
 
       requestAnimationFrame(() =>
@@ -5123,61 +5458,40 @@ Promise.all([
       if (raceControlsBound) return;
       raceControlsBound = true;
 
-      btnRun.addEventListener('click', () => {
+      btnPlayStep?.addEventListener('click', () => {
+        if (playbackDockMode === 'complete' || btnPlayStep?.disabled || controller?.goalSceneActive) return;
         if (!controller) {
-          try {
-            sessionStorage.removeItem(SESSION_KEY_SIMULATOR_STATE);
-            sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
-          } catch {
-            /* ignore */
-          }
-          btnReset.disabled = false;
-          if (btnShowSummary) btnShowSummary.disabled = true;
-          document.getElementById('log-panel').innerHTML = '';
-          syncPlacingPanelsHtml('');
-          btnRun.textContent = '▶▶ 次のフェーズ';
-
-          const simOptions = currentOptions();
-          lastRunReproducible = simOptions.reproducible;
-          refreshRaceInfo();
-          const sim  = runSimulation(runtimeRaceData, simOptions, userTweaksState, {}, renderer);
-          simResults = sim.results;
-          simLogs    = sim.logs;
-          simSnapshots = sim.snapshots;
-          lastFinishOrderIds = [];
-
-          runtimeRaceData.entries.forEach((entry, idx) => {
-            if (simResults[idx]) {
-              // idで対応する結果を探す
-            }
-          });
-          simResults.forEach(horse => {
-            const entry = runtimeRaceData.entries.find((_, i) => i === horse.id);
-            if (entry) horse.jockeyName = entry.jockey.name;
-          });
-
-          controller = new PhaseController(
-            sim.snapshots,
-            phases,
-            renderer,
-            initialHorses,
-            horseMetaByName,
-            sim.results,
-          );
-          controller.start();
-          scrollAfterRaceStartOnNarrowLayout();
-          currentRaceUsedAutoAdvance = Boolean(autoAdvanceToggle?.checked);
-          if (autoAdvanceToggle?.checked) {
-            syncSimulatorChromeForAutoMode();
-            scheduleAutoAdvanceLoop();
-          }
+          startNewRaceSimulation();
           return;
         }
-
         controller.next(completeRaceAfterGoal);
       });
 
-      btnReset.addEventListener('click', () => {
+      btnPlayAuto?.addEventListener('click', () => {
+        if (playbackDockMode === 'complete' || btnPlayAuto?.disabled || controller?.goalSceneActive) return;
+        if (autoAdvanceActive) {
+          stopAutoAdvanceLoop();
+          autoAdvanceActive = false;
+          syncSimulatorChromeForAutoMode();
+          return;
+        }
+        if (!controller) {
+          startNewRaceSimulation();
+        }
+        autoAdvanceActive = true;
+        currentRaceUsedAutoAdvance = true;
+        syncSimulatorChromeForAutoMode();
+        scheduleAutoAdvanceLoop();
+      });
+
+      btnPlayReplay?.addEventListener('click', () => {
+        if (btnPlayReplay?.disabled) return;
+        if (playbackDockMode !== 'complete') return;
+        startReplay();
+      });
+
+      btnPlayReset?.addEventListener('click', () => {
+        if (btnPlayReset?.disabled) return;
         resetSimulatorToIdle();
       });
 
@@ -5227,13 +5541,14 @@ Promise.all([
           simLogs,
           snapshots: simSnapshots,
           finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
+          replayBundle: replayBundle
+            ? JSON.parse(JSON.stringify(replayBundle))
+            : null,
           ui: {
             phaseText: document.getElementById('phase-indicator')?.textContent ?? 'スタート',
             logHtml: document.getElementById('log-panel')?.innerHTML ?? '',
             placingHtml: document.getElementById('placing-panel')?.innerHTML ?? '',
-            btnRunText: btnRun.textContent ?? '✅ レース終了',
-            btnRunDisabled: Boolean(btnRun.disabled),
-            btnResetDisabled: Boolean(btnReset.disabled),
+            playbackDockMode: 'complete',
             btnShowSummaryDisabled: Boolean(btnShowSummary?.disabled),
           },
         };
@@ -5261,31 +5576,16 @@ Promise.all([
       };
       document.getElementById('btn-open-stats')?.addEventListener('click', () => openStatsPage('simulator'));
       document.getElementById('btn-open-stats-summary')?.addEventListener('click', () => openStatsPage('summary'));
+
+      btnBackToPreRace?.addEventListener('click', () => {
+        resetSimulatorToIdle();
+        hideRaceSummaryScreen();
+        const preRaceEl = document.getElementById('pre-race-editor');
+        if (preRaceEl) preRaceEl.hidden = false;
+        if (btnBackToPreRace) btnBackToPreRace.hidden = true;
+        schedulePreRaceTableFit();
+      });
     }
-
-    reproducibleToggle?.addEventListener('change', () => {
-      refreshRaceInfo();
-    });
-
-    autoAdvanceToggle?.addEventListener('change', () => {
-      if (autoAdvanceToggle.checked && controller) {
-        currentRaceUsedAutoAdvance = true;
-        syncSimulatorChromeForAutoMode();
-        scheduleAutoAdvanceLoop();
-      } else {
-        stopAutoAdvanceLoop();
-        syncSimulatorChromeForAutoMode();
-      }
-    });
-
-    btnBackToPreRace?.addEventListener('click', () => {
-      resetSimulatorToIdle();
-      hideRaceSummaryScreen();
-      const preRaceEl = document.getElementById('pre-race-editor');
-      if (preRaceEl) preRaceEl.hidden = false;
-      if (btnBackToPreRace) btnBackToPreRace.hidden = true;
-      schedulePreRaceTableFit();
-    });
 
     function preRaceBeforeConfirm() {
       const nextKey = computeBucketKey(runtimeRaceData, userTweaksState, {});
@@ -5319,8 +5619,10 @@ Promise.all([
       if (preRaceEl) preRaceEl.hidden = true;
       if (btnBackToPreRace) btnBackToPreRace.hidden = false;
       applyComputedHorsesToUi();
-      bindRaceControlsOnce();
+      syncSimulatorChromeForAutoMode();
     };
+
+    bindRaceControlsOnce();
 
     mountPreRaceEditor(
       runtimeRaceData,
@@ -5363,6 +5665,9 @@ Promise.all([
         simLogs = Array.isArray(parsed.simLogs) ? parsed.simLogs : null;
         simSnapshots = parsed.snapshots;
         lastFinishOrderIds = Array.isArray(parsed.finishOrderIds) ? parsed.finishOrderIds : [];
+        if (parsed.replayBundle?.snapshots?.length && parsed.replayBundle?.simResults?.length) {
+          replayBundle = parsed.replayBundle;
+        }
         const ui = parsed.ui ?? {};
         document.getElementById('phase-indicator').textContent = ui.phaseText ?? 'ゴール';
         if (typeof ui.logHtml === 'string') {
@@ -5371,13 +5676,19 @@ Promise.all([
         if (typeof ui.placingHtml === 'string') {
           syncPlacingPanelsHtml(ui.placingHtml);
         }
-        btnRun.textContent = typeof ui.btnRunText === 'string' ? ui.btnRunText : '✅ レース終了';
-        btnRun.disabled = ui.btnRunDisabled !== undefined ? Boolean(ui.btnRunDisabled) : true;
-        btnReset.disabled = ui.btnResetDisabled !== undefined ? Boolean(ui.btnResetDisabled) : false;
+        playbackDockMode =
+          ui.playbackDockMode === 'complete' || ui.btnRunDisabled === true
+            ? 'complete'
+            : 'play';
+        hasAggregatedThisRun = true;
+        if (playbackDockMode === 'complete') {
+          saveReplayBundle();
+        }
         if (btnShowSummary) {
           btnShowSummary.disabled =
             ui.btnShowSummaryDisabled !== undefined ? Boolean(ui.btnShowSummaryDisabled) : false;
         }
+        syncSimulatorChromeForAutoMode();
         return true;
       } catch {
         return false;

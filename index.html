@@ -66,46 +66,47 @@
     .app-subtitle--pre-race { color: #86efac; }
     .app-subtitle--summary { color: #c4b5fd; }
 
-    /* ===== コントロール ===== */
-    #controls {
-      grid-column: 1 / -1;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin: 0 auto 12px;
-      width: 100%;
-      max-width: min(100%, 1660px);
+    /* 画面遷移ナビ（プレレース／サマリー／集計／シミュレーター共通） */
+    .app-nav-btn {
+      padding: 6px 14px;
+      font-size: 0.78rem;
+      font-family: inherit;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      background: #1e3a52;
+      border: 1px solid #445566;
+      color: #e7f3fb;
+      width: 9.4rem;
+      border-radius: 0;
+      box-sizing: border-box;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(240, 192, 64, 0.3);
+      transition: filter 0.15s;
+    }
+    .app-nav-btn:hover:not(:disabled) { filter: brightness(1.08); }
+    .app-nav-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
 
-    #sim-options {
-      flex-direction: column;
-      align-items: stretch;
-      justify-content: center;
-      gap: 6px;
-      width: 100%;
-      color: #9ec3d8;
-      letter-spacing: 0.03em;
-      border: 1px solid #2c5275;
-      border-radius: 6px;
-      background: rgba(16, 40, 63, 0.65);
-      cursor: default;
+    .simulator-page-header {
+      width: min(100%, 1660px);
+      margin: 0 auto 8px;
     }
-    #sim-options label {
-      display: grid;
-      grid-template-columns: 1em minmax(0, 1fr);
+    .simulator-toolbar {
+      display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      column-gap: 6px;
+      justify-content: space-between;
+      gap: 10px 16px;
       width: 100%;
-      cursor: pointer;
+      margin-bottom: 10px;
     }
-    #sim-options input[type="checkbox"] {
-      accent-color: #f0c040;
-      margin: 0;
-      width: 1em;
-      height: 1em;
-      justify-self: start;
+    .simulator-toolbar-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
     }
 
     button {
@@ -125,49 +126,15 @@
     button:active { background: #f0c040; color: #0d1b2a; }
     button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    /* シミュレーター画面からプレレースへ戻る（左上固定） */
-    #btn-back-to-pre-race {
-      position: fixed;
-      top: 10px;
-      left: max(12px, calc((100vw - 1660px) / 2));
-      z-index: 150;
-      padding: 5px 12px;
-      font-size: 0.74rem;
-      letter-spacing: 0.04em;
-      border-radius: 6px;
-      background: rgba(20, 38, 57, 0.9);
-      border: 1px solid #3b5166;
-      color: #d2deea;
-      opacity: 0.88;
-    }
     #btn-back-to-pre-race[hidden] {
       display: none !important;
-    }
-
-    /* タイトル直下：ボタンとオプション群を同一サイズのボックスに */
-    #controls > button,
-    #controls > #sim-options {
-      flex: 0 0 12rem;
-      width: 12rem;
-      min-height: 3.35rem;
-      padding: 8px 10px;
-      font-size: 0.85rem;
-      box-sizing: border-box;
-      display: inline-flex;
-      justify-content: center;
-    }
-    #controls > button {
-      align-items: center;
-    }
-    #controls > #sim-options {
-      align-items: flex-start;
     }
 
     /* ===== 3カラムメインレイアウト：左右を広く、中央を縦長に ===== */
     #main-layout {
       display: grid;
       grid-template-columns: 320px 1fr 320px;
-      grid-template-rows: auto auto 1fr;
+      grid-template-rows: auto 1fr;
       gap: 10px;
       align-items: stretch;
       min-height: 0;
@@ -413,6 +380,75 @@
       aspect-ratio: 9 / 16;
     }
 
+    /* コース上：再生コントロール（上部中央） */
+    #field-playback-dock {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      right: auto;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      pointer-events: auto;
+      touch-action: manipulation;
+      -webkit-transform: translateX(-50%) translateZ(0);
+      transform: translateX(-50%) translateZ(0);
+    }
+    #field-playback-dock .field-playback-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      width: 11.5rem;
+      pointer-events: auto;
+    }
+    #field-playback-dock .field-playback-row--play,
+    #field-playback-dock .field-playback-row--done {
+      width: 11.5rem;
+    }
+    #field-playback-dock .field-playback-btn {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      min-width: 0;
+      min-height: 2.35rem;
+      padding: 6px 10px;
+      text-align: center;
+      white-space: nowrap;
+      box-sizing: border-box;
+      font-family: inherit;
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      color: #e7f3fb;
+      background: rgba(6, 17, 30, 0.62);
+      border: 1px solid rgba(126, 184, 212, 0.45);
+      border-radius: 6px;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-backdrop-filter: blur(6px);
+      backdrop-filter: blur(6px);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    #field-playback-dock .field-playback-btn:hover:not(:disabled) {
+      background: rgba(14, 32, 52, 0.82);
+      border-color: rgba(240, 192, 64, 0.55);
+    }
+    #field-playback-dock .field-playback-btn:disabled {
+      opacity: 0.38;
+      cursor: not-allowed;
+    }
+    #field-playback-dock .field-playback-btn.is-auto-active {
+      border-color: rgba(253, 224, 71, 0.55);
+      color: #fde68a;
+    }
+    #field-playback-dock[data-mode="complete"] .field-playback-row--play {
+      display: none;
+    }
+    #field-playback-dock[data-mode="play"] .field-playback-row--done {
+      display: none;
+    }
+
     #field-canvas {
       position: absolute;
       inset: 0;
@@ -607,8 +643,11 @@
       box-sizing: border-box;
       overflow: hidden;
     }
-    #pre-race-editor[hidden] {
+    #pre-race-editor[hidden],
+    #race-summary-screen[hidden] {
       display: none !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
     }
     .pre-race-header {
       flex: 0 0 auto;
@@ -825,10 +864,6 @@
       overflow: hidden;
       align-items: center;
     }
-    #race-summary-screen[hidden] {
-      display: none !important;
-    }
-
     .summary-header {
       flex: 0 0 auto;
       display: flex;
@@ -1134,45 +1169,61 @@
         grid-template-columns: 1fr;
         grid-template-rows: auto;
         grid-template-areas:
-          "back"
-          "title"
-          "race"
-          "controls"
-          "entry"
-          "field"
-          "side";
+          "header"
+          "main";
         gap: 8px;
         align-content: start;
       }
 
-      body > h1:first-of-type {
-        grid-area: title;
-        margin-bottom: 0;
+      /* Safari は display:contents 配下のタップが効かないことがあるため使わない */
+      .simulator-page-header {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        min-width: 0;
+        grid-area: header;
       }
-
-      /* パラメーター調整はページと一緒にスクロール */
-      #btn-back-to-pre-race {
-        grid-area: back;
-        position: static;
-        width: max-content;
-        max-width: 100%;
+      .simulator-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
         margin-bottom: 0;
-        opacity: 1;
-        min-height: 30px;
-        padding: 4px 10px;
-        font-size: 0.65rem;
+        width: 100%;
+        min-width: 0;
+      }
+      .simulator-toolbar-right {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        width: 100%;
+      }
+      .simulator-toolbar .app-nav-btn {
+        width: 100%;
+        max-width: none;
+        min-height: 34px;
+        padding: 5px 8px;
+        font-size: 0.7rem;
         letter-spacing: 0.03em;
       }
+      .simulator-page-header > h1 {
+        margin-bottom: 0;
+      }
+      .simulator-page-header .app-subtitle--simulator {
+        display: none;
+      }
 
-      /* メインレイアウトはラッパーを無視し、子を body グリッドに載せる（モバイルの並び替え用） */
       #main-layout {
-        display: contents;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        min-width: 0;
+        grid-area: main;
       }
       #race-info {
-        grid-column: auto;
-        grid-row: auto;
-        grid-area: race;
         width: 100%;
+        flex: 0 0 auto;
       }
       /* レース情報：1段目=開催日+競馬場、2段目=それ以外（.race-info-break + formatRaceInfo） */
       #race-info,
@@ -1187,10 +1238,10 @@
       }
       /* コースは幅いっぱい × 9:16（親の 100% 高さで潰さない） */
       #field-wrap {
-        grid-area: field;
         height: auto;
         min-height: 0;
         flex: 0 0 auto;
+        order: 2;
       }
       #field-viewport {
         height: auto;
@@ -1199,7 +1250,7 @@
         aspect-ratio: 9 / 16;
       }
       #entry-panel {
-        grid-area: entry;
+        order: 1;
         max-height: min(50dvh, 50vh);
         min-height: 0;
         flex: 0 0 auto;
@@ -1262,7 +1313,7 @@
         gap: 0;
       }
       #right-panel {
-        grid-area: side;
+        order: 3;
         min-height: 0;
         max-height: none;
         flex: 0 0 auto;
@@ -1293,6 +1344,9 @@
         max-height: none;
         overflow: visible;
       }
+      #field-canvas {
+        pointer-events: none;
+      }
       #field-placing-overlay {
         display: flex;
         flex-direction: column;
@@ -1301,7 +1355,7 @@
         position: absolute;
         inset: 0;
         z-index: 2;
-        pointer-events: none;
+        pointer-events: none !important;
         -webkit-transform: translateZ(0);
         transform: translateZ(0);
       }
@@ -1349,59 +1403,21 @@
         display: none;
       }
 
-      /* 4ボタンの左上（#btn-run）を scrollIntoView の基準にしやすいよう margin（※メインは main.js の scrollTo） */
-      #controls > #btn-run {
-        scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 18px);
+      #field-viewport {
+        scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 12px);
       }
 
-      /* 4ボタン 2×2 → 下にモード選択（フル幅） */
-      #controls {
-        grid-area: controls;
-        width: 100%;
-        min-width: 0;
-        align-self: stretch;
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 6px 8px;
-        margin-bottom: 0;
-        justify-content: stretch;
-        align-items: stretch;
+      #field-playback-dock {
+        z-index: 20;
       }
-      #controls > #sim-options {
-        grid-column: 1 / -1;
+      #field-playback-dock .field-playback-row--play,
+      #field-playback-dock .field-playback-row--done {
+        width: 10.5rem;
       }
-      #controls > button,
-      #controls > #sim-options {
-        flex: unset;
-        width: 100%;
-        min-width: 0;
-        min-height: 34px;
-        padding: 5px 8px;
-        font-size: 0.72rem;
-        letter-spacing: 0.06em;
-      }
-      #controls > #sim-options {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: center;
-        gap: 4px 14px;
-        padding: 6px 10px;
-      }
-      #sim-options label {
-        display: inline-grid;
-        grid-template-columns: 0.95em minmax(0, auto);
-        width: auto;
-        min-width: 0;
-        min-height: auto;
-        padding: 2px 0;
-        align-items: center;
-        column-gap: 5px;
-      }
-      #sim-options input[type="checkbox"] {
-        width: 0.95em;
-        height: 0.95em;
+      #field-playback-dock .field-playback-btn {
+        min-height: 44px;
+        padding: 8px 8px;
+        font-size: 0.68rem;
       }
 
       #pre-race-editor {
@@ -1562,7 +1578,7 @@
   <div id="pre-race-editor" hidden aria-label="出走パラメータ編集">
     <div class="pre-race-header">
       <div class="pre-race-toolbar">
-        <button type="button" id="btn-pre-race-confirm">シミュレーター画面</button>
+        <button type="button" id="btn-pre-race-confirm" class="app-nav-btn">シミュレーター画面</button>
       </div>
       <h1 class="app-main-title">
         <span class="title-brand-icon" aria-hidden="true">🏇</span>
@@ -1606,15 +1622,13 @@
     </div>
   </div>
 
-  <button type="button" id="btn-back-to-pre-race" aria-label="パラメーター調整">パラメーター調整</button>
-
   <!-- レースサマリー画面（全画面オーバーレイ） -->
   <div id="race-summary-screen" hidden aria-label="レースサマリー">
     <div class="summary-header">
       <div class="summary-toolbar">
         <div class="summary-header-row">
-          <button type="button" id="btn-back-to-simulator">シミュレーター画面</button>
-          <button type="button" id="btn-open-stats-summary">集計画面</button>
+          <button type="button" id="btn-back-to-simulator" class="app-nav-btn">シミュレーター画面</button>
+          <button type="button" id="btn-open-stats-summary" class="app-nav-btn">集計画面</button>
         </div>
       </div>
       <div class="summary-title-block">
@@ -1638,32 +1652,24 @@
     </div>
   </div>
 
-  <h1>
-    <span class="title-brand-icon" aria-hidden="true">🏇</span>
-    <span class="title-text">JRA RACE SIMULATOR</span>
-  </h1>
+  <header class="simulator-page-header">
+    <div class="simulator-toolbar">
+      <button type="button" id="btn-back-to-pre-race" class="app-nav-btn" hidden aria-label="パラメーター調整">パラメーター調整</button>
+      <div class="simulator-toolbar-right">
+        <button type="button" id="btn-show-summary" class="app-nav-btn" disabled>📊 レースサマリー</button>
+        <button type="button" id="btn-open-stats" class="app-nav-btn">📈 集計画面</button>
+      </div>
+    </div>
+    <h1>
+      <span class="title-brand-icon" aria-hidden="true">🏇</span>
+      <span class="title-text">JRA RACE SIMULATOR</span>
+    </h1>
+    <p class="app-subtitle app-subtitle--simulator">シミュレーター</p>
+  </header>
 
   <!-- 3カラムレイアウト -->
   <div id="main-layout">
     <div id="race-info"></div>
-
-    <!-- コントロール（レース情報の直下／狭い画面では body グリッドで並べ替え） -->
-    <div id="controls">
-      <button id="btn-run">▶ レース開始</button>
-      <button id="btn-reset" disabled>↺ リセット</button>
-      <button id="btn-show-summary" type="button" disabled>📊 レースサマリー</button>
-      <button id="btn-open-stats" type="button">📈 集計画面</button>
-      <div id="sim-options" role="group" aria-label="シミュレーションオプション">
-        <label>
-          <input id="toggle-reproducible" type="checkbox">
-          再現性モード
-        </label>
-        <label>
-          <input id="toggle-auto-advance" type="checkbox">
-          自動モード
-        </label>
-      </div>
-    </div>
 
     <!-- 左：出馬表 -->
     <div id="entry-panel">
@@ -1677,6 +1683,16 @@
         <canvas id="field-canvas"></canvas>
         <div id="field-placing-overlay" aria-live="polite" aria-label="着順">
           <div id="placing-panel-overlay"></div>
+        </div>
+        <div id="field-playback-dock" data-mode="play" role="toolbar" aria-label="レース再生">
+          <div class="field-playback-row field-playback-row--play">
+            <button type="button" id="btn-play-step" class="field-playback-btn" aria-label="レースを開始">▶ スタート</button>
+            <button type="button" id="btn-play-auto" class="field-playback-btn" aria-label="オート再生">▶ オート</button>
+          </div>
+          <div class="field-playback-row field-playback-row--done">
+            <button type="button" id="btn-play-replay" class="field-playback-btn" aria-label="リプレイ">↺ リプレイ</button>
+            <button type="button" id="btn-play-reset" class="field-playback-btn" aria-label="リセット">↺ リセット</button>
+          </div>
         </div>
       </div>
       <div id="phase-indicator">スタート</div>
