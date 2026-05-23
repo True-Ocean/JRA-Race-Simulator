@@ -20,96 +20,133 @@ import {
   SESSION_KEY_SUMMARY_STATE,
 } from './src/stats/aggregate-store.js';
 import { formatRaceInfo, resolveCourseDef } from './src/stats/race-display.js';
-
-// JRA枠色（枠番1〜8）
-const JRA_WAKU_COLORS = {
-  1: { bg: '#FFFFFF', text: '#000000', label: '1枠' },
-  2: { bg: '#000000', text: '#FFFFFF', label: '2枠' },
-  3: { bg: '#FF0000', text: '#FFFFFF', label: '3枠' },
-  4: { bg: '#0000FF', text: '#FFFFFF', label: '4枠' },
-  5: { bg: '#FFFF00', text: '#000000', label: '5枠' },
-  6: { bg: '#008000', text: '#FFFFFF', label: '6枠' },
-  7: { bg: '#FF6600', text: '#FFFFFF', label: '7枠' },
-  8: { bg: '#FF5FA2', text: '#000000', label: '8枠' },
-};
-
-const MIN_FORWARD_GAP = 38;
-const LATERAL_BLOCK_X_GAP = 42;
-const LATERAL_BLOCK_LANE_GAP = 1.15;
-const DIAGONAL_REAR_BLOCK_X_GAP = 30;
-const DIAGONAL_REAR_BLOCK_LANE_GAP = 1.05;
-// 斜め後ろ判定の帯: isLaneInShiftPath 全体幅だと「同レーンの真後ろ」まで巻き込むため狭める
-const DIAGONAL_REAR_INNER_BAND_OUTER_EPS = 0.16;
-const DIAGONAL_REAR_INNER_BAND_INNER_MARGIN = 0.48;
-const LANE_WIDTH = CONFIG.LANE_COUNT;
-const INNER_HALF_LANE_MAX = Math.max(1, Math.floor(LANE_WIDTH * 0.5));
-const LEAD_BATTLE_PHASE_MAX = 0.35;
-const EARLY_LEAD_RATIO_MAX = 0.35;
-const FINAL_DUEL_PHASE_MIN = 0.80;
-const FORMATION_LOCK_PHASE = 0.40;
-const PRE_CORNER_PACK_PHASE_MAX = 0.28;
-const COLLISION_MIN_Y_GAP = 0.9;
-const COLLISION_ITERATIONS = 3;
-const COLLISION_ITERATIONS_EARLY = 7;
-const COLLISION_EPS = 0.001;
-const START_DELAY_BASE_RATE = 0.022;
-const STUMBLE_BASE_RATE = 0.008;
-const STUMBLE_PHASE_MAX = 0.55;
-const EARLY_TROUBLE_DECAY_PER_100M = 0.88;
-const EARLY_ORDER_TIE_NOISE = 1.2;
-const EARLY_OUTER_NIGE_START_RATIO = 0.60;
-const EARLY_OUTER_NIGE_ADV_GAIN_MAX = 0.18;
-const EARLY_OUTER_NIGE_DRAIN_PER_100M = 0.45;
-/** スタートフェーズのみ: STYLE_PACE 先頭バケットを 1.0 へ寄せる（逃げ・大逃げの一気離れ抑制） */
-const START_PHASE_NIGE_PACE_BLEND = 0.58;
-/** スタートフェーズのみ: 理想ギャップ追い込み（gapCatchBoost）に掛ける係数 */
-const START_PHASE_GAP_CATCH_SCALE = 0.22;
-/** スタートフェーズのみ: 外ライン逃げダッシュの強さ */
-const START_PHASE_OUTER_NIGE_SCALE = 0.52;
-const OONIGE_BURST_ROLL_MIN = 0.92;
-const OONIGE_BURST_ROLL_MAX = 1.12;
-const OONIGE_BURST_PHASE_JITTER_MIN = 0.97;
-const OONIGE_BURST_PHASE_JITTER_MAX = 1.03;
-const OONIGE_DRAIN_BURST_LINK_GAIN = 1.4;
-const OONIGE_PHASE_DRAIN_EARLY_MULT = 0.88;
-const OONIGE_PHASE_DRAIN_LATE_MULT = 1.10;
-const FRONTRUN_ROLL_MIN = 0.94;
-const FRONTRUN_ROLL_MAX = 1.10;
-const OONIGE_LATE_DRAIN_BASE_PER_100M = 1.24;
-const OONIGE_LATE_DRAIN_LEAD_GAIN = 1.08;
-/** 安全策: 新スタミナモデル（イベント主導 + 距離微小消費）を段階導入 */
-const USE_SAFE_STAMINA_MODEL = true;
-/** 新モデル: 距離起因の微小消費（1m あたり） */
-const SAFE_BASE_STAMINA_PER_M = 0.0038;
-/** 新モデル: 進路変更イベント消費倍率 */
-const SAFE_LANE_EVENT_DRAIN_MULT = 0.45;
-/** 新モデル: コーナー外回しイベント消費倍率 */
-const SAFE_CORNER_EVENT_DRAIN_MULT = 0.35;
-/** 新モデル: 余剰加速イベント消費倍率 */
-const SAFE_ACCEL_EVENT_DRAIN_MULT = 0.62;
-/** 新モデル: 終盤でイベント疲労を速度へ反映する重み */
-const SAFE_GOAL_EVENT_FATIGUE_WEIGHT = 0.42;
-/** 新モデル: 終盤の stamina/m 正規化基準 */
-const SAFE_GOAL_STAMINA_PER_M_REF = 0.030;
-const SAFE_GOAL_STAMINA_PER_M_RANGE = 0.090;
-/** スタート初速のうちこの倍率までは能力域とみなし、accel スタミナは超過分のみ課金 */
-const START_BURST_STAMINA_FREE_CAP = 1.14;
-/** 逃げ・大逃げの「ペース拡大」追加ドレイン: 楽先頭・クリア時の下限（1=従来同等） */
-const NIGE_PACE_EXTRA_DRAIN_FLOOR = 0.34;
-/** 外ラチ逃げダッシュ: 先頭で十分離れているときのドレイン倍率 */
-const NIGE_OUTER_DASH_CLEAR_LEAD_MULT = 0.58;
-/** 4角以降大逃げ: 楽に先頭をキープしているときの late ドレイン倍率 */
-const OONIGE_LATE_CLEAR_LEAD_MULT = 0.62;
-const OONIGE_LATE_CLEAR_LEAD_GAP = 20;
-// ゴールシーンは「ゴールラインから 200m 手前〜ゴール」が画面に収まるイメージ。
-// last_3f（最終3ハロン≈600m の通過秒）から intrinsic 速度を出し、スタミナ残量で毎フレーム上限を締める。
-const GOAL_FURLONG_METERS = 200;
-const GOAL_TIME_SCALE = 1.0;
-const GOAL_DISTANCE_METERS = GOAL_FURLONG_METERS;
-const GOAL_LAST3F_DISTANCE_M = 600;
-const GOAL_LAST3F_SEC_CLAMP_MIN = 27;
-const GOAL_LAST3F_SEC_CLAMP_MAX = 41;
-const GOAL_LAST3F_FALLBACK_SEC = 33.5;
+import { JRA_WAKU_COLORS } from './src/ui/colors.js';
+import {
+  MIN_FORWARD_GAP,
+  LATERAL_BLOCK_X_GAP,
+  LATERAL_BLOCK_LANE_GAP,
+  DIAGONAL_REAR_BLOCK_X_GAP,
+  DIAGONAL_REAR_BLOCK_LANE_GAP,
+  DIAGONAL_REAR_INNER_BAND_OUTER_EPS,
+  DIAGONAL_REAR_INNER_BAND_INNER_MARGIN,
+  LANE_WIDTH,
+  INNER_HALF_LANE_MAX,
+  LEAD_BATTLE_PHASE_MAX,
+  EARLY_LEAD_RATIO_MAX,
+  FINAL_DUEL_PHASE_MIN,
+  FORMATION_LOCK_PHASE,
+  PRE_CORNER_PACK_PHASE_MAX,
+  COLLISION_MIN_Y_GAP,
+  COLLISION_ITERATIONS,
+  COLLISION_ITERATIONS_EARLY,
+  COLLISION_EPS,
+  START_DELAY_BASE_RATE,
+  STUMBLE_BASE_RATE,
+  STUMBLE_PHASE_MAX,
+  EARLY_TROUBLE_DECAY_PER_100M,
+  EARLY_ORDER_TIE_NOISE,
+  EARLY_OUTER_NIGE_START_RATIO,
+  EARLY_OUTER_NIGE_ADV_GAIN_MAX,
+  EARLY_OUTER_NIGE_DRAIN_PER_100M,
+  START_PHASE_NIGE_PACE_BLEND,
+  START_PHASE_GAP_CATCH_SCALE,
+  START_PHASE_OUTER_NIGE_SCALE,
+  OONIGE_BURST_ROLL_MIN,
+  OONIGE_BURST_ROLL_MAX,
+  OONIGE_BURST_PHASE_JITTER_MIN,
+  OONIGE_BURST_PHASE_JITTER_MAX,
+  OONIGE_DRAIN_BURST_LINK_GAIN,
+  OONIGE_PHASE_DRAIN_EARLY_MULT,
+  OONIGE_PHASE_DRAIN_LATE_MULT,
+  FRONTRUN_ROLL_MIN,
+  FRONTRUN_ROLL_MAX,
+  OONIGE_LATE_DRAIN_BASE_PER_100M,
+  OONIGE_LATE_DRAIN_LEAD_GAIN,
+  USE_SAFE_STAMINA_MODEL,
+  SAFE_BASE_STAMINA_PER_M,
+  SAFE_LANE_EVENT_DRAIN_MULT,
+  SAFE_CORNER_EVENT_DRAIN_MULT,
+  SAFE_ACCEL_EVENT_DRAIN_MULT,
+  SAFE_GOAL_EVENT_FATIGUE_WEIGHT,
+  SAFE_GOAL_STAMINA_PER_M_REF,
+  SAFE_GOAL_STAMINA_PER_M_RANGE,
+  START_BURST_STAMINA_FREE_CAP,
+  NIGE_PACE_EXTRA_DRAIN_FLOOR,
+  NIGE_OUTER_DASH_CLEAR_LEAD_MULT,
+  OONIGE_LATE_CLEAR_LEAD_MULT,
+  OONIGE_LATE_CLEAR_LEAD_GAP,
+  GOAL_FURLONG_METERS,
+  GOAL_TIME_SCALE,
+  GOAL_DISTANCE_METERS,
+  GOAL_LAST3F_DISTANCE_M,
+  GOAL_LAST3F_SEC_CLAMP_MIN,
+  GOAL_LAST3F_SEC_CLAMP_MAX,
+  GOAL_LAST3F_FALLBACK_SEC,
+  GOAL_X_PER_METER,
+  GOAL_LANE_CHANGE_PER_SEC,
+  GOAL_BLOCK_X_GAP,
+  GOAL_MIN_PACK_GAP_X,
+  GOAL_NEAR_LANE_GAP_BASE,
+  GOAL_NEAR_LANE_GAP_MAX,
+  GOAL_LANE_CHANGE_COOLDOWN_MS,
+  FINAL_LANE_CHANGE_COOLDOWN_PHASES,
+  FINAL_FRONT_BLOCK_EXTRA_GAP,
+  FINAL_STRAIGHT_RATIO,
+  POST_C3_STAMINA_SPREAD_FLOOR,
+  PROACTIVE_LATE_SPREAD_INTENT_MIN,
+  LATERAL_SHIFT_SOFT_CAP,
+  LATERAL_SHIFT_HARD_CAP,
+  LATERAL_SHIFT_THROUGH_C3_CAP,
+  START_LATERAL_SHIFT_CAP,
+  GOAL_MIN_SPEED_RATIO,
+  GOAL_MAX_SPEED_RATIO,
+  GOAL_POST_SCROLL_MS,
+  GOAL_POST_CLEAR_METERS,
+  RACE_SUMMARY_HEADER_LINE,
+  RACE_SUMMARY_SCENE_LABELS,
+  GOAL_PROGRESS_MAX_POST_LINE,
+  GOAL_ENTRY_LEADER_START_PROGRESS,
+  GOAL_PROGRESS_MIN,
+  GOAL_SCENE_TRANSITION_MS,
+  GOAL_SCENE_TRANSITION_MAX_ALPHA,
+  GOAL_PROGRESS_TARGET_AT_FINISH,
+  GOAL_LEADER_ANCHOR_PROGRESS,
+  GOAL_ANCHOR_MAX_PROGRESS,
+  GOAL_PROGRESS_SPAN,
+  GOAL_EARLY_PHASE_T,
+  GOAL_SPREAD_EARLY_MULT,
+  GOAL_ANCHOR_FOLLOW_SCALE,
+  GOAL_CAMERA_LERP,
+  GOAL_CAMERA_LERP_MAX,
+  GOAL_ANCHOR_DYNAMIC_BOOST,
+  STAMINA_LANE_CHANGE_COST,
+  STAMINA_ACCEL_COST,
+  STAMINA_EARLY_ACCEL_MULT,
+  STAMINA_BATTLE_BASE_COST,
+  STAMINA_BATTLE_LOSER_EXTRA,
+  STAMINA_BATTLE_TRACKER_GAIN,
+  INNER_CUTIN_BATTLE_COOLDOWN_PHASES,
+  INNER_CUTIN_REMATCH_COOLDOWN_PHASES,
+  INNER_CUTIN_MIN_INWARD_DELTA,
+  INNER_CUTIN_WINNER_STAMINA_MULT,
+  INNER_CUTIN_LOSER_STAMINA_MULT,
+  THROUGH_C3_LANE_CHANGE_TRIGGER_DELTA,
+  INNER_RAIL_GAP_OPTIONS,
+  INNER_RAIL_GAP_WEIGHTS,
+  INNER_POCKET_FRONT_GAP_RATIO,
+  INNER_POCKET_REAR_GAP_RATIO,
+  PRE_CORNER_INNER_COMPRESS_ITERS,
+  PRE_CORNER_FORCE_INNER_STEP,
+  PRE_CORNER_MIN_Y_GAP_MULT,
+  HOME_OUTER_REROUTE_STEPS,
+  COLLISION_FRONT_BUFFER_X,
+  COLLISION_REAR_BUFFER_X,
+  INNER_CUTIN_BUFFER_MULT,
+  PACK_DENSITY_PENALTY_QUAD,
+  STAMINA_CORNER_OUTER_PER_LANE,
+  GOAL_STAMINA_DRAIN_MULT,
+  GOAL_AI,
+} from './src/engine/constants.js';
 
 function goalIntrinsicMpsFromLast3f(last3fSec) {
   const s = Number.isFinite(last3fSec)
@@ -139,31 +176,6 @@ function normalize01(v) {
   if (!Number.isFinite(v)) return 0;
   return Math.max(0, Math.min(1, v));
 }
-
-const GOAL_X_PER_METER = 0.28;
-const GOAL_LANE_CHANGE_PER_SEC = 4.2;
-const GOAL_BLOCK_X_GAP = 10;
-/** ゴールシーン同一レーン内で後方馬の x が前馬に食い込まないよう保つ最小間隔（シミュ x 単位） */
-const GOAL_MIN_PACK_GAP_X = GOAL_BLOCK_X_GAP * 0.9;
-const GOAL_NEAR_LANE_GAP_BASE = 0.95;
-const GOAL_NEAR_LANE_GAP_MAX = 1.26;
-const GOAL_LANE_CHANGE_COOLDOWN_MS = 520;
-const FINAL_LANE_CHANGE_COOLDOWN_PHASES = 2;
-const FINAL_FRONT_BLOCK_EXTRA_GAP = 6;
-const FINAL_STRAIGHT_RATIO = 0.80;
-/** 第3コーナー終了時点（第4コーナー開始フェーズ）のスタミナ比率がこれ未満だと外への先回り意欲を大きく抑える */
-const POST_C3_STAMINA_SPREAD_FLOOR = 0.34;
-/** 最終直線で前が空いていても横に振れると判断する外膨らみ意図の下限（getEffectiveOuterSpreadIntent） */
-const PROACTIVE_LATE_SPREAD_INTENT_MIN = 0.24;
-const LATERAL_SHIFT_SOFT_CAP = 0.42;
-const LATERAL_SHIFT_HARD_CAP = 0.26;
-// 第3コーナーまでは積極的な内寄せを許容するため横移動上限を緩める
-const LATERAL_SHIFT_THROUGH_C3_CAP = 0.75;
-const START_LATERAL_SHIFT_CAP = 2.40;
-const GOAL_MIN_SPEED_RATIO = 0.58;
-const GOAL_MAX_SPEED_RATIO = 1.95;
-const GOAL_POST_SCROLL_MS = 700;
-const GOAL_POST_CLEAR_METERS = GOAL_FURLONG_METERS * 1.25;
 
 function mapIdEntriesToMap(entries) {
   if (entries instanceof Map) return entries;
@@ -205,96 +217,6 @@ function drawGoalCourseFrame(renderer, frame, phase) {
   });
   return true;
 }
-
-const RACE_SUMMARY_HEADER_LINE = 'ここまでのレースサマリ';
-const RACE_SUMMARY_SCENE_LABELS = new Set([
-  'スタート',
-  'ホーム直線',
-  '第1コーナー',
-  '第2コーナー',
-  '向正面',
-  '第3コーナー',
-  '第4コーナー',
-  '最終直線',
-  'スタート〜1コーナー手前',
-  '3〜4コーナー中間',
-  '4コーナー〜直線',
-]);
-// ゴールシーン progress の上限（画面外まで抜ける余地）
-const GOAL_PROGRESS_MAX_POST_LINE = 1.78;
-// ゴールシーン開始時、先頭馬は画面下辺から出現させる
-const GOAL_ENTRY_LEADER_START_PROGRESS = 0.0;
-// 画面外を含むゴール描画 progress 下限
-const GOAL_PROGRESS_MIN = -1.10;
-// 切替時のカット演出（フェード）時間
-const GOAL_SCENE_TRANSITION_MS = 1500;
-const GOAL_SCENE_TRANSITION_MAX_ALPHA = 0.82;
-const GOAL_PROGRESS_TARGET_AT_FINISH = 1.06;
-const GOAL_LEADER_ANCHOR_PROGRESS = 0.88;
-// 仮想リーダーが上に抜けた時にYで見せる（旧: 0.88 で上方向が潰れていた）
-const GOAL_ANCHOR_MAX_PROGRESS = 1.08;
-const GOAL_PROGRESS_SPAN = 0.64;
-// t < 2/3（ゴール接近の前半〜中盤）の間は相対差を大きく見せる
-const GOAL_EARLY_PHASE_T = 2 / 3;
-const GOAL_SPREAD_EARLY_MULT = 1.52;
-const GOAL_ANCHOR_FOLLOW_SCALE = 0.92;
-const GOAL_CAMERA_LERP = 0.085;
-const GOAL_CAMERA_LERP_MAX = 0.16;
-const GOAL_ANCHOR_DYNAMIC_BOOST = 0.12;
-const STAMINA_LANE_CHANGE_COST = 0.45;
-const STAMINA_ACCEL_COST = 0.10;
-const STAMINA_EARLY_ACCEL_MULT = 1.10;
-const STAMINA_BATTLE_BASE_COST = 0.8;
-const STAMINA_BATTLE_LOSER_EXTRA = 1.6;
-const STAMINA_BATTLE_TRACKER_GAIN = 0.2;
-const INNER_CUTIN_BATTLE_COOLDOWN_PHASES = 2;
-const INNER_CUTIN_REMATCH_COOLDOWN_PHASES = 4;
-const INNER_CUTIN_MIN_INWARD_DELTA = 0.08;
-const INNER_CUTIN_WINNER_STAMINA_MULT = 1.15;
-const INNER_CUTIN_LOSER_STAMINA_MULT = 1.35;
-const THROUGH_C3_LANE_CHANGE_TRIGGER_DELTA = 0.08;
-const INNER_RAIL_GAP_OPTIONS = [0.5, 1.0, 1.5, 2.0];
-const INNER_RAIL_GAP_WEIGHTS = [0.38, 0.34, 0.20, 0.08];
-const INNER_POCKET_FRONT_GAP_RATIO = 0.55;
-const INNER_POCKET_REAR_GAP_RATIO = 0.35;
-const PRE_CORNER_INNER_COMPRESS_ITERS = 3;
-const PRE_CORNER_FORCE_INNER_STEP = 0.55;
-const PRE_CORNER_MIN_Y_GAP_MULT = 0.88;
-const HOME_OUTER_REROUTE_STEPS = 3;
-const COLLISION_FRONT_BUFFER_X = 10;
-const COLLISION_REAR_BUFFER_X = 14;
-const INNER_CUTIN_BUFFER_MULT = 1.25;
-const PACK_DENSITY_PENALTY_QUAD = 1.1;
-const STAMINA_CORNER_OUTER_PER_LANE = 0.30;
-const GOAL_STAMINA_DRAIN_MULT = 1.35;
-const GOAL_AI = {
-  horizonSec: 1.0,
-  predictStepSec: 0.10,
-  switchCommitSec: 0.40,
-  /** 進路切替に必要なスコア差（低いほど左右に振りやすい） */
-  switchThresholdBase: 1.12,
-  aggrBaseByStyle: { '逃げ': 0.36, '先行': 0.47, '差し': 0.66, '追込': 0.78 },
-  aggrStaminaGain: 0.46,
-  aggrLast3fGain: 0.58,
-  laneMoveCostPerLane: 1.25,
-  blockRiskWeight: 6.4,
-  densityWeight: 4.8,
-  projectedGapWeight: 1.25,
-  burstAccelBonus: 1.10,
-  // GOAL_DISTANCE が 200m のため「残り〇m」の窓を区間に合わせる（最後の直線ドライブ帯）
-  burstWindowMetersToGoMin: 90,
-  burstWindowMetersToGoMax: 205,
-  burstCooldownSec: 0.80,
-  burstDurationSec: 0.55,
-  trafficPenaltyFloor: 0.72,
-  goalDrainSprintCap: 1.45,
-  visualLateStartT: 0.62,
-  visualLateBoost: 0.34,
-  /** 短期軌道予測での接触ペナルティ（進路スコアから減算） */
-  collisionHorizonWeight: 5.5,
-  /** 「進路上の遅い馬」を探す前方距離上限（シミュ x 単位）。これ以上前方は無視する */
-  passSeekMaxForwardX: 40,
-};
 
 /** 差し/追込: 末脚が速くスタミナに余力があるほど外への先回り意欲が高い（0〜1） */
 function getCloserOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan) {

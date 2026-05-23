@@ -10,18 +10,7 @@ import {
   SESSION_KEY_OPEN_SCREEN,
   SESSION_KEY_STATS_RETURN_SCREEN,
 } from './aggregate-store.js';
-
-/** main.js の出馬表・掲示板と同じ枠色（馬番バッジ用） */
-const JRA_WAKU_COLORS = {
-  1: { bg: '#FFFFFF', text: '#000000' },
-  2: { bg: '#000000', text: '#FFFFFF' },
-  3: { bg: '#FF0000', text: '#FFFFFF' },
-  4: { bg: '#0000FF', text: '#FFFFFF' },
-  5: { bg: '#FFFF00', text: '#000000' },
-  6: { bg: '#008000', text: '#FFFFFF' },
-  7: { bg: '#FF6600', text: '#FFFFFF' },
-  8: { bg: '#FF5FA2', text: '#000000' },
-};
+import { JRA_WAKU_COLORS } from '../ui/colors.js';
 
 let runtimeRaceData = null;
 let userTweaks = {};

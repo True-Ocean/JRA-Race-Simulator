@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { getWakuFrameColor } from './colors.js';
 
 const TRACK_BASE_COLOR = {
   '芝':    { h: 120, s: 55, l: 22 },
@@ -21,18 +22,6 @@ const PHASE_NAMES = {
   corner4:  '第4コーナー',
   back:     '向正面',
   final:    '最終直線',
-};
-
-// JRA枠色（枠番1〜8）
-const JRA_WAKU_COLORS = {
-  1: '#FFFFFF',
-  2: '#000000',
-  3: '#FF0000',
-  4: '#0000FF',
-  5: '#FFFF00',
-  6: '#008000',
-  7: '#FF6600',
-  8: '#FF5FA2',
 };
 
 export class Renderer {
@@ -654,7 +643,7 @@ export class Renderer {
     const ch  = this.cardH;
     if (!isFinite(cx) || !isFinite(cy) || cw < 4 || ch < 4) return;
 
-    const frameColor = JRA_WAKU_COLORS[horse.waku] ?? '#888';
+    const frameColor = getWakuFrameColor(horse.waku);
     const bodyW      = cw * 0.88;
     const bodyH      = ch * 0.74;
     const headW      = cw * 0.50;
