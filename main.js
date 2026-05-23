@@ -36,7 +36,17 @@ import {
   updateEntryStaminaBars,
 } from './src/ui/entry-stamina.js';
 
+/** コース再生ボタン用アイコン（⏭⏸ と同系のメディアコントロール記号） */
+const PLAYBACK_ICONS = {
+  play: '\u23F5',
+  next: '\u23ED',
+  pause: '\u23F8',
+  previous: '\u23EE',
+};
 
+function formatPlaybackButtonLabel(icon, label) {
+  return `${icon} ${label}`;
+}
 
 
 /** レースサマリ用ログ行かどうか（イベント抽出から除外する） */
@@ -674,10 +684,10 @@ Promise.all([
     function syncStepButtonLabel() {
       if (!btnPlayStep) return;
       if (!controller && playbackDockMode !== 'complete') {
-        btnPlayStep.textContent = '▶ スタート';
+        btnPlayStep.textContent = formatPlaybackButtonLabel(PLAYBACK_ICONS.play, 'スタート');
         btnPlayStep.setAttribute('aria-label', 'レースを開始');
       } else {
-        btnPlayStep.textContent = '⏭ 次へ';
+        btnPlayStep.textContent = formatPlaybackButtonLabel(PLAYBACK_ICONS.next, '次へ');
         btnPlayStep.setAttribute('aria-label', '次のフェーズへ');
       }
     }
@@ -685,11 +695,11 @@ Promise.all([
     function syncAutoButtonLabel() {
       if (!btnPlayAuto) return;
       if (autoAdvanceActive) {
-        btnPlayAuto.textContent = '⏸ 停止';
+        btnPlayAuto.textContent = formatPlaybackButtonLabel(PLAYBACK_ICONS.pause, '停止');
         btnPlayAuto.classList.add('is-auto-active');
         btnPlayAuto.setAttribute('aria-label', 'オート再生を停止');
       } else {
-        btnPlayAuto.textContent = '▶ オート';
+        btnPlayAuto.textContent = formatPlaybackButtonLabel(PLAYBACK_ICONS.play, 'オート');
         btnPlayAuto.classList.remove('is-auto-active');
         btnPlayAuto.setAttribute('aria-label', 'オート再生');
       }
