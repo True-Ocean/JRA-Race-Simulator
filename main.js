@@ -29,7 +29,16 @@ import {
   getRaceSummarySceneLabel,
   formatLogLineHtml,
 } from './src/ui/race-log.js';
-import { syncPlacingPanelsHtml } from './src/ui/placing-panel.js';
+import {
+  syncPlacingPanelsHtml,
+  renderPlacingPanelsWithFinishTimes,
+} from './src/ui/placing-panel.js';
+import {
+  buildFinishTimeRows,
+  deriveGoalFinishedAtFromRecording,
+  deserializeGoalFinishedAtById,
+  serializeGoalFinishedAtById,
+} from './src/ui/finish-times.js';
 import {
   getStaminaDisplayBarPct,
   getStaminaBarClassName,
@@ -118,10 +127,48 @@ function buildSummaryPlacingOrderIds(finishOrderIds, simResults) {
   return orderedIds;
 }
 
+function resolveGoalFinishedAtMap({ stored = null, recording = null } = {}) {
+  const fromStored = deserializeGoalFinishedAtById(stored);
+  if (fromStored.size > 0) return fromStored;
+  if (Array.isArray(recording) && recording.length > 0) {
+    return deriveGoalFinishedAtFromRecording(recording);
+  }
+  return new Map();
+}
+
+function refreshPlacingBoardWithFinishTimes({
+  raceInfo,
+  simResults,
+  finishOrderIds,
+  horseMetaByName,
+  goalFinishedAtById = null,
+  goalRecording = null,
+}) {
+  if (!Array.isArray(simResults) || simResults.length === 0) return;
+  const orderIds = buildSummaryPlacingOrderIds(finishOrderIds, simResults);
+  const map =
+    goalFinishedAtById instanceof Map && goalFinishedAtById.size > 0
+      ? goalFinishedAtById
+      : resolveGoalFinishedAtMap({ stored: goalFinishedAtById, recording: goalRecording });
+  const { rows } = buildFinishTimeRows({
+    raceInfo,
+    simResults,
+    finishOrderIds: orderIds,
+    goalFinishedAtById: map,
+  });
+  renderPlacingPanelsWithFinishTimes({
+    finishOrderIds: orderIds,
+    simResults,
+    horseMetaByName,
+    finishRows: rows,
+  });
+}
+
 function renderRaceSummaryScreen({
   raceData,
   simResults,
   finishOrderIds,
+  goalFinishedAtById = null,
   horseMetaByName,
   snapshots,
   phases,
@@ -143,6 +190,13 @@ function renderRaceSummaryScreen({
   });
 
   const orderedIds = buildSummaryPlacingOrderIds(finishOrderIds, simResults);
+  const { rows: finishRows } = buildFinishTimeRows({
+    raceInfo: raceData?.race_info,
+    simResults,
+    finishOrderIds: orderedIds,
+    goalFinishedAtById,
+  });
+  const finishRowById = new Map(finishRows.map(r => [r.id, r]));
   const sexAgeById = new Map(
     (raceData?.entries ?? []).map((entry, idx) => [idx, String(entry?.horse?.sex_age ?? '')]),
   );
@@ -165,8 +219,15 @@ function renderRaceSummaryScreen({
         : '';
     const jockeyName = horse.jockeyName ? String(horse.jockeyName) : '—';
     const rankClass = rank === 1 ? ' is-top1' : rank === 2 ? ' is-top2' : rank === 3 ? ' is-top3' : '';
+    const finishRow = finishRowById.get(id);
+    const timeHtml = finishRow?.timeLabel
+      ? `<span class="summary-placing-time">${escapeHtml(finishRow.timeLabel)}</span>`
+      : '';
+    const marginHtml = finishRow?.marginLabel
+      ? `<span class="summary-placing-margin">${escapeHtml(finishRow.marginLabel)}</span>`
+      : '';
     const div = document.createElement('div');
-    div.className = `summary-placing-entry${rankClass}`;
+    div.className = `summary-placing-entry summary-placing-entry--with-times${rankClass}`;
     div.innerHTML = `
       <span class="summary-placing-rank">${rank}着</span>
       ${badgeHtml}
@@ -177,6 +238,8 @@ function renderRaceSummaryScreen({
           <span class="summary-placing-jockey">${escapeHtml(jockeyName)}</span>
         </span>
       </div>
+      ${timeHtml}
+      ${marginHtml}
     `;
     placingsEl.appendChild(div);
     return { id: horse.id, rank, horse };
@@ -634,6 +697,8 @@ Promise.all([
     let simLogs    = null;
     let simSnapshots = null;
     let lastFinishOrderIds = [];
+    /** @type {Record<string, number>} */
+    let lastGoalFinishedAtById = {};
     let hasAggregatedThisRun = false;
     let isReplayPlayback = false;
     /** @type {{ snapshots: object[], simResults: object[], finishOrderIds: number[], initialHorses?: object[], goalRecording?: object[], postGoalCourseFrame?: object } | null} */
@@ -722,6 +787,7 @@ Promise.all([
           snapshots: JSON.parse(JSON.stringify(simSnapshots)),
           simResults: JSON.parse(JSON.stringify(simResults)),
           finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
+          goalFinishedAtById: { ...lastGoalFinishedAtById },
           initialHorses: Array.isArray(horsesSource)
             ? JSON.parse(JSON.stringify(horsesSource))
             : [],
@@ -818,6 +884,23 @@ Promise.all([
         lastFinishOrderIds = [...finishingController._goalRankOrder];
       }
       const recordedGoalPlayback = finishingController?.getGoalRecording?.() ?? null;
+      if (finishingController?.getGoalFinishedAtById) {
+        lastGoalFinishedAtById = serializeGoalFinishedAtById(
+          finishingController.getGoalFinishedAtById(),
+        );
+      } else if (Array.isArray(recordedGoalPlayback) && recordedGoalPlayback.length > 0) {
+        lastGoalFinishedAtById = serializeGoalFinishedAtById(
+          deriveGoalFinishedAtFromRecording(recordedGoalPlayback),
+        );
+      }
+      refreshPlacingBoardWithFinishTimes({
+        raceInfo: runtimeRaceData.race_info,
+        simResults,
+        finishOrderIds: lastFinishOrderIds,
+        horseMetaByName,
+        goalFinishedAtById: lastGoalFinishedAtById,
+        goalRecording: recordedGoalPlayback,
+      });
       setTimeout(() => {
         const shouldAggregate =
           Array.isArray(simResults) &&
@@ -969,6 +1052,7 @@ Promise.all([
       simLogs = null;
       simSnapshots = null;
       lastFinishOrderIds = [];
+      lastGoalFinishedAtById = {};
       hideRaceSummaryScreen();
       try {
         sessionStorage.removeItem(SESSION_KEY_SIMULATOR_STATE);
@@ -1020,6 +1104,10 @@ Promise.all([
         finishOrderIds: Array.isArray(legacy?.finishOrderIds) && legacy.finishOrderIds.length
           ? [...legacy.finishOrderIds]
           : finishIds,
+        goalFinishedAtById:
+          parsed.goalFinishedAtById ??
+          legacy?.goalFinishedAtById ??
+          {},
         initialHorses: initialHorsesSource.length
           ? JSON.parse(JSON.stringify(initialHorsesSource))
           : [],
@@ -1048,6 +1136,7 @@ Promise.all([
         simLogs,
         snapshots: simSnapshots,
         finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
+        goalFinishedAtById: { ...lastGoalFinishedAtById },
         postGoalCourseFrame: postGoal ? JSON.parse(JSON.stringify(postGoal)) : null,
         replayMeta: {
           simulationRunSeed: simulationRunSeed ?? null,
@@ -1141,6 +1230,7 @@ Promise.all([
           recordGoalPlayback: Boolean(replayOpts.recordGoalPlayback),
           goalRecording: replayOpts.goalRecording ?? null,
           raceId: runtimeRaceData.race_id,
+          raceInfo: runtimeRaceData.race_info,
         },
       );
     }
@@ -1165,6 +1255,7 @@ Promise.all([
       simLogs = sim.logs;
       simSnapshots = sim.snapshots;
       lastFinishOrderIds = [];
+      lastGoalFinishedAtById = {};
       hasAggregatedThisRun = false;
 
       simResults.forEach(horse => {
@@ -1209,6 +1300,10 @@ Promise.all([
       lastFinishOrderIds = Array.isArray(replayBundle.finishOrderIds)
         ? [...replayBundle.finishOrderIds]
         : [];
+      lastGoalFinishedAtById =
+        replayBundle.goalFinishedAtById && typeof replayBundle.goalFinishedAtById === 'object'
+          ? { ...replayBundle.goalFinishedAtById }
+          : {};
 
       replayResults.forEach(horse => {
         const entry = runtimeRaceData.entries.find((_, i) => i === horse.id);
@@ -1312,6 +1407,10 @@ Promise.all([
           raceData: runtimeRaceData,
           simResults,
           finishOrderIds: lastFinishOrderIds,
+          goalFinishedAtById: resolveGoalFinishedAtMap({
+            stored: lastGoalFinishedAtById,
+            recording: replayBundle?.goalRecording ?? null,
+          }),
           horseMetaByName,
           snapshots: simSnapshots,
           phases,
@@ -1336,6 +1435,7 @@ Promise.all([
         const payload = {
           simResults,
           finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
+          goalFinishedAtById: { ...lastGoalFinishedAtById },
           snapshots: simSnapshots,
         };
         try {
@@ -1420,6 +1520,10 @@ Promise.all([
         raceData: runtimeRaceData,
         simResults,
         finishOrderIds: lastFinishOrderIds,
+        goalFinishedAtById: resolveGoalFinishedAtMap({
+          stored: lastGoalFinishedAtById,
+          recording: replayBundle?.goalRecording ?? loadGoalRecordingFromSession(),
+        }),
         horseMetaByName,
         snapshots: simSnapshots,
         phases,
@@ -1439,6 +1543,10 @@ Promise.all([
         simLogs = Array.isArray(parsed.simLogs) ? parsed.simLogs : null;
         simSnapshots = parsed.snapshots;
         lastFinishOrderIds = Array.isArray(parsed.finishOrderIds) ? parsed.finishOrderIds : [];
+        lastGoalFinishedAtById =
+          parsed.goalFinishedAtById && typeof parsed.goalFinishedAtById === 'object'
+            ? { ...parsed.goalFinishedAtById }
+            : {};
         postGoalCourseFrame = parsed.postGoalCourseFrame ?? null;
         rebuildReplayBundleFromSessionParts(parsed);
         const ui = parsed.ui ?? {};
@@ -1446,7 +1554,16 @@ Promise.all([
         if (typeof ui.logHtml === 'string') {
           document.getElementById('log-panel').innerHTML = ui.logHtml;
         }
-        if (typeof ui.placingHtml === 'string') {
+        if (lastFinishOrderIds.length > 0) {
+          refreshPlacingBoardWithFinishTimes({
+            raceInfo: runtimeRaceData.race_info,
+            simResults,
+            finishOrderIds: lastFinishOrderIds,
+            horseMetaByName,
+            goalFinishedAtById: lastGoalFinishedAtById,
+            goalRecording: replayBundle?.goalRecording ?? loadGoalRecordingFromSession(),
+          });
+        } else if (typeof ui.placingHtml === 'string') {
           syncPlacingPanelsHtml(ui.placingHtml);
         }
         playbackDockMode =
@@ -1502,6 +1619,10 @@ Promise.all([
               simResults = parsed.simResults;
               simSnapshots = parsed.snapshots;
               lastFinishOrderIds = Array.isArray(parsed.finishOrderIds) ? parsed.finishOrderIds : [];
+              lastGoalFinishedAtById =
+                parsed.goalFinishedAtById && typeof parsed.goalFinishedAtById === 'object'
+                  ? { ...parsed.goalFinishedAtById }
+                  : {};
               restored = tryRestoreSummaryScreen();
             }
           } catch {

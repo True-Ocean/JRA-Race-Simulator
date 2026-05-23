@@ -1,0 +1,119 @@
+{
+  "reference": {
+    "grade": "G1",
+    "condition": "良",
+    "note": "距離アンカーは G1・良 の目安勝ち時計（秒）。競馬場オフセットは全国曲線からの加算。"
+  },
+  "turf": {
+    "anchors": [
+      { "distance": 1000, "sec": 57.8 },
+      { "distance": 1200, "sec": 68.6 },
+      { "distance": 1400, "sec": 83.2 },
+      { "distance": 1600, "sec": 93.8 },
+      { "distance": 1800, "sec": 110.2 },
+      { "distance": 2000, "sec": 120.4 },
+      { "distance": 2200, "sec": 133.8 },
+      { "distance": 2400, "sec": 141.9 },
+      { "distance": 2500, "sec": 148.2 },
+      { "distance": 3000, "sec": 177.5 },
+      { "distance": 3200, "sec": 192.8 },
+      { "distance": 3600, "sec": 218.0 }
+    ]
+  },
+  "dirt": {
+    "anchors": [
+      { "distance": 1000, "sec": 59.2 },
+      { "distance": 1200, "sec": 70.4 },
+      { "distance": 1400, "sec": 85.0 },
+      { "distance": 1600, "sec": 95.8 },
+      { "distance": 1800, "sec": 112.5 },
+      { "distance": 2000, "sec": 123.0 },
+      { "distance": 2200, "sec": 136.5 },
+      { "distance": 2400, "sec": 145.2 },
+      { "distance": 2500, "sec": 151.5 },
+      { "distance": 3000, "sec": 181.0 },
+      { "distance": 3200, "sec": 196.5 }
+    ]
+  },
+  "venues": {
+    "sapporo": {
+      "names": ["札幌", "札幌競馬場"],
+      "turf": 0.45,
+      "dirt": 0.35
+    },
+    "hakodate": {
+      "names": ["函館", "函館競馬場"],
+      "turf": 0.40,
+      "dirt": 0.30
+    },
+    "fukushima": {
+      "names": ["福島", "福島競馬場"],
+      "turf": 0.25,
+      "dirt": 0.20
+    },
+    "niigata": {
+      "names": ["新潟", "新潟競馬場"],
+      "turf": 0.15,
+      "dirt": 0.25
+    },
+    "tokyo": {
+      "names": ["東京", "東京競馬場"],
+      "turf": 0.0,
+      "dirt": -0.20
+    },
+    "nakayama": {
+      "names": ["中山", "中山競馬場"],
+      "turf": 0.55,
+      "dirt": 0.35
+    },
+    "chukyo": {
+      "names": ["中京", "中京競馬場"],
+      "turf": 0.10,
+      "dirt": 0.05
+    },
+    "kyoto": {
+      "names": ["京都", "京都競馬場"],
+      "turf": -0.15,
+      "dirt": 0.0
+    },
+    "hanshin": {
+      "names": ["阪神", "阪神競馬場"],
+      "turf": 0.05,
+      "dirt": 0.10
+    },
+    "kokura": {
+      "names": ["小倉", "小倉競馬場"],
+      "turf": 0.30,
+      "dirt": 0.15
+    }
+  },
+  "gradeAdjustSec": {
+    "G1": 0,
+    "GI": 0,
+    "G2": 0.25,
+    "GII": 0.25,
+    "G3": 0.45,
+    "GIII": 0.45,
+    "OP": 0.65,
+    "L": 0.85,
+    "3勝": 1.05,
+    "2勝": 1.25,
+    "1勝": 1.45,
+    "新馬": 1.65,
+    "未勝利": 1.85
+  },
+  "conditionAdjustSec": {
+    "turf": {
+      "良": 0,
+      "稍重": 0.35,
+      "重": 0.75,
+      "不良": 1.15
+    },
+    "dirt": {
+      "良": 0,
+      "稍重": 0.30,
+      "重": 0.65,
+      "不良": 1.0
+    }
+  }
+}

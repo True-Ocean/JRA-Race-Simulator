@@ -558,13 +558,28 @@
       /* 極端に背が高い場合のみスクロール（通常18頭は自然高さで収まる想定） */
       max-height: min(52vh, calc(100dvh - 16rem));
     }
-    /* ホーム右・着順掲示板：3列（着順・馬番・馬名）コンパクト表示 */
+    /* ホーム右・着順掲示板：着順・馬番・馬名・タイム・着差 */
     #placing-panel .summary-placing-entry,
     #placing-panel-overlay .summary-placing-entry {
-      grid-template-columns: 2.35em 1.85em minmax(0, 1fr);
+      grid-template-columns: 2.35em 1.85em minmax(0, 1fr) 3.1em 2.35em;
       gap: 4px;
       padding: 3px 6px;
       align-items: center;
+    }
+    #placing-panel .summary-placing-time,
+    #placing-panel-overlay .summary-placing-time,
+    #placing-panel .summary-placing-margin,
+    #placing-panel-overlay .summary-placing-margin {
+      font-size: 0.62rem;
+      line-height: 1.2;
+      color: #9ec9e8;
+      text-align: right;
+      white-space: nowrap;
+    }
+    #placing-panel .summary-placing-margin,
+    #placing-panel-overlay .summary-placing-margin {
+      color: #7aa8c8;
+      font-size: 0.58rem;
     }
     #placing-panel .summary-placing-rank,
     #placing-panel-overlay .summary-placing-rank {
@@ -1028,6 +1043,21 @@
       border: 1px solid #15324d;
       font-variant-numeric: tabular-nums;
       color: #eef4ff;
+    }
+    .summary-placing-entry.summary-placing-entry--with-times {
+      grid-template-columns: 2.5em 2em minmax(0, 1fr) 3.4em 2.6em;
+    }
+    .summary-placing-time {
+      font-size: 0.72rem;
+      color: #9ec9e8;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .summary-placing-margin {
+      font-size: 0.68rem;
+      color: #7aa8c8;
+      text-align: right;
+      white-space: nowrap;
     }
     .summary-placing-entry.is-top1 { border-color: #fde047; box-shadow: 0 0 14px rgba(253, 224, 71, 0.18); }
     .summary-placing-entry.is-top2 { border-color: #cfd8dc; }

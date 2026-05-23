@@ -77,6 +77,7 @@ import {
   syncPlacingPanelsHtml,
   appendPlacingRowToPanels,
 } from './placing-panel.js';
+import { buildFinishTimeRows } from './finish-times.js';
 import { updateEntryStaminaBars } from './entry-stamina.js';
 import {
   calcGoalChaseUrgency,
@@ -124,12 +125,17 @@ class PhaseController {
     this._goalAllFinishedAtMs = null;
     this._goalCameraRawProgress = null;
     this._goalBattledPairs = new Set();
+    /** @type {Map<number, number>} ゴールレース開始からの通過経過 ms */
+    this._goalFinishedAtById = new Map();
     this.isReplayPlayback = Boolean(playbackHooks.isReplayPlayback);
     this.recordGoalPlayback = Boolean(playbackHooks.recordGoalPlayback);
     this.goalRecording = Array.isArray(playbackHooks.goalRecording)
       ? playbackHooks.goalRecording
       : null;
-    this.raceData = { race_id: playbackHooks.raceId ?? 1 };
+    this.raceData = {
+      race_id: playbackHooks.raceId ?? 1,
+      race_info: playbackHooks.raceInfo ?? null,
+    };
     this._pendingGoalRecording = [];
     this._replayGoalRankSynced = 0;
 
@@ -323,8 +329,8 @@ class PhaseController {
     this.logPanel.scrollTop = this.logPanel.scrollHeight;
   }
 
-  _appendPlacingRow(rank, horse) {
-    appendPlacingRowToPanels(rank, horse, this.horseMetaByName);
+  _appendPlacingRow(rank, horse, finishDisplay = null) {
+    appendPlacingRowToPanels(rank, horse, this.horseMetaByName, finishDisplay);
     this._scrollRaceLogToBottom();
   }
 
@@ -333,11 +339,28 @@ class PhaseController {
   }
 
   _setPlacingLog(rank, horse) {
-    this._appendPlacingRow(rank, horse);
+    const finishDisplay = this._getFinishDisplayForPlacing(horse.id, rank);
+    this._appendPlacingRow(rank, horse, finishDisplay);
   }
 
   getGoalRecording() {
     return this._pendingGoalRecording.length > 0 ? this._pendingGoalRecording : null;
+  }
+
+  getGoalFinishedAtById() {
+    return new Map(this._goalFinishedAtById);
+  }
+
+  _getFinishDisplayForPlacing(horseId, rank) {
+    const { rows } = buildFinishTimeRows({
+      raceInfo: this.raceData?.race_info,
+      simResults: this.simResults,
+      finishOrderIds: this._goalRankOrder,
+      goalFinishedAtById: this._goalFinishedAtById,
+    });
+    const row = rows.find(r => r.id === horseId);
+    if (!row) return null;
+    return { timeLabel: row.timeLabel, marginLabel: row.marginLabel };
   }
 
   _serializeGoalHorse(horse) {
@@ -350,6 +373,7 @@ class PhaseController {
       initialStamina: horse.initialStamina,
       goalMeters: horse.goalMeters,
       goalFinished: horse.goalFinished,
+      goalFinishedAtRaceMs: horse.goalFinishedAtRaceMs,
       goalIntrinsicMps: horse.goalIntrinsicMps,
       goalProgressScale: horse.goalProgressScale,
       style: horse.style,
@@ -382,6 +406,9 @@ class PhaseController {
       if (this._goalRankLogged.has(id)) continue;
       const horse = horsesById.get(id);
       if (!horse) continue;
+      if (Number.isFinite(horse.goalFinishedAtRaceMs)) {
+        this._goalFinishedAtById.set(id, horse.goalFinishedAtRaceMs);
+      }
       this._goalRankLogged.add(id);
       this._goalRankOrder.push(id);
       this._setPlacingLog(this._goalRankOrder.length, horse);
@@ -418,6 +445,7 @@ class PhaseController {
     this._goalAllFinishedAtMs = null;
     this._goalCameraRawProgress = null;
     this._goalBattledPairs = new Set();
+    this._goalFinishedAtById = new Map();
     this._replayGoalRankSynced = 0;
 
     const step = (ts) => {
@@ -652,6 +680,7 @@ class PhaseController {
     this._goalAllFinishedAtMs = null;
     this._goalCameraRawProgress = null;
     this._goalBattledPairs = new Set();
+    this._goalFinishedAtById = new Map();
 
     const step = (ts) => {
       if (!goalSceneStarted) {
@@ -1154,7 +1183,7 @@ class PhaseController {
           const reachedDistance = horse.goalMeters >= GOAL_DISTANCE_METERS;
           const isNearLine = diff <= this.renderer.cardH * 0.20;
           if (crossedLine || (reachedDistance && isNearLine)) {
-            this._markHorseGoalFinished(horse);
+            this._markHorseGoalFinished(horse, elapsed);
           }
         });
       }
@@ -1808,10 +1837,13 @@ class PhaseController {
     };
   }
 
-  _markHorseGoalFinished(horse) {
+  _markHorseGoalFinished(horse, goalRaceElapsedMs = 0) {
     if (horse.goalFinished) return;
     horse.goalFinished = true;
     if (!this._goalRankLogged.has(horse.id)) {
+      const raceMs = Math.max(0, Number(goalRaceElapsedMs) || 0);
+      horse.goalFinishedAtRaceMs = raceMs;
+      this._goalFinishedAtById.set(horse.id, raceMs);
       this._goalRankLogged.add(horse.id);
       this._goalRankOrder.push(horse.id);
       if (!this._goalPlacingHeaderLogged) this._goalPlacingHeaderLogged = true;
