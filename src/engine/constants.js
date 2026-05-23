@@ -165,6 +165,12 @@ export const STAMINA_EARLY_ACCEL_MULT = 1.10;
 export const STAMINA_BATTLE_BASE_COST = 0.8;
 export const STAMINA_BATTLE_LOSER_EXTRA = 1.6;
 export const STAMINA_BATTLE_TRACKER_GAIN = 0.2;
+/** 斤量スタミナ補正の基準（kg）。3歳牡の一般的な斤量 */
+export const WEIGHT_STAMINA_REF_KG = 57;
+/** 基準から1kgあたりのスタミナ消耗倍率（バトル・加速のみ） */
+export const WEIGHT_STAMINA_PER_KG = 0.015;
+export const WEIGHT_STAMINA_MULT_MIN = 0.85;
+export const WEIGHT_STAMINA_MULT_MAX = 1.15;
 export const INNER_CUTIN_BATTLE_COOLDOWN_PHASES = 2;
 export const INNER_CUTIN_REMATCH_COOLDOWN_PHASES = 4;
 export const INNER_CUTIN_MIN_INWARD_DELTA = 0.08;

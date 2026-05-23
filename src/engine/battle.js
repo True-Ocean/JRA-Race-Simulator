@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { getWeightStaminaMult } from './horse-utils.js';
 import { randFloat } from './rng.js';
 
 /**
@@ -61,7 +62,9 @@ export function resolveBattle(rng, a, b, phase) {
   const penaltyRecovery = reliability * 0.24;
   loser.battlePenalty = CONFIG.BATTLE_PENALTY + (1 - CONFIG.BATTLE_PENALTY) * penaltyRecovery;
   loser.battleLosses += 1;
-  loser.stamina      -= CONFIG.BATTLE_STAMINA_COST * (1.08 - reliability * 0.26);
+  loser.stamina -= CONFIG.BATTLE_STAMINA_COST
+    * (1.08 - reliability * 0.26)
+    * getWeightStaminaMult(loser);
   if (loser.stamina < 0) loser.stamina = 0;
 
   return { winner, loser, eA: Math.round(eA * 10) / 10, eB: Math.round(eB * 10) / 10 };

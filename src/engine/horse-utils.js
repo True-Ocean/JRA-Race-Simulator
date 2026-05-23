@@ -3,6 +3,10 @@ import {
   STAMINA_BATTLE_BASE_COST,
   STAMINA_BATTLE_LOSER_EXTRA,
   STAMINA_BATTLE_TRACKER_GAIN,
+  WEIGHT_STAMINA_REF_KG,
+  WEIGHT_STAMINA_PER_KG,
+  WEIGHT_STAMINA_MULT_MIN,
+  WEIGHT_STAMINA_MULT_MAX,
   LANE_WIDTH,
 } from './constants.js';
 
@@ -34,17 +38,36 @@ function isLaneInShiftPath(lane, fromLane, toLane, margin = 0.9) {
   return lane >= laneMin && lane <= laneMax;
 }
 
+/**
+ * 斤量からバトル・加速時のスタミナ消耗倍率を算出（基準57kg = 1.0）
+ * @param {number|null|undefined} weightKg
+ * @returns {number}
+ */
+function calcWeightStaminaMult(weightKg) {
+  if (!Number.isFinite(weightKg)) return 1;
+  const delta = weightKg - WEIGHT_STAMINA_REF_KG;
+  const mult = 1 + delta * WEIGHT_STAMINA_PER_KG;
+  return Math.max(WEIGHT_STAMINA_MULT_MIN, Math.min(WEIGHT_STAMINA_MULT_MAX, mult));
+}
+
+function getWeightStaminaMult(horse) {
+  if (Number.isFinite(horse?.weightStaminaMult)) return horse.weightStaminaMult;
+  return calcWeightStaminaMult(horse?.weight);
+}
+
 function applyBattleStaminaImpact(winner, loser, options = {}) {
   const loserAlreadyPenalized = Boolean(options.loserAlreadyPenalized);
   const winnerMult = Number.isFinite(options.winnerMult) ? options.winnerMult : 1.0;
   const loserMult = Number.isFinite(options.loserMult) ? options.loserMult : 1.0;
   const winnerReliabilityGuard = 1.03 - getJockeyReliabilityNorm(winner) * 0.14;
   const loserReliabilityGuard = 1.08 - getJockeyReliabilityNorm(loser) * 0.26;
-  const winnerDrain = STAMINA_BATTLE_BASE_COST * winnerMult * winnerReliabilityGuard;
+  const winnerDrain =
+    STAMINA_BATTLE_BASE_COST * winnerMult * winnerReliabilityGuard * getWeightStaminaMult(winner);
   const loserExtraDrainBase = loserAlreadyPenalized
     ? Math.max(0, STAMINA_BATTLE_LOSER_EXTRA - CONFIG.BATTLE_STAMINA_COST * 0.55)
     : STAMINA_BATTLE_LOSER_EXTRA;
-  const loserExtraDrain = loserExtraDrainBase * loserMult * loserReliabilityGuard;
+  const loserExtraDrain =
+    loserExtraDrainBase * loserMult * loserReliabilityGuard * getWeightStaminaMult(loser);
 
   winner.stamina = Math.max(0, winner.stamina - winnerDrain);
   loser.stamina = Math.max(0, loser.stamina - loserExtraDrain);
@@ -71,5 +94,7 @@ export {
   getJockeyReliabilityNorm,
   getJockeyAggressionNorm,
   isLaneInShiftPath,
+  calcWeightStaminaMult,
+  getWeightStaminaMult,
   applyBattleStaminaImpact,
 };

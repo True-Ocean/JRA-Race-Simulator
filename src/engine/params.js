@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { calcWeightStaminaMult } from './horse-utils.js';
 
 /**
  * 頭数に応じてJRA式の枠番（1-8）を算出する
@@ -120,6 +121,7 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
       style:          horse.style,
       sexAge:         horse.sex_age ?? '',
       weight:         horse.weight ?? null,
+      weightStaminaMult: calcWeightStaminaMult(horse.weight),
       ave3f:          horse.ave_3f,
       last3f:         horse.last_3f,
       S_cruise,

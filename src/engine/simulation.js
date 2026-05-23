@@ -142,6 +142,7 @@ import {
   isOonigeStyle,
   getJockeyReliabilityNorm,
   applyBattleStaminaImpact,
+  getWeightStaminaMult,
 } from './horse-utils.js';
 import {
   isKickReserveReleased,
@@ -1073,7 +1074,8 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         let accelDrain =
           (taxableAccel < 0.02 ? 0 : taxableAccel) *
           STAMINA_ACCEL_COST *
-          earlyMult;
+          earlyMult *
+          getWeightStaminaMult(horse);
         if (
           isNigeStyle(horse.style) &&
           isLeadingPre &&
