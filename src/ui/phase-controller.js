@@ -36,6 +36,9 @@ import {
   GOAL_CAMERA_LERP_MAX,
   GOAL_ANCHOR_DYNAMIC_BOOST,
   GOAL_STAMINA_DRAIN_MULT,
+  GOAL_STAMINA_DRAIN_RESERVE_BASE,
+  GOAL_STAMINA_DRAIN_RESERVE_STAMINA_GAIN,
+  GOAL_FRONT_RUNNER_UNLEASH_SCALE,
   GOAL_AI,
   LANE_WIDTH,
   LATERAL_BLOCK_X_GAP,
@@ -51,6 +54,7 @@ import {
   clampLane,
   applyBattleStaminaImpact,
   isNigeStyle,
+  isOonigeStyle,
   getJockeyReliabilityNorm,
   getJockeyAggressionNorm,
   isLaneInShiftPath,
@@ -59,6 +63,10 @@ import {
   goalIntrinsicMpsFromLast3f,
   goalStaminaSpeedMult,
   normalize01,
+  calcGoalPathQuality,
+  calcGoalEffortNorm,
+  calcGoalReserveBurnDrain,
+  calcGoalFrontRunnerHoldDrain,
 } from './goal-scene.js';
 import {
   getBattleLogClass,
@@ -877,6 +885,14 @@ class PhaseController {
         const trafficPenalty = frontGapAfterLane < GOAL_BLOCK_X_GAP
           ? Math.max(GOAL_AI.trafficPenaltyFloor, frontGapAfterLane / GOAL_BLOCK_X_GAP)
           : 1.0;
+        const pathQuality = calcGoalPathQuality(
+          frontGapAfterLane,
+          trafficPenalty,
+          horse.goalStuckMs,
+        );
+        const packRankNorm = calcPackRankNorm(horse, simHorses);
+        const isLeadingPack = packRankNorm <= 0.28;
+        const isFrontRunner = isNigeStyle(horse.style) || isOonigeStyle(horse.style);
         const furlongHint = (horse.goalMeters || 0) / GOAL_FURLONG_METERS;
         const lateBoost = 0.90
           + 0.22 * Math.pow(distRatio, 0.85)
@@ -905,10 +921,15 @@ class PhaseController {
         //   - last3fWeight が高い末脚タイプは開放上限を高めにする
         // closingKick はスタミナ非依存（潜在能力）だったため、ここで「実際に
         // 余力を残せた馬だけが末脚を爆発させられる」という物理が成立する。
-        const staminaUnleash =
+        let staminaUnleash =
           staminaRatio *
           (0.06 + 0.20 * Math.pow(distRatio, 0.55)) *
           (0.85 + last3fWeight * 0.30);
+        if (isFrontRunner && isLeadingPack && frontGapAfterLane > GOAL_BLOCK_X_GAP * 0.92) {
+          staminaUnleash *= GOAL_FRONT_RUNNER_UNLEASH_SCALE;
+        } else if (pathQuality > 0.22) {
+          staminaUnleash *= 0.82 + pathQuality * 0.22;
+        }
         const staminaKick = 1 + staminaUnleash;
         const staminaPerMeter = horse.stamina / Math.max(1, remainMeters);
         const spmNorm = normalize01(
@@ -972,6 +993,7 @@ class PhaseController {
         const minMps = baseMps * GOAL_MIN_SPEED_RATIO;
         const maxMps = baseMps * GOAL_MAX_SPEED_RATIO;
         horse.goalCurrentMps = Math.max(minMps, Math.min(maxMps, horse.goalCurrentMps + deltaV));
+        const effortNorm = calcGoalEffortNorm(horse.goalDesiredMps, horse.goalCurrentMps, Math.max(0, deltaV));
 
         const accelDrain = Math.max(0, deltaV) * (1.2 + (isCloser ? 0.45 : 0.15));
         const speedDrain = horse.goalCurrentMps * 0.0115;
@@ -984,8 +1006,42 @@ class PhaseController {
             + (burstActive ? 0.14 + last3fWeight * 0.18 : 0)
           : 1;
         const sprintStaminaMult = Math.min(GOAL_AI.goalDrainSprintCap, sprintStaminaMultRaw);
-        const goalDrain = (accelDrain + speedDrain + trafficDrain) * dt * GOAL_STAMINA_DRAIN_MULT * sprintStaminaMult;
-        horse.stamina = Math.max(0, horse.stamina - goalDrain);
+        const staminaDrainMult =
+          GOAL_STAMINA_DRAIN_RESERVE_BASE + staminaRatio * GOAL_STAMINA_DRAIN_RESERVE_STAMINA_GAIN;
+        const goalDrain =
+          (accelDrain + speedDrain + trafficDrain) *
+          dt *
+          GOAL_STAMINA_DRAIN_MULT *
+          sprintStaminaMult *
+          staminaDrainMult;
+        const reserveBurn = calcGoalReserveBurnDrain({
+          stamina: horse.stamina,
+          initialStamina: horse.initialStamina,
+          remainMeters,
+          goalCurrentMps: horse.goalCurrentMps,
+          staminaRatio,
+          pathQuality,
+          distRatio,
+          effortNorm,
+          dt,
+        });
+        const holdDrain = isFrontRunner
+          ? calcGoalFrontRunnerHoldDrain({
+            initialStamina: horse.initialStamina,
+            staminaRatio,
+            pathQuality,
+            distRatio,
+            dt,
+            isLeadingPack,
+            frontGap: frontGapAfterLane,
+            effortNorm,
+          })
+          : 0;
+        const pathBurnScale = pathQuality < 0.14 ? 0.32 : 1;
+        horse.stamina = Math.max(
+          0,
+          horse.stamina - goalDrain - reserveBurn * pathBurnScale - holdDrain,
+        );
 
         // 前進量を「前方馬との最小間隔を踏み越えない範囲」に事前クランプする。
         // 後付けの押し出しではなく事前に前進量を絞ることで、

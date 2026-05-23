@@ -1,4 +1,4 @@
-const ENTRY_STAMINA_BAR_RAW_MIN = 60;
+const ENTRY_STAMINA_BAR_RAW_MIN = 50;
 const ENTRY_STAMINA_BAR_RAW_MAX = 100;
 
 function getStaminaRemainRawPct(horse) {
@@ -18,10 +18,10 @@ function getStaminaDisplayBarPct(horse) {
   return Math.max(0, Math.min(100, Math.round(t * 100)));
 }
 
-/** 表示％（60〜100実残を 0〜100 にマップした値）で色分け。ラベル・バー幅と一致させる */
+/** 表示％（50〜100実残を 0〜100 にマップ）の3等分で色分け（下1/3=赤・中1/3=黄・上1/3=緑） */
 function getStaminaBarClassName(staminaDisplayPct) {
-  if (staminaDisplayPct <= 25) return 'stamina-remain-bar is-critical';
-  if (staminaDisplayPct < 50) return 'stamina-remain-bar is-warning';
+  if (staminaDisplayPct <= 33) return 'stamina-remain-bar is-critical';
+  if (staminaDisplayPct <= 66) return 'stamina-remain-bar is-warning';
   return 'stamina-remain-bar';
 }
 
