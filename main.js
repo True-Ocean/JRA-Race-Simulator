@@ -559,6 +559,37 @@ function renderEntryList(horses) {
   });
 }
 
+const ENTRY_PANEL_MOBILE_MQ = '(max-width: 1024px)';
+
+function initEntryPanelMobileCollapse() {
+  const panel = document.getElementById('entry-panel');
+  const toggle = document.getElementById('entry-panel-toggle');
+  if (!panel || !toggle) return;
+
+  const mq = window.matchMedia(ENTRY_PANEL_MOBILE_MQ);
+
+  const syncForViewport = () => {
+    if (!mq.matches) {
+      panel.classList.remove('entry-panel--collapsed');
+      toggle.setAttribute('aria-expanded', 'true');
+      return;
+    }
+    toggle.setAttribute(
+      'aria-expanded',
+      panel.classList.contains('entry-panel--collapsed') ? 'false' : 'true',
+    );
+  };
+
+  toggle.addEventListener('click', () => {
+    if (!mq.matches) return;
+    const collapsed = panel.classList.toggle('entry-panel--collapsed');
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
+
+  mq.addEventListener('change', syncForViewport);
+  syncForViewport();
+}
+
 /** 初期スタミナに対する実残量％（0〜100） */
 
 const SIMULATOR_BOOT =
@@ -1436,6 +1467,7 @@ Promise.all([
     };
 
     bindRaceControlsOnce();
+    initEntryPanelMobileCollapse();
 
     if (openScreen === 'pre-race') {
       openPreRaceScreen();

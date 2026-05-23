@@ -152,6 +152,34 @@
       padding-bottom: 4px;
     }
 
+    /* 出馬表タイトル（モバイルで開閉トグル） */
+    button.section-title.entry-panel-toggle {
+      display: block;
+      width: 100%;
+      margin: 0 0 6px;
+      padding: 0 0 4px;
+      background: transparent;
+      color: #7eb8d4;
+      border: none;
+      border-radius: 0;
+      border-bottom: 1px solid #1e3a5f;
+      font-family: inherit;
+      font-size: 0.68rem;
+      font-weight: inherit;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      text-align: left;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(240, 192, 64, 0.3);
+    }
+    button.section-title.entry-panel-toggle:hover:not(:disabled),
+    button.section-title.entry-panel-toggle:active:not(:disabled) {
+      background: transparent;
+      color: #9ecae8;
+      filter: brightness(1.12);
+    }
+
     #race-info {
       grid-column: 1 / -1;
       background: #06111e;
@@ -1148,6 +1176,16 @@
       #summary-race-info br.race-info-break {
         display: none;
       }
+      #entry-panel.entry-panel--collapsed #entry-list {
+        display: flex;
+      }
+      #entry-panel > .entry-panel-toggle {
+        cursor: default;
+        pointer-events: none;
+      }
+      #entry-panel > .entry-panel-toggle::after {
+        display: none;
+      }
     }
 
     /* ===== スマートフォン・タブレット縦・狭いウィンドウ ===== */
@@ -1256,12 +1294,26 @@
         flex: 0 0 auto;
         padding: 4px 6px;
       }
-      #entry-panel > .section-title {
+      #entry-panel.entry-panel--collapsed {
+        max-height: none;
+      }
+      #entry-panel.entry-panel--collapsed #entry-list {
+        display: none;
+      }
+      #entry-panel > .entry-panel-toggle {
         flex: 0 0 auto;
         font-size: 0.6rem;
         letter-spacing: 0.12em;
         margin-bottom: 4px;
         padding-bottom: 2px;
+      }
+      #entry-panel > .entry-panel-toggle::after {
+        content: ' ▼';
+        font-size: 0.55rem;
+        opacity: 0.85;
+      }
+      #entry-panel:not(.entry-panel--collapsed) > .entry-panel-toggle::after {
+        content: ' ▲';
       }
       #entry-list {
         flex: 1 1 auto;
@@ -1672,8 +1724,8 @@
     <div id="race-info"></div>
 
     <!-- 左：出馬表 -->
-    <div id="entry-panel">
-      <p class="section-title">📋 出馬表</p>
+    <div id="entry-panel" class="entry-panel--collapsed">
+      <button type="button" id="entry-panel-toggle" class="section-title entry-panel-toggle" aria-expanded="false" aria-controls="entry-list">📋 出馬表</button>
       <div id="entry-list"></div>
     </div>
 
