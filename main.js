@@ -21,15 +21,15 @@ import {
 } from './src/stats/aggregate-store.js';
 import { formatRaceInfo, resolveCourseDef } from './src/stats/race-display.js';
 import { JRA_WAKU_COLORS } from './src/ui/colors.js';
+import { runSimulation } from './src/engine/simulation.js';
 import {
-  runSimulation,
   clampLane,
   applyBattleStaminaImpact,
   isNigeStyle,
   getJockeyReliabilityNorm,
   getJockeyAggressionNorm,
   isLaneInShiftPath,
-} from './src/engine/simulation.js';
+} from './src/engine/horse-utils.js';
 import {
   MIN_FORWARD_GAP,
   LATERAL_BLOCK_X_GAP,
