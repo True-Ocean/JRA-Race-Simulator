@@ -391,9 +391,9 @@ function enforceForwardOrder(horses, minXGap) {
 
 function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, minForwardGap, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
   const nextX = horse.x + desiredAdvance;
-  const isCloserOnSpurEntry = isFinalStraightPhase(phase)
-    && (horse.style === '差し' || horse.style === '追込');
-  const laneMatchTol = isCloserOnSpurEntry ? 1.22 : 0.8;
+  const spurLaneIntent = isFinalStraightPhase(phase)
+    && Number.isFinite(horse.spurEntryTargetLane);
+  const laneMatchTol = spurLaneIntent ? 1.15 : 0.85;
   const targetLane = Number.isFinite(horse.spurEntryTargetLane)
     ? clampLane(horse.spurEntryTargetLane)
     : clampLane(horse.y);
@@ -401,7 +401,7 @@ function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, minForwar
     .filter(h =>
       h.id !== horse.id &&
       h.x > horse.x &&
-      (isCloserOnSpurEntry
+      (spurLaneIntent
         ? (Math.abs(h.y - targetLane) < laneMatchTol || Math.abs(h.y - horse.y) < 0.8)
         : Math.abs(h.y - horse.y) < laneMatchTol)
     )
@@ -557,8 +557,7 @@ function shouldAllowRiskyInnerDive(horse, phase, allHorses) {
   if (isNigeStyle(horse.style)) return false;
 
   const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
-  const requiredStamina =
-    (horse.style === '差し' || horse.style === '追込') ? 0.18 : 0.28;
+  const requiredStamina = 0.22;
   if (staminaRatio < requiredStamina) return false;
 
   const currentLane = clampLane(horse.y);

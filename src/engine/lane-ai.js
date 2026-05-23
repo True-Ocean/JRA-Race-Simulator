@@ -34,20 +34,19 @@ import {
   getInnerRailLaneFloor,
 } from './collision.js';
 
-function getCloserOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan) {
-  if (horse.style !== '差し' && horse.style !== '追込') return 0;
+function getOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan) {
   const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
   const span = Math.max(0.001, last3fSpan ?? (last3fMax - last3fMin));
   const last3fWeight = Number.isFinite(horse.last3f)
     ? (last3fMax - horse.last3f) / span
     : 0.5;
   const w = Math.max(0, Math.min(1, last3fWeight));
-  return Math.max(0, Math.min(1, w * (0.35 + staminaRatio * 0.85)));
+  return Math.max(0, Math.min(1, w * (0.28 + staminaRatio * 0.72)));
 }
 
 function getEffectiveOuterSpreadIntent(horse, phase, last3fMin, last3fMax, last3fSpan) {
   if (!isAfterFourthCornerPhase(phase)) {
-    return getCloserOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan);
+    return getOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan) * 0.45;
   }
   const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
   const span = Math.max(0.001, last3fSpan ?? (last3fMax - last3fMin));
@@ -351,17 +350,8 @@ function scoreLaneOption(
     if (lane < currentLane - 0.01 && isLaneOpenForShift(horse, lane, allHorses, phase, collisionMetrics)) score += 8;
   }
 
-  // 差し・追込は序盤で外待機、終盤で前進優先（第3コーナーまでは内寄せと矛盾しないよう弱める）
-  if (
-    !through &&
-    (horse.style === '差し' || horse.style === '追込') &&
-    phase.ratio < 0.65
-  ) {
-    score += lane * 0.55;
-  }
-  // 逃げ/先行はスタート〜序盤で内のポジション取りを優先。
-  // 空いていない場合は無理に寄せないように抑制する。
-  if ((isNigeStyle(horse.style) || horse.style === '先行') && phase.ratio < 0.25) {
+  // 逃げはスタート〜序盤で内のポジション取りを優先（隊列形成は formation.js）。
+  if (isNigeStyle(horse.style) && phase.ratio < 0.25) {
     if (lane < currentLane && isInnerLaneOpenAhead(horse, lane, allHorses, phase, collisionMetrics)) {
       score += 12;
     }
@@ -375,7 +365,7 @@ function scoreLaneOption(
 }
 
 export {
-  getCloserOuterSpreadIntent,
+  getOuterSpreadIntent,
   getPostC3StaminaSpreadBudget,
   getEffectiveOuterSpreadIntent,
   getFourthCornerOutwardIntent,

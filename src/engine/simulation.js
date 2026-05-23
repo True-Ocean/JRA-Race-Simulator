@@ -5,8 +5,12 @@ import {
   calcStaminaCons,
   applyCornerLoss,
   laneIndex,
-  getStylePaceMultiplier,
 } from './phase.js';
+import {
+  initFormationTarget,
+  getFormationPaceMultiplier,
+  getFormationOrderBias,
+} from './formation.js';
 import { detectContacts, shouldBattle, resolveBattle } from './battle.js';
 import { CONFIG } from '../config.js';
 import {
@@ -204,6 +208,7 @@ import {
   shouldFreezeStretchLane,
   isStretchSpreadCandidate,
   buildLaneDecisionContext,
+  calcPackRankNorm,
 } from './lane-decision.js';
 function staminaAccelAbilityMult(staminaRatio) {
   const r = Math.max(0, Math.min(1, staminaRatio));
@@ -449,19 +454,13 @@ function calcStartDelayRate(horse) {
   return Math.max(0.004, Math.min(0.055, rate));
 }
 
-function calcEarlyPhaseOrderScore(horse, rng, ave3fMax, ave3fSpan) {
-  const styleBase = isOonigeStyle(horse.style) ? 112
-    : isNigeStyle(horse.style) ? 100
-    : horse.style === '先行' ? 77
-      : horse.style === '差し' ? 48
-        : 34;
+function calcEarlyPhaseOrderScore(horse, rng, ave3fMax, ave3fSpan, allHorses, phaseRatio) {
   const ave3fScore = Number.isFinite(horse.ave3f)
     ? (ave3fMax - horse.ave3f) / Math.max(0.001, ave3fSpan)
     : 0.5;
   const launchSkill = (horse.S_cruise * 0.30 + horse.M_maneuv * 0.20) / 100;
-  const styleBurst = isOonigeStyle(horse.style) ? 0.33
-    : isNigeStyle(horse.style) ? 0.24
-    : horse.style === '先行' ? 0.10
+  const styleBurst = isOonigeStyle(horse.style) ? 0.28
+    : isNigeStyle(horse.style) ? 0.20
       : 0;
   const projectedBurst = horse.startBurstFactor ?? (
     0.72 + ave3fScore * 0.68 + launchSkill * 0.22 + styleBurst
@@ -475,7 +474,9 @@ function calcEarlyPhaseOrderScore(horse, rng, ave3fMax, ave3fSpan) {
     : 0;
   const troublePenalty = (horse.startTroubleScore ?? 0) * 17;
   const tieNoise = (rng() - 0.5) * EARLY_ORDER_TIE_NOISE;
-  return styleBase + burstBonus + innerLaneBonus + outerNigeBonus - troublePenalty + tieNoise;
+  const packRank = allHorses?.length ? calcPackRankNorm(horse, allHorses) : 0.5;
+  const formationBias = getFormationOrderBias(horse, packRank, phaseRatio ?? 0);
+  return 34 + burstBonus + innerLaneBonus + outerNigeBonus - troublePenalty + tieNoise + formationBias;
 }
 
 function calcOuterNigePressureNorm(lane) {
@@ -567,6 +568,7 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     horse.phasePrevSecondGap = undefined;
     horse.phasePrevLeadGapLate = undefined;
     initUniversalKickProfile(horse, rng, last3fMin, last3fMax, last3fSpan);
+    initFormationTarget(horse, rng, ave3fMax, ave3fSpan);
   });
 
   for (const phase of phases) {
@@ -634,8 +636,8 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     // ② 各馬の移動（衝突回避 + ブロック時バトル）
     const order = isEarlyOrderingPhase
       ? [...horses].sort((a, b) => {
-        const scoreA = calcEarlyPhaseOrderScore(a, rng, ave3fMax, ave3fSpan);
-        const scoreB = calcEarlyPhaseOrderScore(b, rng, ave3fMax, ave3fSpan);
+        const scoreA = calcEarlyPhaseOrderScore(a, rng, ave3fMax, ave3fSpan, horses, phase.ratio);
+        const scoreB = calcEarlyPhaseOrderScore(b, rng, ave3fMax, ave3fSpan, horses, phase.ratio);
         if (Math.abs(scoreA - scoreB) > 1e-6) return scoreB - scoreA;
         if (Math.abs(a.x - b.x) > 1e-6) return b.x - a.x;
         return a.y - b.y;
@@ -659,7 +661,7 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       const secondGapPre =
         isLeadingPre && runnerUpPre ? Math.max(0, horse.x - runnerUpPre.x) : 0;
 
-      let paceMult = getStylePaceMultiplier(horse.style, phase.ratio);
+      let paceMult = getFormationPaceMultiplier(horse, phase.ratio, ave3fMax, ave3fSpan);
       if (phase.index === 0 && isNigeStyle(horse.style)) {
         paceMult = 1 + (paceMult - 1) * START_PHASE_NIGE_PACE_BLEND;
       }
@@ -684,9 +686,8 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
           stretchKick *= CORNER4_STRETCH_KICK_SCALE;
         } else if (isFinalStraightPhase(phase)) {
           stretchKick *= SPUR_ENTRY_STRETCH_KICK_MULT;
-          const isCloserStyle = horse.style === '差し' || horse.style === '追込';
-          if (isCloserStyle) {
-            stretchKick *= 1.20 + last3fW * 0.22;
+          if (blockedLocal) {
+            stretchKick *= 1.08 + last3fW * 0.12;
           }
         }
         adjustedAdvance *= (1 + stretchKick);

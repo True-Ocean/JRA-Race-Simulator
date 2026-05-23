@@ -27,7 +27,7 @@ export const EARLY_ORDER_TIE_NOISE = 1.2;
 export const EARLY_OUTER_NIGE_START_RATIO = 0.60;
 export const EARLY_OUTER_NIGE_ADV_GAIN_MAX = 0.18;
 export const EARLY_OUTER_NIGE_DRAIN_PER_100M = 0.45;
-/** スタートフェーズのみ: STYLE_PACE 先頭バケットを 1.0 へ寄せる（逃げ・大逃げの一気離れ抑制） */
+/** スタートフェーズのみ: 隊列形成ペースの逃げ寄せを弱める（一気離れ抑制） */
 export const START_PHASE_NIGE_PACE_BLEND = 0.58;
 /** スタートフェーズのみ: 理想ギャップ追い込み（gapCatchBoost）に掛ける係数 */
 export const START_PHASE_GAP_CATCH_SCALE = 0.22;

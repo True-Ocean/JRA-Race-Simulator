@@ -63,12 +63,10 @@ export function laneIndex(y) {
 }
 
 /**
- * 脚質とフェーズ比率からスピード倍率を取得
+ * @deprecated 脚質テーブルは廃止。常に 1（隊列形成期は formation.getFormationPaceMultiplier を使用）
  */
-export function getStylePaceMultiplier(style, phaseRatio) {
-  const paceArr = CONFIG.STYLE_PACE[style] ?? CONFIG.STYLE_PACE['差し'];
-  const idx     = Math.min(paceArr.length - 1, Math.floor(phaseRatio * paceArr.length));
-  return paceArr[idx];
+export function getStylePaceMultiplier(_style, _phaseRatio) {
+  return 1;
 }
 
 export function calcStaminaCons(phase, horse, trackModifier) {

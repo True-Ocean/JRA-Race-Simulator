@@ -13,7 +13,7 @@ import {
   SPUR_ENTRY_ADVANCE_MULT_CAP,
   SPUR_ENTRY_VERTICAL_BOOST,
 } from './constants.js';
-import { clampLane, getJockeyAggressionNorm, getJockeyReliabilityNorm, isNigeStyle } from './horse-utils.js';
+import { clampLane, getJockeyAggressionNorm, getJockeyReliabilityNorm } from './horse-utils.js';
 import { getPostC3StaminaSpreadBudget, getPreferredLaneByStyle } from './lane-preference.js';
 import {
   isFourthCornerPhase,
@@ -100,14 +100,14 @@ function findFrontHorseInLane(horse, lane, allHorses, atX = horse.x, maxForwardX
   return best;
 }
 
-/** 先頭・前が空いている2〜3番手は横移動を抑える */
+/** 前方が塞がれていない好位置のみ横移動を弱める（先頭でも前詰まりなら動ける） */
 function shouldFreezeStretchLane(horse, allHorses, minXGap) {
-  const rank = getRunningOrderRank(horse, allHorses);
   const lane = clampLane(horse.y);
   const localGap = getLocalPackFrontGap(horse, lane, allHorses);
   const blockGap = minXGap + FINAL_FRONT_BLOCK_EXTRA_GAP;
-  if (rank === 0) return true;
-  if (rank <= 2 && localGap >= blockGap) return true;
+  if (localGap < blockGap) return false;
+  const rank = getRunningOrderRank(horse, allHorses);
+  if (rank <= 2) return true;
   return false;
 }
 
@@ -123,43 +123,44 @@ function snapshotCorner4ExitState(allHorses) {
   }
 }
 
-/** 脚質・4角出口・能力から目指す仕掛けレーン */
-function getSpurEntryStylePreferredLane(horse, phase) {
+/** 4角出口と前方ギャップから目指す仕掛けレーン（脚質非依存） */
+function getSpurEntrySituationPreferredLane(horse, allHorses) {
+  const currentLane = clampLane(horse.y);
   const exitLane = Number.isFinite(horse.corner4ExitLane)
     ? horse.corner4ExitLane
-    : clampLane(horse.y);
-  const stylePref = getPreferredLaneByStyle(horse, phase);
-  const style = horse.style;
-
-  if (style === '差し' || style === '追込') {
-    const outward = Math.max(exitLane + 0.75, stylePref - 0.35);
-    return clampLane(stylePref * 0.64 + outward * 0.36);
+    : currentLane;
+  let bestLane = currentLane;
+  let bestGap = getLocalPackFrontGap(horse, currentLane, allHorses);
+  const maxProbe = 8;
+  for (let d = 0; d <= maxProbe; d += 1) {
+    const lane = clampLane(currentLane + d);
+    if (lane > LANE_WIDTH) break;
+    const gap = getLocalPackFrontGap(horse, lane, allHorses);
+    if (gap > bestGap + 0.4) {
+      bestGap = gap;
+      bestLane = lane;
+    }
   }
-  if (isNigeStyle(style) || style === '先行') {
-    const holdInner = Math.min(exitLane + 0.75, stylePref);
-    return clampLane(stylePref * 0.50 + holdInner * 0.50);
-  }
-  return clampLane(stylePref * 0.62 + exitLane * 0.38);
+  return clampLane(bestLane * 0.68 + exitLane * 0.32);
 }
 
 function shouldSeekSpurEntryLane(horse, ctx, allHorses, minXGap) {
   if (!isFinalStraightPhase(ctx.phase)) return false;
   if (shouldFreezeStretchLane(horse, allHorses, minXGap)) return false;
-  const preferred = getSpurEntryStylePreferredLane(horse, ctx.phase);
+  const preferred = getSpurEntrySituationPreferredLane(horse, allHorses);
   const delta = preferred - ctx.currentLane;
   if (ctx.frontBlocked) return true;
   if (Math.abs(delta) >= 0.28) return true;
-  if ((horse.style === '差し' || horse.style === '追込') && ctx.chaseUrgency > 0.12) return true;
+  if (ctx.chaseUrgency > 0.12 && (ctx.frontBlocked || ctx.canPassFront)) return true;
   if (ctx.midPack && ctx.last3fWeight > 0.22) return true;
   return isStretchSpreadCandidate(horse, ctx, allHorses);
 }
 
 function capSpurEntryLaneDelta(currentLane, targetLane, horse, ctx) {
   const rank = ctx.runningRank;
-  const isCloser = horse.style === '差し' || horse.style === '追込';
   let maxStep = rank <= 2 ? 1.35 : (rank <= 6 ? 3.15 : 4.05);
-  if (isCloser && isFinalStraightPhase(ctx.phase)) {
-    maxStep += 0.55 + ctx.last3fWeight * 0.65 + getPostC3StaminaSpreadBudget(horse) * 0.52;
+  if (isFinalStraightPhase(ctx.phase) && (ctx.frontBlocked || ctx.chaseUrgency > 0.14)) {
+    maxStep += 0.45 + ctx.last3fWeight * 0.55 + getPostC3StaminaSpreadBudget(horse) * 0.48;
   }
   const delta = targetLane - currentLane;
   if (delta <= maxStep) return targetLane;
@@ -170,8 +171,8 @@ function scoreSpurEntryLane(horse, lane, ctx, stylePreferred) {
   const base = scoreLaneCandidate(horse, lane, { ...ctx, spurEntryIntent: true });
   const stylePull = -Math.abs(lane - stylePreferred) * (3.1 + ctx.chaseUrgency * 0.95);
   const exitLane = Number.isFinite(horse.corner4ExitLane) ? horse.corner4ExitLane : ctx.currentLane;
-  const exitPenalty = lane < exitLane - 0.15 && (horse.style === '差し' || horse.style === '追込')
-    ? (exitLane - lane) * 1.8
+  const exitPenalty = lane < exitLane - 0.15 && ctx.frontBlocked
+    ? (exitLane - lane) * 1.2
     : 0;
   return base + stylePull - exitPenalty;
 }
@@ -417,38 +418,37 @@ function calcSpurEntryTargetLane(horse, phase, allHorses, last3fNorm, options = 
     minXGap,
     speedAdvance: options.speedAdvance,
   });
-  const stylePreferred = getSpurEntryStylePreferredLane(horse, phase);
+  const situationPreferred = getSpurEntrySituationPreferredLane(horse, allHorses);
   ctx.spurEntryIntent = shouldSeekSpurEntryLane(horse, ctx, allHorses, minXGap);
 
-  if (!ctx.spurEntryIntent && Math.abs(stylePreferred - currentLane) < 0.22) {
+  if (!ctx.spurEntryIntent && Math.abs(situationPreferred - currentLane) < 0.22) {
     return currentLane;
   }
 
   const rank = ctx.runningRank;
-  const isCloser = horse.style === '差し' || horse.style === '追込';
-  const maxProbe = rank <= 2 ? 2 : (isCloser ? 8 : 6);
-  const minProbe = isCloser ? 0 : 0;
+  const maxProbe = rank <= 2 ? 3 : 8;
+  const minProbe = 0;
 
   let bestLane = currentLane;
-  let bestScore = scoreSpurEntryLane(horse, currentLane, ctx, stylePreferred);
-  const styleScore = scoreSpurEntryLane(horse, stylePreferred, ctx, stylePreferred);
-  if (styleScore > bestScore + 0.02) {
-    bestScore = styleScore;
-    bestLane = stylePreferred;
+  let bestScore = scoreSpurEntryLane(horse, currentLane, ctx, situationPreferred);
+  const prefScore = scoreSpurEntryLane(horse, situationPreferred, ctx, situationPreferred);
+  if (prefScore > bestScore + 0.02) {
+    bestScore = prefScore;
+    bestLane = situationPreferred;
   }
 
   for (let d = minProbe; d <= maxProbe; d += 1) {
     const laneOut = clampLane(currentLane + d);
     if (laneOut > LANE_WIDTH) break;
-    const scoreOut = scoreSpurEntryLane(horse, laneOut, ctx, stylePreferred);
+    const scoreOut = scoreSpurEntryLane(horse, laneOut, ctx, situationPreferred);
     if (scoreOut > bestScore + 0.02) {
       bestScore = scoreOut;
       bestLane = laneOut;
     }
-    if (d > 0 && !isCloser) {
+    if (d > 0) {
       const laneIn = clampLane(currentLane - d);
       if (laneIn >= 1) {
-        const scoreIn = scoreSpurEntryLane(horse, laneIn, ctx, stylePreferred);
+        const scoreIn = scoreSpurEntryLane(horse, laneIn, ctx, situationPreferred);
         if (scoreIn > bestScore + 0.02) {
           bestScore = scoreIn;
           bestLane = laneIn;
@@ -469,8 +469,8 @@ function calcSpurEntryTargetLane(horse, phase, allHorses, last3fNorm, options = 
     if (passLane > bestLane) {
       bestLane = clampLane(bestLane * 0.22 + passLane * 0.78);
     }
-  } else if (stylePreferred > bestLane) {
-    bestLane = clampLane(bestLane * 0.40 + stylePreferred * 0.60);
+  } else if (situationPreferred > bestLane) {
+    bestLane = clampLane(bestLane * 0.40 + situationPreferred * 0.60);
   }
 
   bestLane = capSpurEntryLaneDelta(currentLane, bestLane, horse, ctx);
@@ -481,7 +481,7 @@ function calcSpurEntryTargetLane(horse, phase, allHorses, last3fNorm, options = 
   return clampLane(bestLane);
 }
 
-/** 最終直線入口: 差し・追込などの自然な縦の繰り上がり倍率 */
+/** 最終直線入口: 状況に応じた縦の繰り上がり倍率（脚質非依存） */
 function calcSpurEntryAdvanceMult(horse, phase, allHorses, last3fNorm, options = {}) {
   if (!isFinalStraightPhase(phase)) return 1;
   const minXGap = options.minXGap ?? MIN_FORWARD_GAP;
@@ -493,23 +493,16 @@ function calcSpurEntryAdvanceMult(horse, phase, allHorses, last3fNorm, options =
     speedAdvance: options.speedAdvance,
   });
   const staminaGate = getPostC3StaminaSpreadBudget(horse);
-  const isCloser = horse.style === '差し' || horse.style === '追込';
-
-  if (!isCloser) {
-    if (ctx.packRankNorm < 0.55 && ctx.last3fWeight < 0.42) return 1;
-    const mild = 1 + (ctx.last3fWeight * 0.05 + staminaGate * 0.04) * SPUR_ENTRY_VERTICAL_BOOST;
-    return Math.min(SPUR_ENTRY_ADVANCE_MULT_CAP, mild);
-  }
 
   if (staminaGate < 0.06 && ctx.staminaRatio < 0.18) return 1;
 
   let mult = 1
-    + ctx.last3fWeight * 0.21
-    + ctx.staminaAfterC3 * 0.15
-    + staminaGate * 0.18
-    + ctx.packRankNorm * 0.15
+    + ctx.last3fWeight * 0.19
+    + ctx.staminaAfterC3 * 0.14
+    + staminaGate * 0.17
+    + ctx.packRankNorm * 0.12
     + ctx.maneuvNorm * 0.09
-    + (ctx.canPassFront ? 0.07 : 0);
+    + (ctx.canPassFront ? 0.08 : 0);
 
   const spurLane = Number.isFinite(horse.spurEntryTargetLane)
     ? horse.spurEntryTargetLane
@@ -524,10 +517,7 @@ function calcSpurEntryAdvanceMult(horse, phase, allHorses, last3fNorm, options =
     if (laneShift > 0.95) mult += 0.05;
   }
 
-  if (horse.style === '追込') mult += 0.06;
-  else if (horse.style === '差し') mult += 0.04;
-
-  if (ctx.frontBlocked) mult += 0.06;
+  if (ctx.frontBlocked) mult += 0.07;
 
   mult = 1 + (mult - 1) * SPUR_ENTRY_VERTICAL_BOOST;
   return Math.min(SPUR_ENTRY_ADVANCE_MULT_CAP, mult);
@@ -624,7 +614,7 @@ function getLaneDecisionMeta(horse, phase, allHorses, last3fNorm, minXGap, speed
 
   const spurTarget = Number.isFinite(horse.spurEntryTargetLane)
     ? horse.spurEntryTargetLane
-    : getSpurEntryStylePreferredLane(horse, phase);
+    : getSpurEntrySituationPreferredLane(horse, allHorses);
   const seekOutsideLane = shouldSeekSpurEntryLane(horse, ctx, allHorses, minXGap)
     || spurTarget > ctx.currentLane + 0.1;
 
@@ -722,7 +712,7 @@ export {
   getLocalPackFrontGap,
   isInLocalPackTraffic,
   snapshotCorner4ExitState,
-  getSpurEntryStylePreferredLane,
+  getSpurEntrySituationPreferredLane,
   shouldSeekSpurEntryLane,
   assignStretchFanLanesForPack,
   computeStretchFanTargetLane,

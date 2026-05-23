@@ -175,7 +175,7 @@ function resolveFinalStraightDuel(rng, horses, phase, phaseEventLogs, globalLogs
         maneuv: 0.15,
         sustain: 0.45,
         stamina: 0.10,
-      }, horse => (horse.style === '差し' || horse.style === '追込') ? 4 : 0);
+      });
       const log = `[バトル:直線争い] ${a.name} vs ${b.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
       phaseEventLogs.push(log);
       globalLogs.push(log);
