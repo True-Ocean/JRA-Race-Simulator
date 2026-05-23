@@ -1152,10 +1152,7 @@ Promise.all([
       }
       if (btnShowSummary) btnShowSummary.disabled = true;
       const logPanel = document.getElementById('log-panel');
-      if (logPanel) {
-        logPanel.innerHTML =
-          `<div class="log-entry" style="color:#334;">シミュレーション seed: ${simulationRunSeed}</div>`;
-      }
+      if (logPanel) logPanel.innerHTML = '';
       syncPlacingPanelsHtml('');
 
       refreshRaceInfo();

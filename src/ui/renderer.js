@@ -21,7 +21,7 @@ const PHASE_NAMES = {
   corner3:  '第3コーナー',
   corner4:  '第4コーナー',
   back:     '向正面',
-  final:    '最終直線',
+  final:    '最終直線入口',
 };
 
 export class Renderer {

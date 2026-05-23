@@ -13,7 +13,7 @@
         { "id": "back",    "label": "向正面",       "kind": "straight", "ratio": 0.23 },
         { "id": "corner3", "label": "第3コーナー",  "kind": "corner",   "cornerNo": 3, "ratio": 0.11 },
         { "id": "corner4", "label": "第4コーナー",  "kind": "corner",   "cornerNo": 4, "ratio": 0.11 },
-        { "id": "final",   "label": "最終直線",     "kind": "final",    "ratio": 0.17 }
+        { "id": "final",   "label": "最終直線入口", "kind": "final",    "ratio": 0.17 }
       ]
     },
     {
@@ -25,7 +25,7 @@
         { "id": "back",    "label": "向正面",       "kind": "straight", "ratio": 0.20 },
         { "id": "corner3", "label": "第3コーナー",  "kind": "corner",   "cornerNo": 3, "ratio": 0.20 },
         { "id": "corner4", "label": "第4コーナー",  "kind": "corner",   "cornerNo": 4, "ratio": 0.20 },
-        { "id": "final",   "label": "最終直線",     "kind": "final",    "ratio": 0.30 }
+        { "id": "final",   "label": "最終直線入口", "kind": "final",    "ratio": 0.30 }
       ]
     }
   ]

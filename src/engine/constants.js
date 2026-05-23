@@ -98,8 +98,16 @@ export const FINAL_STRAIGHT_SPREAD_BLOCK_EXTRA = 3;
 export const FINAL_STRAIGHT_X_BAND = 9;
 /** 第4コーナー中の能動横移動上限（遠心力ドリフトは別） */
 export const LATERAL_SHIFT_CORNER4_CAP = 0.34;
-/** 最終直線の能動レーン変更を1フェーズ内で繰り返す回数 */
-export const STRETCH_LANE_SUBSTEPS = 7;
+/** 最終直線入口の能動レーン変更を1フェーズ内で繰り返す回数 */
+export const STRETCH_LANE_SUBSTEPS = 9;
+/** 第4コーナー中の stretchKick 倍率（入口フェーズとの差別化） */
+export const CORNER4_STRETCH_KICK_SCALE = 0.42;
+/** 最終直線入口: 差し・追込の縦伸び上限倍率 */
+export const SPUR_ENTRY_ADVANCE_MULT_CAP = 1.42;
+/** 最終直線入口フェーズのみ、縦方向の前進倍率に掛けるブースト */
+export const SPUR_ENTRY_VERTICAL_BOOST = 1.14;
+/** 最終直線入口の stretchKick に掛ける倍率（第4コーナーとは別） */
+export const SPUR_ENTRY_STRETCH_KICK_MULT = 1.12;
 /** 進路コミット維持フェーズ数（慣性・ジグザグ抑制） */
 export const LANE_COMMIT_PHASES = 2;
 /** ローカル前方判定の最大距離（真前の馬のみ） */
@@ -124,6 +132,7 @@ export const RACE_SUMMARY_SCENE_LABELS = new Set([
   '向正面',
   '第3コーナー',
   '第4コーナー',
+  '最終直線入口',
   '最終直線',
   'スタート〜1コーナー手前',
   '3〜4コーナー中間',

@@ -584,7 +584,7 @@ class PhaseController {
 
     assignStretchFanLanesForPack(simHorses, {
       last3fNorm,
-      phase: { isFinal: true, segmentId: 'final', segmentLabel: '最終直線' },
+      phase: { isFinal: true, segmentId: 'final', segmentLabel: '最終直線入口' },
     });
     simHorses.forEach(horse => {
       const blendedLane = clampLane(horse.stretchFanLane ?? horse.y);

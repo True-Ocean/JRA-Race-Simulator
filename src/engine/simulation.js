@@ -89,9 +89,8 @@ import {
   GOAL_MAX_SPEED_RATIO,
   GOAL_POST_SCROLL_MS,
   GOAL_POST_CLEAR_METERS,
-  RACE_SUMMARY_HEADER_LINE,
-  RACE_SUMMARY_SCENE_LABELS,
   GOAL_PROGRESS_MAX_POST_LINE,
+  SPUR_ENTRY_STRETCH_KICK_MULT,
   GOAL_ENTRY_LEADER_START_PROGRESS,
   GOAL_PROGRESS_MIN,
   GOAL_SCENE_TRANSITION_MS,
@@ -135,6 +134,7 @@ import {
   GOAL_AI,
   CENTRIFUGAL_DRIFT_STAMINA_MULT,
   STRETCH_LANE_SUBSTEPS,
+  CORNER4_STRETCH_KICK_SCALE,
 } from './constants.js';
 import {
   clampLane,
@@ -171,7 +171,6 @@ import {
   calcStartPhaseTargetLane,
   calcPreCornerPackTargetLane,
   calcEarlyInnerPriorityLane,
-  calcPostFourthWideTargetLane,
   getLaneChangeRate,
 } from './lane-ai.js';
 import {
@@ -181,6 +180,10 @@ import {
   calcLast3fWeight,
   recordLaneCommit,
   calcLocalPassTargetLane,
+  calcSpurEntryTargetLane,
+  calcSpurEntryAdvanceMult,
+  snapshotCorner4ExitState,
+  getRunningOrderRank,
   shouldFreezeStretchLane,
   isStretchSpreadCandidate,
   buildLaneDecisionContext,
@@ -520,6 +523,13 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     resolveCornerPositionBattle(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds);
     resolveFinalStraightDuel(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds);
 
+    if (isFinalStraightPhase(phase)) {
+      for (const h of horses) {
+        h.spurEntryStartRank = getRunningOrderRank(h, horses);
+        h.spurEntryClimbLogged = false;
+      }
+    }
+
     for (const { a, b } of contacts) {
       if (engagedHorseIds.has(a.id) || engagedHorseIds.has(b.id)) continue;
       if (!shouldBattle(rng, horses, a, b)) continue;
@@ -581,7 +591,16 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         const staminaR = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
         const localGap = getLocalPackFrontGap(horse, horseLanePre, horses);
         const blockedLocal = localGap < (collisionMetrics.minXGap + FINAL_FRONT_BLOCK_EXTRA_GAP);
-        const stretchKick = last3fW * (0.06 + staminaR * 0.11) * (blockedLocal ? 1.2 : 0.55);
+        let stretchKick = last3fW * (0.06 + staminaR * 0.11) * (blockedLocal ? 1.2 : 0.55);
+        if (isFourthCornerPhase(phase) && !isFinalStraightPhase(phase)) {
+          stretchKick *= CORNER4_STRETCH_KICK_SCALE;
+        } else if (isFinalStraightPhase(phase)) {
+          stretchKick *= SPUR_ENTRY_STRETCH_KICK_MULT;
+          const isCloserStyle = horse.style === '差し' || horse.style === '追込';
+          if (isCloserStyle) {
+            stretchKick *= 1.20 + last3fW * 0.22;
+          }
+        }
         adjustedAdvance *= (1 + stretchKick);
         if (stretchKick > 0.02) {
           const kickDrain = (Math.max(0, phase.distance) / 100) * stretchKick * 0.85;
@@ -864,20 +883,32 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       if (isThroughThirdCorner) {
         horse.targetLane = Math.min(horse.targetLane, INNER_HALF_LANE_MAX);
       }
+      if (isFinalStraight) {
+        horse.spurEntryTargetLane = calcSpurEntryTargetLane(
+          horse,
+          phase,
+          horses,
+          last3fNorm,
+          { minXGap: collisionMetrics.minXGap, speedAdvance: adjustedAdvance },
+        );
+      }
+
       const stretchLaneSteps = isFinalStraight
         ? STRETCH_LANE_SUBSTEPS
         : (isCorner4Only ? 1 : 1);
       const prevLaneYBeforeStretch = horse.y;
       let driftShift = 0;
       for (let stretchStep = 0; stretchStep < stretchLaneSteps; stretchStep += 1) {
-        const frontGapStep = getLocalPackFrontGap(horse, clampLane(horse.y), horses);
+        const probeLane = isFinalStraight
+          ? clampLane(horse.spurEntryTargetLane ?? horse.y)
+          : clampLane(horse.y);
+        const frontGapStep = getLocalPackFrontGap(horse, probeLane, horses);
         const frontBlockedStep = frontGapStep < (collisionMetrics.minXGap + FINAL_FRONT_BLOCK_EXTRA_GAP);
         if (isCorner4Only) {
           horse.targetLane = horse.y;
         } else if (isFinalStraight) {
-          horse.targetLane = calcPostFourthWideTargetLane(
+          horse.targetLane = horse.spurEntryTargetLane ?? calcSpurEntryTargetLane(
             horse,
-            horse.targetLane,
             phase,
             horses,
             last3fNorm,
@@ -898,9 +929,7 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
           )
           : null;
         const seekOutsideLane = Boolean(laneDecisionMeta?.seekOutsideLane);
-        if (isLateStraight && !frontBlockedStep && !seekOutsideLane) {
-          horse.targetLane = horse.y;
-        } else if (isFinalStraight && seekOutsideLane) {
+        if (isFinalStraight && seekOutsideLane) {
           const passPull = calcLocalPassTargetLane(
             horse,
             phase,
@@ -909,7 +938,9 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
             last3fNorm,
             { minXGap: collisionMetrics.minXGap, speedAdvance: adjustedAdvance },
           );
-          horse.targetLane = clampLane(horse.targetLane * 0.30 + passPull * 0.70);
+          if (passPull > horse.targetLane) {
+            horse.targetLane = clampLane(horse.targetLane * 0.35 + passPull * 0.65);
+          }
         } else if ((horse.laneChangeCooldownPhases ?? 0) > 0 && stretchStep === 0) {
           horse.targetLane = horse.y;
         }
@@ -980,8 +1011,19 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       if (isLateStraight && laneShift > 0.04) {
         const staminaRatioLate = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
         const lateralFatigueMult =
-          1 - Math.min(0.06, laneShift * 0.18 * (1.35 - staminaRatioLate * 0.5));
+          1 - Math.min(0.04, laneShift * 0.11 * (1.35 - staminaRatioLate * 0.5));
         adjustedAdvance *= lateralFatigueMult;
+      }
+
+      if (isFinalStraight) {
+        const spurMult = calcSpurEntryAdvanceMult(
+          horse,
+          phase,
+          horses,
+          last3fNorm,
+          { minXGap: collisionMetrics.minXGap, speedAdvance: adjustedAdvance },
+        );
+        adjustedAdvance *= spurMult;
       }
 
       // 前方間隔チェック（前が塞がれていて仕掛ける場合はバトル）
@@ -1005,6 +1047,20 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         frameAdvance = prevAdvance + accelIntent * accelMultByStamina;
       }
       horse.x += frameAdvance;
+
+      if (
+        isFinalStraight
+        && Number.isFinite(horse.spurEntryStartRank)
+      ) {
+        const rankNow = getRunningOrderRank(horse, horses);
+        const gained = horse.spurEntryStartRank - rankNow;
+        if (gained >= 1 && !horse.spurEntryClimbLogged) {
+          horse.spurEntryClimbLogged = true;
+          const log = `[仕掛け:繰り上がり] ${horse.name} が直線入口で ${gained} 順繰り上がり（${horse.spurEntryStartRank + 1}→${rankNow + 1}番手）`;
+          globalLogs.push(log);
+          phaseEventLogs.push(log);
+        }
+      }
 
       const accelAmount = Math.max(0, frameAdvance - prevAdvance);
       if (accelAmount > 0.001) {
@@ -1100,23 +1156,26 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     if (isFinalStraightPhase(phase)) {
       for (const horse of horses) {
         if (shouldFreezeStretchLane(horse, horses, collisionMetrics.minXGap)) continue;
-        const ctx = buildLaneDecisionContext(horse, phase, horses, {
+        const spurTarget = horse.spurEntryTargetLane ?? calcSpurEntryTargetLane(
+          horse,
+          phase,
+          horses,
           last3fNorm,
-          minXGap: collisionMetrics.minXGap,
-        });
-        if (!isStretchSpreadCandidate(horse, ctx, horses)) continue;
+          { minXGap: collisionMetrics.minXGap },
+        );
         const passTarget = calcLocalPassTargetLane(
           horse,
           phase,
           horses,
-          horse.y,
+          spurTarget,
           last3fNorm,
           { minXGap: collisionMetrics.minXGap },
         );
-        const delta = passTarget - horse.y;
-        if (delta < 0.06) continue;
-        const capped = delta > 2.6 ? clampLane(horse.y + 2.6) : passTarget;
-        horse.y = clampLane(horse.y * 0.48 + capped * 0.52);
+        const target = clampLane(Math.max(spurTarget, passTarget));
+        const delta = target - horse.y;
+        if (delta < 0.05) continue;
+        const capped = delta > 3.5 ? clampLane(horse.y + 3.5) : target;
+        horse.y = clampLane(horse.y * 0.32 + capped * 0.68);
       }
       resolveHorseOverlaps(horses, {
         minXGap: collisionMetrics.minXGap,
@@ -1156,6 +1215,10 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       }
     }
 
+    if (isFourthCornerPhase(phase) && !isFinalStraightPhase(phase)) {
+      snapshotCorner4ExitState(horses);
+    }
+
     snapshots.push({
       phaseIndex: phase.index,
       isCorner:   phase.isCorner,
@@ -1176,41 +1239,6 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     return { ...horse, arrivalTime };
   });
   results.sort((a, b) => a.arrivalTime - b.arrivalTime);
-
-  if (snapshots.length > 0) {
-    const lastEventLogs = snapshots[snapshots.length - 1].eventLogs;
-    const phaseLabelForSummary = (phase) => {
-      if (phase?.segmentLabel) return String(phase.segmentLabel);
-      if (phase?.isFinal) return '最終直線';
-      if (phase?.index === 0) return 'スタート';
-      if (phase?.isCorner) {
-        const r = Number.isFinite(phase?.ratio) ? phase.ratio : 0;
-        if (r < 0.3) return '第1コーナー';
-        if (r < 0.5) return '第2コーナー';
-        if (r < 0.7) return '第3コーナー';
-        return '第4コーナー';
-      }
-      const r = Number.isFinite(phase?.ratio) ? phase.ratio : 0;
-      if (r < 0.2) return 'スタート〜1コーナー手前';
-      if (r < 0.45) return '向正面';
-      if (r < 0.65) return '3〜4コーナー中間';
-      return '4コーナー〜直線';
-    };
-
-    lastEventLogs.push(RACE_SUMMARY_HEADER_LINE);
-    for (let i = 0; i < Math.min(phases.length, snapshots.length); i++) {
-      const phase = phases[i];
-      const snap = snapshots[i];
-      const label = phaseLabelForSummary(phase);
-      const top3 = [...(snap?.horses ?? [])]
-        .sort((a, b) => (b.x ?? 0) - (a.x ?? 0))
-        .slice(0, 3)
-        .map(h => h?.name ?? `ID:${h?.id ?? '?'}`);
-      if (top3.length === 0) continue;
-      const parts = top3.map((name, idx) => `${idx + 1} ${name}`);
-      lastEventLogs.push(`${label}: ${parts.join(' / ')}`);
-    }
-  }
 
   return { results, logs: globalLogs, snapshots, phases };
 }

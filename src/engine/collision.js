@@ -40,6 +40,7 @@ import {
   isThroughThirdCornerPhase,
   isStartToHomePhase,
   isAfterFourthCornerPhase,
+  isFinalStraightPhase,
   getPhaseBufferMultiplier,
 } from './phase-helpers.js';
 import {
@@ -390,11 +391,19 @@ function enforceForwardOrder(horses, minXGap) {
 
 function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, minForwardGap, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
   const nextX = horse.x + desiredAdvance;
+  const isCloserOnSpurEntry = isFinalStraightPhase(phase)
+    && (horse.style === '差し' || horse.style === '追込');
+  const laneMatchTol = isCloserOnSpurEntry ? 1.22 : 0.8;
+  const targetLane = Number.isFinite(horse.spurEntryTargetLane)
+    ? clampLane(horse.spurEntryTargetLane)
+    : clampLane(horse.y);
   const frontCandidates = allHorses
     .filter(h =>
       h.id !== horse.id &&
       h.x > horse.x &&
-      Math.abs(h.y - horse.y) < 0.8
+      (isCloserOnSpurEntry
+        ? (Math.abs(h.y - targetLane) < laneMatchTol || Math.abs(h.y - horse.y) < 0.8)
+        : Math.abs(h.y - horse.y) < laneMatchTol)
     )
     .sort((a, b) => a.x - b.x);
 

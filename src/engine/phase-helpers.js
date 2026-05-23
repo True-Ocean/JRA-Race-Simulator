@@ -15,6 +15,11 @@ function isKickReserveReleased(phase) {
   return phase.ratio >= FINAL_STRAIGHT_RATIO;
 }
 
+/** 最終直線入口フェーズ（isFinalStraightPhase の別名・表示用） */
+function isSpurEntryPhase(phase) {
+  return isFinalStraightPhase(phase);
+}
+
 function getPhaseBufferMultiplier(phase) {
   if (!phase) return 1.0;
   if (isStartToHomePhase(phase) && phase.index > 0) return 1.15;
@@ -67,7 +72,7 @@ function isThroughThirdCornerPhase(phase) {
     return true;
   }
   const segmentLabel = String(phase.segmentLabel ?? '');
-  if (segmentLabel.includes('第4コーナー') || segmentLabel.includes('最終直線')) return false;
+  if (segmentLabel.includes('第4コーナー') || segmentLabel.includes('最終直線入口') || segmentLabel.includes('最終直線')) return false;
   if (segmentLabel.includes('スタート') || segmentLabel.includes('ホーム直線') || segmentLabel.includes('向正面')) {
     return true;
   }
@@ -104,7 +109,7 @@ function isFinalStraightPhase(phase) {
   if (phase.isFinal) return true;
   const segmentId = String(phase.segmentId ?? '').toLowerCase();
   const label = String(phase.segmentLabel ?? '');
-  if (segmentId === 'final' || label.includes('最終直線')) return true;
+  if (segmentId === 'final' || label.includes('最終直線入口') || label.includes('最終直線')) return true;
   if (isFourthCornerPhase(phase)) return false;
   return phase.ratio >= FINAL_STRAIGHT_RATIO;
 }
@@ -119,4 +124,5 @@ export {
   isAfterFourthCornerPhase,
   isFourthCornerPhase,
   isFinalStraightPhase,
+  isSpurEntryPhase,
 };
