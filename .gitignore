@@ -1,5 +1,8 @@
 BKUP/
 .DS_Store
+node_modules/
 
-# Editor metadata
-.vscode/
+# Editor metadata（tasks / keybindings はリポジトリ共有）
+.vscode/*
+!.vscode/tasks.json
+!.vscode/keybindings.json
