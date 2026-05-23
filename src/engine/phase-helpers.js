@@ -98,6 +98,17 @@ function isFourthCornerPhase(phase) {
   return segmentId === 'corner4' || label.includes('第4コーナー');
 }
 
+/** 最終直線フェーズ（第4コーナー単体は含めない） */
+function isFinalStraightPhase(phase) {
+  if (!phase) return false;
+  if (phase.isFinal) return true;
+  const segmentId = String(phase.segmentId ?? '').toLowerCase();
+  const label = String(phase.segmentLabel ?? '');
+  if (segmentId === 'final' || label.includes('最終直線')) return true;
+  if (isFourthCornerPhase(phase)) return false;
+  return phase.ratio >= FINAL_STRAIGHT_RATIO;
+}
+
 export {
   isKickReserveReleased,
   getPhaseBufferMultiplier,
@@ -107,4 +118,5 @@ export {
   isThroughThirdCornerPhase,
   isAfterFourthCornerPhase,
   isFourthCornerPhase,
+  isFinalStraightPhase,
 };

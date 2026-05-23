@@ -81,7 +81,6 @@ import {
   FINAL_FRONT_BLOCK_EXTRA_GAP,
   FINAL_STRAIGHT_RATIO,
   POST_C3_STAMINA_SPREAD_FLOOR,
-  PROACTIVE_LATE_SPREAD_INTENT_MIN,
   LATERAL_SHIFT_SOFT_CAP,
   LATERAL_SHIFT_HARD_CAP,
   LATERAL_SHIFT_THROUGH_C3_CAP,
@@ -134,6 +133,8 @@ import {
   STAMINA_CORNER_OUTER_PER_LANE,
   GOAL_STAMINA_DRAIN_MULT,
   GOAL_AI,
+  CENTRIFUGAL_DRIFT_STAMINA_MULT,
+  STRETCH_LANE_SUBSTEPS,
 } from './constants.js';
 import {
   clampLane,
@@ -149,6 +150,7 @@ import {
   isThroughThirdCornerPhase,
   isAfterFourthCornerPhase,
   isFourthCornerPhase,
+  isFinalStraightPhase,
 } from './phase-helpers.js';
 import {
   resolveLeadBattle,
@@ -165,7 +167,6 @@ import {
   getFrontGap,
 } from './collision.js';
 import {
-  getEffectiveOuterSpreadIntent,
   calcTargetLane,
   calcStartPhaseTargetLane,
   calcPreCornerPackTargetLane,
@@ -173,6 +174,17 @@ import {
   calcPostFourthWideTargetLane,
   getLaneChangeRate,
 } from './lane-ai.js';
+import {
+  getLaneDecisionMeta,
+  calcCentrifugalDrift,
+  getLocalPackFrontGap,
+  calcLast3fWeight,
+  recordLaneCommit,
+  calcLocalPassTargetLane,
+  shouldFreezeStretchLane,
+  isStretchSpreadCandidate,
+  buildLaneDecisionContext,
+} from './lane-decision.js';
 function staminaAccelAbilityMult(staminaRatio) {
   const r = Math.max(0, Math.min(1, staminaRatio));
   if (r >= 0.35) return 1.0;
@@ -438,6 +450,9 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     horse.battleFatigue = 0;
     horse.startTroubleScore = 0;
     horse.staminaRatioAfterC3 = null;
+    horse.stretchFanLane = null;
+    horse.laneCommitDir = 0;
+    horse.laneCommitPhases = 0;
     const ave3fWeight = Number.isFinite(horse.ave3f)
       ? (ave3fMax - horse.ave3f) / ave3fSpan
       : 0.5;
@@ -481,7 +496,6 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     const collisionMetrics = renderer
       ? renderer.getCollisionMetrics(xSpan, phase)
       : { minXGap: MIN_FORWARD_GAP, minYGap: COLLISION_MIN_Y_GAP };
-
     // ① フェーズ特化バトル判定
     const threshold      = phase.distance * 0.8;
     const contacts       = detectContacts(horses, threshold);
@@ -562,6 +576,22 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       );
       let adjustedAdvance = desiredAdvance * irregularMult;
 
+      if (isAfterFourthCornerPhase(phase)) {
+        const last3fW = calcLast3fWeight(horse, last3fNorm);
+        const staminaR = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
+        const localGap = getLocalPackFrontGap(horse, horseLanePre, horses);
+        const blockedLocal = localGap < (collisionMetrics.minXGap + FINAL_FRONT_BLOCK_EXTRA_GAP);
+        const stretchKick = last3fW * (0.06 + staminaR * 0.11) * (blockedLocal ? 1.2 : 0.55);
+        adjustedAdvance *= (1 + stretchKick);
+        if (stretchKick > 0.02) {
+          const kickDrain = (Math.max(0, phase.distance) / 100) * stretchKick * 0.85;
+          subtractStaminaWithReserve(horse, kickDrain, phase, {
+            trackField: 'staminaAccelCost',
+            fatigueGain: 0.24,
+          });
+        }
+      }
+
       // スタート直後は能力差 + 反応差で前後にばらつきを作る
       // （以降フェーズは通常ロジックに戻す）
       if (phase.index === 0) {
@@ -603,7 +633,29 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       const isEarlyInnerBurst = isStartToHomePhase(phase);
       const isThroughThirdCorner = isThroughThirdCornerPhase(phase);
       const isAfterFourthCorner = isAfterFourthCornerPhase(phase);
-      const isLateStraight = phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO;
+      const isFinalStraight = isFinalStraightPhase(phase);
+      const isCorner4Only = isFourthCornerPhase(phase) && !isFinalStraight;
+      const isLateStraight = isFinalStraight;
+      if (
+        isLateStraight
+        && (isNigeStyle(horse.style) || horse.style === '先行')
+        && isLeadingPre
+      ) {
+        const chaserNear = horses.some(h =>
+          h.id !== horse.id
+          && h.x < horse.x + 2
+          && h.x > horse.x - 42,
+        );
+        if (chaserNear) {
+          const holdDrain =
+            (Math.max(0, phase.distance) / 100)
+            * (0.55 + (horse.oonigePressure ?? horse.frontRunDrive ?? 0) * 0.9);
+          subtractStaminaWithReserve(horse, holdDrain, phase, {
+            trackField: 'staminaAccelCost',
+            fatigueGain: 0.32,
+          });
+        }
+      }
       const isOonige = isOonigeStyle(horse.style);
       if (isEarlyInnerBurst && isNigeStyle(horse.style)) {
         const outerLanePressureNorm = calcOuterNigePressureNorm(horse.y);
@@ -784,10 +836,18 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         });
         horse.oonigePressure = Math.max(0, (horse.oonigePressure ?? 0) * 0.82);
       }
-      const currentFrontGap = getFrontGap(horse, clampLane(horse.y), horses);
+      const currentFrontGap = isAfterFourthCornerPhase(phase)
+        ? getLocalPackFrontGap(horse, clampLane(horse.y), horses)
+        : getFrontGap(horse, clampLane(horse.y), horses);
       const frontBlocked = currentFrontGap < (collisionMetrics.minXGap + FINAL_FRONT_BLOCK_EXTRA_GAP);
       if ((horse.laneChangeCooldownPhases ?? 0) > 0) {
         horse.laneChangeCooldownPhases -= 1;
+      }
+      if ((horse.laneCommitPhases ?? 0) > 0) {
+        horse.laneCommitPhases -= 1;
+        if (horse.laneCommitPhases <= 0) {
+          horse.laneCommitDir = 0;
+        }
       }
       if ((horse.innerCutInCooldownPhases ?? 0) > 0) {
         horse.innerCutInCooldownPhases -= 1;
@@ -804,61 +864,105 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       if (isThroughThirdCorner) {
         horse.targetLane = Math.min(horse.targetLane, INNER_HALF_LANE_MAX);
       }
-      if (isAfterFourthCorner) {
-        horse.targetLane = calcPostFourthWideTargetLane(horse, horse.targetLane, phase, horses, last3fNorm);
+      const stretchLaneSteps = isFinalStraight
+        ? STRETCH_LANE_SUBSTEPS
+        : (isCorner4Only ? 1 : 1);
+      const prevLaneYBeforeStretch = horse.y;
+      let driftShift = 0;
+      for (let stretchStep = 0; stretchStep < stretchLaneSteps; stretchStep += 1) {
+        const frontGapStep = getLocalPackFrontGap(horse, clampLane(horse.y), horses);
+        const frontBlockedStep = frontGapStep < (collisionMetrics.minXGap + FINAL_FRONT_BLOCK_EXTRA_GAP);
+        if (isCorner4Only) {
+          horse.targetLane = horse.y;
+        } else if (isFinalStraight) {
+          horse.targetLane = calcPostFourthWideTargetLane(
+            horse,
+            horse.targetLane,
+            phase,
+            horses,
+            last3fNorm,
+            { minXGap: collisionMetrics.minXGap, speedAdvance: adjustedAdvance },
+          );
+        }
+        if (isEarlyInnerBurst && horse.targetLane > horse.y) {
+          horse.targetLane = horse.y;
+        }
+        const laneDecisionMeta = (isFinalStraight || isCorner4Only)
+          ? getLaneDecisionMeta(
+            horse,
+            phase,
+            horses,
+            last3fNorm,
+            collisionMetrics.minXGap,
+            adjustedAdvance,
+          )
+          : null;
+        const seekOutsideLane = Boolean(laneDecisionMeta?.seekOutsideLane);
+        if (isLateStraight && !frontBlockedStep && !seekOutsideLane) {
+          horse.targetLane = horse.y;
+        } else if (isFinalStraight && seekOutsideLane) {
+          const passPull = calcLocalPassTargetLane(
+            horse,
+            phase,
+            horses,
+            horse.targetLane,
+            last3fNorm,
+            { minXGap: collisionMetrics.minXGap, speedAdvance: adjustedAdvance },
+          );
+          horse.targetLane = clampLane(horse.targetLane * 0.30 + passPull * 0.70);
+        } else if ((horse.laneChangeCooldownPhases ?? 0) > 0 && stretchStep === 0) {
+          horse.targetLane = horse.y;
+        }
+        const laneChangeRate = getLaneChangeRate(phase, horse, last3fNorm, horses);
+        const desiredY = horse.y + (horse.targetLane - horse.y) * laneChangeRate;
+        const laneCheck = resolveLaneMovement(
+          rng,
+          horse,
+          desiredY,
+          adjustedAdvance,
+          horses,
+          phase,
+          {
+            frontBlocked: frontBlockedStep,
+            isLateStraight,
+            isStartPhase,
+            isEarlyInnerBurst,
+            collisionMetrics,
+            seekOutsideLane,
+            lateralCap: laneDecisionMeta?.lateralCap,
+          },
+          phaseEventLogs,
+          globalLogs,
+          engagedHorseIds,
+        );
+        horse.y = laneCheck.nextY;
+        if (isThroughThirdCorner) {
+          horse.y = Math.min(horse.y, INNER_HALF_LANE_MAX);
+        }
+        if (stretchStep === stretchLaneSteps - 1 && (isCorner4Only || isFinalStraight)) {
+          const yBeforeDrift = horse.y;
+          const drift = calcCentrifugalDrift(horse, phase, adjustedAdvance);
+          if (drift > 0.001) {
+            horse.y = clampLane(horse.y + drift);
+            driftShift += Math.abs(horse.y - yBeforeDrift);
+          }
+        }
+        if (laneCheck.advanceMult != null && stretchStep === 0) {
+          adjustedAdvance *= laneCheck.advanceMult;
+        }
+        if (Number.isFinite(laneCheck.xNudge) && laneCheck.xNudge > 0 && stretchStep === 0) {
+          horse.x += laneCheck.xNudge;
+        }
       }
-      if (isEarlyInnerBurst && horse.targetLane > horse.y) {
-        horse.targetLane = horse.y;
+      const laneShift = Math.abs(horse.y - prevLaneYBeforeStretch);
+      if (laneShift > 0.08 && isFinalStraight) {
+        recordLaneCommit(horse, prevLaneYBeforeStretch, horse.y);
       }
-      const outerSpreadIntent = getEffectiveOuterSpreadIntent(
-        horse,
-        phase,
-        last3fMin,
-        last3fMax,
-        last3fSpan,
-      );
-      const allowProactiveLateSpread =
-        isLateStraight && !frontBlocked && outerSpreadIntent > PROACTIVE_LATE_SPREAD_INTENT_MIN;
-      if (isLateStraight && !frontBlocked && !allowProactiveLateSpread) {
-        horse.targetLane = horse.y;
-      } else if ((horse.laneChangeCooldownPhases ?? 0) > 0) {
-        horse.targetLane = horse.y;
-      }
-      const laneChangeRate = getLaneChangeRate(phase, horse, last3fNorm);
-      const desiredY   = horse.y + (horse.targetLane - horse.y) * laneChangeRate;
-      const prevLaneY = horse.y;
-      const laneCheck  = resolveLaneMovement(
-        rng,
-        horse,
-        desiredY,
-        adjustedAdvance,
-        horses,
-        phase,
-        {
-          frontBlocked,
-          isLateStraight,
-          isStartPhase,
-          isEarlyInnerBurst,
-          collisionMetrics,
-          allowProactiveLateSpread,
-        },
-        phaseEventLogs,
-        globalLogs,
-        engagedHorseIds,
-      );
-      horse.y          = laneCheck.nextY;
-      if (isThroughThirdCorner) {
-        horse.y = Math.min(horse.y, INNER_HALF_LANE_MAX);
-      }
-      if (laneCheck.advanceMult != null) {
-        adjustedAdvance *= laneCheck.advanceMult;
-      }
-      if (Number.isFinite(laneCheck.xNudge) && laneCheck.xNudge > 0) {
-        horse.x += laneCheck.xNudge;
-      }
-      const laneShift = Math.abs(horse.y - prevLaneY);
       if (laneShift > 0.001) {
-        const laneDrain = laneShift * STAMINA_LANE_CHANGE_COST;
+        const activeLaneShift = Math.max(0, laneShift - driftShift);
+        const activeDrain = activeLaneShift * STAMINA_LANE_CHANGE_COST;
+        const driftDrain = driftShift * STAMINA_LANE_CHANGE_COST * CENTRIFUGAL_DRIFT_STAMINA_MULT;
+        const laneDrain = activeDrain + driftDrain;
         const safeLaneDrain = USE_SAFE_STAMINA_MODEL
           ? laneDrain * SAFE_LANE_EVENT_DRAIN_MULT
           : laneDrain;
@@ -989,6 +1093,36 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       resolveHorseOverlaps(horses, {
         ...overlapBase,
         iterations: 1,
+        freezeY: false,
+        phase,
+      });
+    }
+    if (isFinalStraightPhase(phase)) {
+      for (const horse of horses) {
+        if (shouldFreezeStretchLane(horse, horses, collisionMetrics.minXGap)) continue;
+        const ctx = buildLaneDecisionContext(horse, phase, horses, {
+          last3fNorm,
+          minXGap: collisionMetrics.minXGap,
+        });
+        if (!isStretchSpreadCandidate(horse, ctx, horses)) continue;
+        const passTarget = calcLocalPassTargetLane(
+          horse,
+          phase,
+          horses,
+          horse.y,
+          last3fNorm,
+          { minXGap: collisionMetrics.minXGap },
+        );
+        const delta = passTarget - horse.y;
+        if (delta < 0.06) continue;
+        const capped = delta > 2.6 ? clampLane(horse.y + 2.6) : passTarget;
+        horse.y = clampLane(horse.y * 0.48 + capped * 0.52);
+      }
+      resolveHorseOverlaps(horses, {
+        minXGap: collisionMetrics.minXGap,
+        minYGap: Math.max(0.82, collisionMetrics.minYGap),
+        iterations: 3,
+        keepOrder: true,
         freezeY: false,
         phase,
       });

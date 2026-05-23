@@ -2,6 +2,7 @@ import {
   MIN_FORWARD_GAP,
   FORMATION_LOCK_PHASE,
   FINAL_STRAIGHT_RATIO,
+  FINAL_FRONT_BLOCK_EXTRA_GAP,
   INNER_HALF_LANE_MAX,
   LANE_WIDTH,
   POST_C3_STAMINA_SPREAD_FLOOR,
@@ -13,9 +14,14 @@ import {
   getPreferredLaneByStyle,
 } from './lane-preference.js';
 import {
+  calcLateStretchTargetLane,
+  getLaneChangeRateForStretch,
+} from './lane-decision.js';
+import {
   isThroughThirdCornerPhase,
   isFourthCornerPhase,
   isAfterFourthCornerPhase,
+  isFinalStraightPhase,
   isStartToHomePhase,
   getPhaseLaneBand,
 } from './phase-helpers.js';
@@ -40,16 +46,22 @@ function getCloserOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan) {
 }
 
 function getEffectiveOuterSpreadIntent(horse, phase, last3fMin, last3fMax, last3fSpan) {
-  const rawCloser = getCloserOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan);
-  if (!isAfterFourthCornerPhase(phase)) return rawCloser;
-  const budget = getPostC3StaminaSpreadBudget(horse);
-  let intent = rawCloser;
-  if (horse.style === '先行') {
-    intent = Math.max(intent, 0.38 * budget);
-  } else if (isNigeStyle(horse.style)) {
-    intent = Math.max(intent, 0.10 * budget);
+  if (!isAfterFourthCornerPhase(phase)) {
+    return getCloserOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan);
   }
-  return Math.max(0, Math.min(1, intent * (0.22 + 0.78 * budget)));
+  const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
+  const span = Math.max(0.001, last3fSpan ?? (last3fMax - last3fMin));
+  const last3fWeight = Number.isFinite(horse.last3f)
+    ? (last3fMax - horse.last3f) / span
+    : 0.5;
+  const budget = getPostC3StaminaSpreadBudget(horse);
+  return Math.max(
+    0,
+    Math.min(
+      1,
+      last3fWeight * 0.42 + staminaRatio * 0.38 + budget * 0.35,
+    ),
+  );
 }
 
 function getFourthCornerOutwardIntent(horse, phase, last3fNorm = null) {
@@ -249,89 +261,31 @@ function calcEarlyInnerPriorityLane(horse, baseTargetLane, phase, allHorses, col
   return Math.min(bestLane, currentLane);
 }
 
-function calcPostFourthWideTargetLane(horse, baseTargetLane, phase, allHorses, last3fNorm = null) {
-  const currentLane = clampLane(horse.y);
-  const baseTarget = clampLane(baseTargetLane);
-  const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
-  let outerSpreadIntent = 0;
-  if (last3fNorm && Number.isFinite(last3fNorm.min) && Number.isFinite(last3fNorm.max)) {
-    outerSpreadIntent = getEffectiveOuterSpreadIntent(
-      horse,
-      phase,
-      last3fNorm.min,
-      last3fNorm.max,
-      last3fNorm.span,
-    );
-  }
-  const candidates = [
-    baseTarget,
-    currentLane,
-    currentLane + 1,
-    currentLane - 1,
-    currentLane + 2,
-    currentLane - 2,
-    currentLane + 3,
-    currentLane - 3,
-    currentLane + 4,
-    currentLane - 4,
-  ]
-    .map(v => clampLane(v))
-    .filter((v, i, arr) => arr.indexOf(v) === i);
-
-  let bestLane = baseTarget;
-  let bestScore = -Infinity;
-  for (const lane of candidates) {
-    const frontGap = getFrontGap(horse, lane, allHorses);
-    const density = allHorses.filter(h =>
-      h.id !== horse.id &&
-      Math.abs(h.x - horse.x) < 26 &&
-      Math.abs(h.y - lane) < 0.92
-    ).length;
-    const staminaDiscountOnOuterMove = Math.max(0.15, staminaRatio) * 0.8;
-    const moveCost = Math.abs(lane - currentLane) * 1.05 * (2.0 - staminaDiscountOnOuterMove);
-    const outsideBias = lane * (0.55 + outerSpreadIntent * 1.1);
-    const openLaneBonus = frontGap > MIN_FORWARD_GAP + 10 ? 6.2 : 0;
-    const closerPrepBonus = outerSpreadIntent * 4.0;
-    const score = Math.min(frontGap, 92) * 1.08 - density * 4.7 - moveCost + outsideBias + openLaneBonus
-      + closerPrepBonus;
-    if (score > bestScore) {
-      bestScore = score;
-      bestLane = lane;
-    }
-  }
-
-  return bestLane;
+function calcPostFourthWideTargetLane(horse, baseTargetLane, phase, allHorses, last3fNorm = null, options = {}) {
+  return calcLateStretchTargetLane(
+    horse,
+    phase,
+    allHorses,
+    baseTargetLane,
+    last3fNorm,
+    options,
+  );
 }
 
-function getLaneChangeRate(phase, horse = null, last3fNorm = null) {
+function getLaneChangeRate(phase, horse = null, last3fNorm = null, allHorses = null) {
   // スタート〜ホーム直線は一気に内へ寄せて隊列を作る
   if (isStartToHomePhase(phase)) return 0.98;
   if (phase.ratio < FORMATION_LOCK_PHASE) return 0.55;
   if (isThroughThirdCornerPhase(phase) && phase.ratio < 0.80) return 0.55;
-  if (isFourthCornerPhase(phase) && horse) {
-    const intent = getFourthCornerOutwardIntent(horse, phase, last3fNorm);
-    if (intent > 0.38) return 0.46;
-    if (intent > 0.22) return 0.36;
-    return 0.26;
-  }
-  if (
-    horse &&
-    last3fNorm &&
-    Number.isFinite(last3fNorm.min) &&
-    Number.isFinite(last3fNorm.max) &&
-    isAfterFourthCornerPhase(phase) &&
-    !phase.isFinal &&
-    phase.ratio < 0.80
-  ) {
-    const intent = getEffectiveOuterSpreadIntent(
-      horse,
+  if (horse && isFinalStraightPhase(phase) && allHorses) {
+    const stretchRate = getLaneChangeRateForStretch(
       phase,
-      last3fNorm.min,
-      last3fNorm.max,
-      last3fNorm.span,
+      horse,
+      allHorses,
+      last3fNorm,
+      horse.lastAdvance,
     );
-    if (intent > 0.25) return 0.36;
-    return 0.22;
+    if (stretchRate != null) return stretchRate;
   }
   if (phase.ratio < 0.80) return 0.12;
   return 0.20;
@@ -369,19 +323,20 @@ function scoreLaneOption(
   if (c4) innerBias *= 0.24;
   score += innerBias;
 
-  if (c4) {
+  const afterC4 = isAfterFourthCornerPhase(phase);
+  if (c4 || afterC4) {
     const outward = getFourthCornerOutwardIntent(horse, phase, last3fNorm);
-    score += lane * outward * 1.42;
+    const frontBlockedHere = frontGap < MIN_FORWARD_GAP + FINAL_FRONT_BLOCK_EXTRA_GAP;
+    if (frontBlockedHere && lane > currentLane) {
+      score += (lane - currentLane) * outward * 2.8;
+    }
     const innerCrowd = allHorses.filter(h =>
       h.id !== horse.id &&
       Math.abs(h.x - horse.x) < 30 &&
       clampLane(h.y) <= clampLane(currentLane) + 0.45
     ).length;
-    if (innerCrowd >= 2 && lane > currentLane - 0.05) {
-      score += (lane - currentLane) * outward * 3.1;
-    }
-    if (frontGap < MIN_FORWARD_GAP + 10 && lane > currentLane) {
-      score += (lane - currentLane) * outward * 3.8;
+    if (innerCrowd >= 2 && lane > currentLane - 0.05 && frontBlockedHere) {
+      score += (lane - currentLane) * outward * 2.4;
     }
   }
 
@@ -404,10 +359,6 @@ function scoreLaneOption(
   ) {
     score += lane * 0.55;
   }
-  if ((horse.style === '差し' || horse.style === '追込') && phase.ratio >= 0.80) {
-    score -= lane * 0.35;
-  }
-
   // 逃げ/先行はスタート〜序盤で内のポジション取りを優先。
   // 空いていない場合は無理に寄せないように抑制する。
   if ((isNigeStyle(horse.style) || horse.style === '先行') && phase.ratio < 0.25) {
@@ -420,22 +371,6 @@ function scoreLaneOption(
   }
 
   if (frontGap < MIN_FORWARD_GAP + 4) score -= 12;
-  if ((phase.isFinal || phase.ratio >= FINAL_STRAIGHT_RATIO) && frontGap > MIN_FORWARD_GAP + 10) {
-    let prepContinue = 0;
-    if (last3fNorm && Number.isFinite(last3fNorm.min) && Number.isFinite(last3fNorm.max)) {
-      prepContinue = getEffectiveOuterSpreadIntent(
-        horse,
-        phase,
-        last3fNorm.min,
-        last3fNorm.max,
-        last3fNorm.span,
-      );
-    } else {
-      prepContinue = getPostC3StaminaSpreadBudget(horse) * 0.62;
-    }
-    const penaltyWt = 4.2 * Math.max(0.28, 1.0 - prepContinue * 0.52);
-    score -= Math.abs(lane - currentLane) * penaltyWt;
-  }
   return score;
 }
 

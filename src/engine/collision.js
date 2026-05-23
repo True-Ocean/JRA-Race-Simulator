@@ -16,6 +16,7 @@ import {
   INNER_CUTIN_BUFFER_MULT,
   LATERAL_SHIFT_SOFT_CAP,
   LATERAL_SHIFT_HARD_CAP,
+  LATERAL_SHIFT_BLOCKED_CAP,
   LATERAL_SHIFT_THROUGH_C3_CAP,
   START_LATERAL_SHIFT_CAP,
   THROUGH_C3_LANE_CHANGE_TRIGGER_DELTA,
@@ -122,19 +123,23 @@ function resolveLaneMovement(
   const speedRatio = horse.S_cruise > 0 ? predictedSpeed / horse.S_cruise : 1;
   const capBase = allowBurstShortCircuit
     ? START_LATERAL_SHIFT_CAP
-    : isLateStraight
-      ? LATERAL_SHIFT_HARD_CAP
-      : isThroughC3
-        ? LATERAL_SHIFT_THROUGH_C3_CAP
-        : LATERAL_SHIFT_SOFT_CAP;
+    : Number.isFinite(context?.lateralCap)
+      ? context.lateralCap
+      : isLateStraight && (frontBlocked || Boolean(context?.seekOutsideLane))
+        ? LATERAL_SHIFT_BLOCKED_CAP
+        : isLateStraight
+          ? LATERAL_SHIFT_HARD_CAP
+          : isThroughC3
+            ? LATERAL_SHIFT_THROUGH_C3_CAP
+            : LATERAL_SHIFT_SOFT_CAP;
   const speedPenalty = Math.max(0, Math.min(0.5, (speedRatio - 0.85) * 0.55));
-  const frontBlockBoost = frontBlocked ? 1.30 : 1.0;
+  const seekOutside = Boolean(context?.seekOutsideLane);
+  const frontBlockBoost = frontBlocked && seekOutside ? 1.35 : (frontBlocked ? 1.15 : 1.0);
   const maxDelta = capBase * (1 - speedPenalty) * frontBlockBoost;
   const limitedDelta = Math.sign(desiredDelta) * Math.min(absDesiredDelta, Math.max(0.10, maxDelta));
   const limitedY = clampLane(baseY + limitedDelta);
 
-  const allowProactiveLateStraight = Boolean(context?.allowProactiveLateSpread);
-  if (isLateStraight && !frontBlocked && !allowProactiveLateStraight) {
+  if (isLateStraight && !frontBlocked) {
     return { nextY: baseY, advanceMult: 1 };
   }
 

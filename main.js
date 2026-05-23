@@ -640,6 +640,8 @@ Promise.all([
     /** @type {{ snapshots: object[], simResults: object[], finishOrderIds: number[], initialHorses?: object[], goalRecording?: object[], postGoalCourseFrame?: object } | null} */
     let replayBundle = null;
     let raceStartInitialHorses = null;
+    /** レース開始ごとに変える RNG シード（race_id 固定だと毎回同一結果になる） */
+    let simulationRunSeed = null;
     /** 全馬ゴール後・画面外へ抜けた直後のコース描画（集計画面からの復元用） */
     let postGoalCourseFrame = null;
 
@@ -841,9 +843,18 @@ Promise.all([
       }, 300);
     }
 
+    function rollSimulationSeed() {
+      const raceId = Number(runtimeRaceData.race_id) || 0;
+      const t = Date.now() >>> 0;
+      const r = (Math.random() * 0x100000000) >>> 0;
+      simulationRunSeed = (raceId ^ t ^ (r * 2246822519)) >>> 0;
+      if (simulationRunSeed === 0) simulationRunSeed = 1;
+      return simulationRunSeed;
+    }
+
     const currentOptions = () => ({
-      reproducible: true,
-      seed: runtimeRaceData.race_id,
+      reproducible: Boolean(simulationRunSeed),
+      seed: simulationRunSeed ?? runtimeRaceData.race_id,
     });
 
     const refreshRaceInfo = () => {
@@ -938,6 +949,7 @@ Promise.all([
       hasAggregatedThisRun = false;
       replayBundle = null;
       raceStartInitialHorses = null;
+      simulationRunSeed = null;
       postGoalCourseFrame = null;
       if (btnShowSummary) btnShowSummary.disabled = true;
       document.getElementById('phase-indicator').textContent = 'スタート';
@@ -1034,6 +1046,7 @@ Promise.all([
         finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
         postGoalCourseFrame: postGoal ? JSON.parse(JSON.stringify(postGoal)) : null,
         replayMeta: {
+          simulationRunSeed: simulationRunSeed ?? null,
           initialHorses: Array.isArray(replayBundle?.initialHorses)
             ? JSON.parse(JSON.stringify(replayBundle.initialHorses))
             : (raceStartInitialHorses
@@ -1130,6 +1143,7 @@ Promise.all([
 
     function startNewRaceSimulation() {
       isReplayPlayback = false;
+      rollSimulationSeed();
       try {
         sessionStorage.removeItem(SESSION_KEY_SIMULATOR_STATE);
         sessionStorage.removeItem(SESSION_KEY_SUMMARY_STATE);
@@ -1137,7 +1151,11 @@ Promise.all([
         /* ignore */
       }
       if (btnShowSummary) btnShowSummary.disabled = true;
-      document.getElementById('log-panel').innerHTML = '';
+      const logPanel = document.getElementById('log-panel');
+      if (logPanel) {
+        logPanel.innerHTML =
+          `<div class="log-entry" style="color:#334;">シミュレーション seed: ${simulationRunSeed}</div>`;
+      }
       syncPlacingPanelsHtml('');
 
       refreshRaceInfo();

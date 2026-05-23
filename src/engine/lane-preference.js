@@ -1,6 +1,6 @@
 import { POST_C3_STAMINA_SPREAD_FLOOR } from './constants.js';
 import { isNigeStyle, isOonigeStyle } from './horse-utils.js';
-import { isThroughThirdCornerPhase, isFourthCornerPhase } from './phase-helpers.js';
+import { isThroughThirdCornerPhase } from './phase-helpers.js';
 
 function getPostC3StaminaSpreadBudget(horse) {
   const initial = horse.initialStamina > 0 ? horse.initialStamina : 1;
@@ -29,20 +29,6 @@ function getPreferredLaneByStyle(horse, phase) {
   else if (style === '追込') pref = r < 0.60 ? 5.8 : (r < 0.80 ? 4.8 : 6.0);
   else pref = 3.8;
 
-  if (isFourthCornerPhase(phase)) {
-    const budget = getPostC3StaminaSpreadBudget(horse);
-    if (budget > 0.02) {
-      const styleWt =
-        style === '差し' || style === '追込'
-          ? 2.15
-          : style === '先行'
-            ? 1.48
-            : isNigeStyle(style)
-              ? 0.52
-              : 0.68;
-      pref += budget * styleWt;
-    }
-  }
   return pref;
 }
 

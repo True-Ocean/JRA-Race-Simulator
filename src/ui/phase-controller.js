@@ -70,6 +70,11 @@ import {
   appendPlacingRowToPanels,
 } from './placing-panel.js';
 import { updateEntryStaminaBars } from './entry-stamina.js';
+import {
+  calcGoalChaseUrgency,
+  calcPackRankNorm,
+  assignStretchFanLanesForPack,
+} from '../engine/lane-decision.js';
 
 function applyStartSlowMotion(progress) {
   const p = Math.max(0, Math.min(1, progress));
@@ -501,6 +506,7 @@ class PhaseController {
     const minLast3f = last3fValues.length ? Math.min(...last3fValues) : 33;
     const maxLast3f = last3fValues.length ? Math.max(...last3fValues) : minLast3f + 1;
     const last3fSpan = Math.max(0.001, maxLast3f - minLast3f);
+    const last3fNorm = { min: minLast3f, max: maxLast3f, span: last3fSpan };
 
     const xValues = baseHorses.map(h => h.x);
     const maxX = Math.max(...xValues, 1);
@@ -574,6 +580,16 @@ class PhaseController {
         // 追い抜きの瞬間に肩が並ぶ動きを潰さないようにする。
         goalLaneEnterUntilMs: 0,
       };
+    });
+
+    assignStretchFanLanesForPack(simHorses, {
+      last3fNorm,
+      phase: { isFinal: true, segmentId: 'final', segmentLabel: '最終直線' },
+    });
+    simHorses.forEach(horse => {
+      const blendedLane = clampLane(horse.stretchFanLane ?? horse.y);
+      horse.y = blendedLane;
+      horse.targetLane = blendedLane;
     });
 
     simHorses.forEach(horse => {
@@ -723,7 +739,13 @@ class PhaseController {
         const distRatio = Math.min(1, (horse.goalMeters || 0) / GOAL_DISTANCE_METERS);
         const remainMeters = Math.max(0, GOAL_DISTANCE_METERS - (horse.goalMeters || 0));
         const isCloser = horse.style === '追込' || horse.style === '差し';
-        const aggression = this._calcGoalAggression(horse, staminaRatio, last3fWeight, distRatio);
+        const aggression = this._calcGoalAggression(
+          horse,
+          staminaRatio,
+          last3fWeight,
+          distRatio,
+          calcPackRankNorm(horse, simHorses),
+        );
         const frontGapNow = this._goalFrontGap(simHorses, horse, clampLane(horse.y));
         const frontBlockedNow = frontGapNow < GOAL_BLOCK_X_GAP * 1.08;
         const urgePass = this._goalShouldSeekPass(simHorses, horse);
@@ -753,13 +775,13 @@ class PhaseController {
         // 1.2 秒を上限に、最大 0.55 まで閾値を下げる。
         const stuckEase = Math.min(0.55, (horse.goalStuckMs ?? 0) / 1200 * 0.55);
         const adaptiveThreshold = Math.max(
-          // 詰まりが深刻な時は下限自体も少し下げる（0.55 -> 0.40）
-          0.40,
+          frontBlockedNow ? 0.28 : 0.40,
           GOAL_AI.switchThresholdBase
             - aggression * 0.52
             + (1 - distRatio) * 0.14
             + (staminaRatio < 0.24 ? 0.12 : 0)
             - (urgePass ? 0.32 : 0)
+            - (frontBlockedNow ? 0.38 : 0)
             - stuckEase,
         );
         const laneRound = clampLane(horse.y);
@@ -1486,13 +1508,9 @@ class PhaseController {
     return visualById;
   }
 
-  _calcGoalAggression(horse, staminaRatio, last3fWeight, distRatio) {
-    const base = GOAL_AI.aggrBaseByStyle[horse.style] ?? 0.5;
-    const value =
-      base +
-      staminaRatio * GOAL_AI.aggrStaminaGain +
-      last3fWeight * GOAL_AI.aggrLast3fGain +
-      (1 - distRatio) * 0.18;
+  _calcGoalAggression(horse, staminaRatio, last3fWeight, distRatio, packRankNorm = 0.5) {
+    const base = calcGoalChaseUrgency(horse, staminaRatio, last3fWeight, packRankNorm);
+    const value = base + (1 - distRatio) * 0.12;
     return Math.max(0.2, Math.min(1.8, value));
   }
 
@@ -1577,7 +1595,10 @@ class PhaseController {
     // 「目の前が空いているのに左右に揺れる」現象を根本から防ぐ。
     const frontInCurrent = this._goalFrontHorse(horses, horse, currentLane);
     const farFrontThreshold = GOAL_AI.passSeekMaxForwardX;
-    if (!frontInCurrent || (frontInCurrent.x - horse.x) > farFrontThreshold) {
+    if (
+      !frontBlocked
+      && (!frontInCurrent || (frontInCurrent.x - horse.x) > farFrontThreshold)
+    ) {
       return { lane: currentLane, gain: 0, pressure: 0 };
     }
     // 「現速度」ではなく「その馬が本来出したい速度（=直近の targetMps）」で比較する。
@@ -1595,8 +1616,8 @@ class PhaseController {
     // 詰まり時間が長くなるほどゲートを甘くする（最低でも 0.97 倍までは緩める）。
     // 例: 0.6 秒詰まりで 1.005、1.2 秒で ~0.985 → 微差でも進路評価に進めるようになる。
     const gateRatio = Math.max(0.97, 1.02 - stuckMs / 1200 * 0.05);
-    if (selfDesired <= frontDesired * gateRatio) {
-      // 自分が出したい速度でも前方馬の方が速い -> 進路変更しても追いつけない。直進維持。
+    if (!frontBlocked && selfDesired <= frontDesired * gateRatio) {
+      // 前方が空いていて追いつけない場合のみ直進維持。詰まり時は外レーン評価を続ける。
       return { lane: currentLane, gain: 0, pressure: 0 };
     }
 
@@ -1630,6 +1651,9 @@ class PhaseController {
 
     const projectedX = this._predictGoalX(horse, horizonSec);
     const baseProjectedGap = this._goalFrontGap(horses, horse, currentLane, projectedX);
+    const packRankNorm = calcPackRankNorm(horse, horses);
+    const chaseUrgency = calcGoalChaseUrgency(horse, staminaRatio, last3fWeight, packRankNorm);
+    const fanLane = horse.stretchFanLane ?? clampLane(horse.y);
     const candidates = [
       currentLane,
       currentLane - 1,
@@ -1638,16 +1662,16 @@ class PhaseController {
       currentLane + 2,
       currentLane - 3,
       currentLane + 3,
+      fanLane,
+      ...(frontBlocked
+        ? [currentLane + 4, currentLane + 5, currentLane + 6, currentLane + 7, currentLane + 8]
+        : []),
     ]
       .map(v => clampLane(v))
       .filter((v, i, arr) => arr.indexOf(v) === i);
-    const styleOutsideBiasBase = (horse.style === '差し' || horse.style === '追込') ? 0.58 : 0.16;
-    const closerRoute = horse.style === '差し' || horse.style === '追込';
-    const spreadBoost = closerRoute
-      ? last3fWeight * 0.55 + staminaRatio * 0.35
-      : staminaRatio * 0.12;
-    const styleOutsideBias = styleOutsideBiasBase * (0.75 + Math.min(1, spreadBoost));
-    const keepStraightFactor = closerRoute ? Math.max(0.35, 1.15 - spreadBoost * 0.55) : 1;
+    const spreadBoost = last3fWeight * 0.55 + staminaRatio * 0.35 + packRankNorm * 0.12;
+    const routeOutsideBias = frontBlocked ? chaseUrgency * 0.48 : 0;
+    const keepStraightFactor = Math.max(0.35, 1.15 - spreadBoost * 0.48);
     const lowStamina = staminaRatio < 0.22;
     // 内側で詰まっている時の外脱出補助：
     // currentLane が浅い（=内側）ほど、かつ stuckMs が長いほど、外側候補の評価を持ち上げる。
@@ -1670,8 +1694,13 @@ class PhaseController {
       const staminaRisk = Math.max(0, moveCost * 0.18 - staminaRatio * 0.35);
       const blockRisk = Math.max(0, 1 - Math.min(1, projectedGap / Math.max(1, GOAL_BLOCK_X_GAP * 1.3)));
       const safeLaneBonus = jockeyReliability * Math.max(0, projectedGap - baseProjectedGap) * 0.16;
-      const styleBonus = lane * styleOutsideBias * (0.45 + last3fWeight * 0.55);
-      const projectedGain = Math.min(projectedGap, 92) * GOAL_AI.projectedGapWeight;
+      const gapGain = projectedGap - baseProjectedGap;
+      const fanPull = Math.max(0, 2.4 - Math.abs(lane - fanLane) * 0.28) * (frontBlocked ? 0.85 : 0.25);
+      const styleBonus = lane > currentLane && frontBlocked
+        ? (lane - currentLane) * routeOutsideBias * (0.45 + last3fWeight * 0.55)
+        : 0;
+      const projectedGain = Math.min(projectedGap, 92) * GOAL_AI.projectedGapWeight
+        + Math.max(0, gapGain) * chaseUrgency * 0.85;
       const keepStraightMult = urgeOvertake && !frontBlocked ? 0.36 : 1;
       const keepStraightPenalty = !frontBlocked
         ? Math.abs(lane - currentLane) * 2.9 * keepStraightFactor * keepStraightMult
@@ -1704,6 +1733,7 @@ class PhaseController {
         collisionHorizonCost -
         staminaLanePenalty +
         styleBonus +
+        fanPull +
         riderAggression * 0.8 +
         passLaneBonus * (0.85 + riderAggression * 0.35) +
         innerEscapeBonus * (0.9 + jockeyReliability * 0.3) +

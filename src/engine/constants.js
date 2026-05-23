@@ -89,9 +89,23 @@ export const FINAL_LANE_CHANGE_COOLDOWN_PHASES = 2;
 export const FINAL_FRONT_BLOCK_EXTRA_GAP = 6;
 export const FINAL_STRAIGHT_RATIO = 0.80;
 /** 第3コーナー終了時点（第4コーナー開始フェーズ）のスタミナ比率がこれ未満だと外への先回り意欲を大きく抑える */
-export const POST_C3_STAMINA_SPREAD_FLOOR = 0.34;
-/** 最終直線で前が空いていても横に振れると判断する外膨らみ意図の下限（getEffectiveOuterSpreadIntent） */
-export const PROACTIVE_LATE_SPREAD_INTENT_MIN = 0.24;
+export const POST_C3_STAMINA_SPREAD_FLOOR = 0.24;
+/** 前が塞がり外進路を取る馬の横移動上限（最終直線） */
+export const LATERAL_SHIFT_BLOCKED_CAP = 2.58;
+/** 最終直線: 前方ブロック判定の追加ギャップ（本番より緩め） */
+export const FINAL_STRAIGHT_SPREAD_BLOCK_EXTRA = 3;
+/** 最終直線: 同x帯クラスタのすり分け幅（m） */
+export const FINAL_STRAIGHT_X_BAND = 9;
+/** 第4コーナー中の能動横移動上限（遠心力ドリフトは別） */
+export const LATERAL_SHIFT_CORNER4_CAP = 0.34;
+/** 最終直線の能動レーン変更を1フェーズ内で繰り返す回数 */
+export const STRETCH_LANE_SUBSTEPS = 7;
+/** 進路コミット維持フェーズ数（慣性・ジグザグ抑制） */
+export const LANE_COMMIT_PHASES = 2;
+/** ローカル前方判定の最大距離（真前の馬のみ） */
+export const LOCAL_FRONT_MAX_X = 20;
+/** 遠心力 drift のスタミナ消費（能動レーン変更コストへの倍率） */
+export const CENTRIFUGAL_DRIFT_STAMINA_MULT = 0.22;
 export const LATERAL_SHIFT_SOFT_CAP = 0.42;
 export const LATERAL_SHIFT_HARD_CAP = 0.26;
 // 第3コーナーまでは積極的な内寄せを許容するため横移動上限を緩める
