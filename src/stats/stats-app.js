@@ -205,7 +205,7 @@ function renderTable() {
     '<thead><tr>' +
     horseGateSortThHtml() +
     sortThHtml('avgRank', '平均着順') +
-    sortThHtml('winRate', '1着率') +
+    sortThHtml('winRate', '勝率') +
     sortThHtml('top2Rate', '連対率') +
     sortThHtml('top3Rate', '複勝率') +
     sortThHtml('bestRank', 'ベスト着順') +
