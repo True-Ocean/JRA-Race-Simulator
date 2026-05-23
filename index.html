@@ -438,6 +438,10 @@
     #field-playback-dock .field-playback-btn {
       position: relative;
       z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35em;
       width: 100%;
       min-width: 0;
       min-height: 2.35rem;
@@ -458,6 +462,21 @@
       backdrop-filter: blur(6px);
       transition: background 0.15s, border-color 0.15s;
     }
+    #field-playback-dock .field-playback-btn__icon {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.05em;
+      line-height: 1;
+    }
+    #field-playback-dock .field-playback-btn__label {
+      flex: 0 1 auto;
+      min-width: 0;
+    }
+    #field-playback-dock .field-playback-btn--text-only .field-playback-btn__label {
+      flex: 1 1 auto;
+    }
     #field-playback-dock .field-playback-btn:hover:not(:disabled) {
       background: rgba(14, 32, 52, 0.82);
       border-color: rgba(240, 192, 64, 0.55);
@@ -468,7 +487,6 @@
     }
     #field-playback-dock .field-playback-btn.is-auto-active {
       border-color: rgba(253, 224, 71, 0.55);
-      color: #fde68a;
     }
     #field-playback-dock[data-mode="complete"] .field-playback-row--play {
       display: none;
@@ -1743,12 +1761,12 @@
         </div>
         <div id="field-playback-dock" data-mode="play" role="toolbar" aria-label="レース再生">
           <div class="field-playback-row field-playback-row--play">
-            <button type="button" id="btn-play-step" class="field-playback-btn" aria-label="レースを開始">⏵ スタート</button>
-            <button type="button" id="btn-play-auto" class="field-playback-btn" aria-label="オート再生">⏵ オート</button>
+            <button type="button" id="btn-play-step" class="field-playback-btn" aria-label="レースを開始"><span class="field-playback-btn__icon" aria-hidden="true"></span><span class="field-playback-btn__label">スタート</span></button>
+            <button type="button" id="btn-play-auto" class="field-playback-btn" aria-label="オート再生"><span class="field-playback-btn__icon" aria-hidden="true"></span><span class="field-playback-btn__label">オート</span></button>
           </div>
           <div class="field-playback-row field-playback-row--done">
-            <button type="button" id="btn-play-replay" class="field-playback-btn" aria-label="リプレイ">⏮ リプレイ</button>
-            <button type="button" id="btn-play-reset" class="field-playback-btn" aria-label="リセット">リセット</button>
+            <button type="button" id="btn-play-replay" class="field-playback-btn" aria-label="リプレイ"><span class="field-playback-btn__icon" aria-hidden="true"></span><span class="field-playback-btn__label">リプレイ</span></button>
+            <button type="button" id="btn-play-reset" class="field-playback-btn field-playback-btn--text-only" aria-label="リセット"><span class="field-playback-btn__label">リセット</span></button>
           </div>
         </div>
       </div>
