@@ -1,4 +1,9 @@
-import { shouldBattle, resolveBattle } from './battle.js';
+import {
+  buildBattleProximityLimits,
+  isPairBattleProximity,
+  shouldBattle,
+  resolveBattle,
+} from './battle.js';
 import {
   MIN_FORWARD_GAP,
   LATERAL_BLOCK_X_GAP,
@@ -109,6 +114,8 @@ function resolveLaneMovement(
   // 序盤でも接触回避の判定を緩めない。
   const allowBurstShortCircuit = false;
   const collisionMetrics = context?.collisionMetrics ?? null;
+  const battleProximityLimits =
+    context?.battleProximityLimits ?? buildBattleProximityLimits(collisionMetrics);
   const minXGapForCollision = collisionMetrics?.minXGap ?? MIN_FORWARD_GAP;
   const minYGapForCollision = collisionMetrics?.minYGap ?? COLLISION_MIN_Y_GAP;
   const baseY = clampLane(horse.y);
@@ -152,7 +159,8 @@ function resolveLaneMovement(
       : findDiagonalRearHorse(horse, limitedY, allHorses);
   if (diagonalRearHorse) {
     if (!engagedHorseIds.has(horse.id) && !engagedHorseIds.has(diagonalRearHorse.id) &&
-        shouldBattle(rng, allHorses, horse, diagonalRearHorse)) {
+        isPairBattleProximity(horse, diagonalRearHorse, battleProximityLimits) &&
+        shouldBattle(rng, allHorses, horse, diagonalRearHorse, battleProximityLimits)) {
       const result = resolveBattle(rng, horse, diagonalRearHorse, phase);
       applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
       const log = `[バトル:斜め後方割り込み] ${horse.name} が ${diagonalRearHorse.name} の前へ進出 → 勝者: ${result.winner.name}`;
@@ -260,7 +268,8 @@ function resolveLaneMovement(
       canTriggerInnerCutInBattle(horse, laneBlocker, phase) &&
       !engagedHorseIds.has(horse.id) &&
       !engagedHorseIds.has(laneBlocker.id) &&
-      shouldBattle(rng, allHorses, horse, laneBlocker);
+      isPairBattleProximity(horse, laneBlocker, battleProximityLimits) &&
+      shouldBattle(rng, allHorses, horse, laneBlocker, battleProximityLimits);
     if (canBattle) {
       const result = resolveWeightedBattle(rng, horse, laneBlocker, {
         cruise: 0.22,
@@ -296,7 +305,8 @@ function resolveLaneMovement(
 
   // 進路変更を強行したいときは既存バトル判定を利用
   if (!engagedHorseIds.has(horse.id) && !engagedHorseIds.has(laneBlocker.id) &&
-      shouldBattle(rng, allHorses, horse, laneBlocker)) {
+      isPairBattleProximity(horse, laneBlocker, battleProximityLimits) &&
+      shouldBattle(rng, allHorses, horse, laneBlocker, battleProximityLimits)) {
     const result = resolveBattle(rng, horse, laneBlocker, phase);
     applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
     const log = `[バトル:進路争い] ${horse.name} が ${laneBlocker.name} に進路争い → 勝者: ${result.winner.name}`;
@@ -389,7 +399,20 @@ function enforceForwardOrder(horses, minXGap) {
   }
 }
 
-function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, minForwardGap, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
+function resolveForwardMovement(
+  rng,
+  horse,
+  desiredAdvance,
+  allHorses,
+  minForwardGap,
+  phase,
+  phaseEventLogs,
+  globalLogs,
+  engagedHorseIds,
+  proximityLimits = null,
+) {
+  const battleProximityLimits =
+    proximityLimits ?? buildBattleProximityLimits(null);
   const nextX = horse.x + desiredAdvance;
   const spurLaneIntent = isFinalStraightPhase(phase)
     && Number.isFinite(horse.spurEntryTargetLane);
@@ -420,9 +443,12 @@ function resolveForwardMovement(rng, horse, desiredAdvance, allHorses, minForwar
   }
 
   const wantsOvertake = nextX > front.x - requiredGap;
+  const inBattleRange = currentGap <= battleProximityLimits.maxDx;
   if (wantsOvertake &&
+      inBattleRange &&
+      isPairBattleProximity(horse, front, battleProximityLimits) &&
       !engagedHorseIds.has(horse.id) && !engagedHorseIds.has(front.id) &&
-      shouldBattle(rng, allHorses, horse, front)) {
+      shouldBattle(rng, allHorses, horse, front, battleProximityLimits)) {
     const result = resolveBattle(rng, horse, front, phase);
     applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
     const laneGap = Math.abs(front.y - horse.y).toFixed(2);

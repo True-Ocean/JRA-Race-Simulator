@@ -1,4 +1,10 @@
-import { shouldBattle, resolveBattle } from '../engine/battle.js';
+import {
+  buildGoalBattleProximityLimits,
+  isPairBattleProximity,
+  shouldBattle,
+  resolveBattle,
+} from '../engine/battle.js';
+import { CONFIG } from '../config.js';
 import { createRng } from '../engine/rng.js';
 import {
 
@@ -138,6 +144,8 @@ class PhaseController {
     };
     this._pendingGoalRecording = [];
     this._replayGoalRankSynced = 0;
+    this._goalReplayLogs = [];
+    this._replayGoalLogSynced = 0;
 
     this.btnAdvance = document.getElementById('btn-play-step');
     this.logPanel  = document.getElementById('log-panel');
@@ -396,6 +404,11 @@ class PhaseController {
     this._pendingGoalRecording.push(frame);
   }
 
+  _appendGoalReplayLog(line) {
+    this._appendLog(line);
+    this._goalReplayLogs.push(line);
+  }
+
   _syncReplayGoalPlacing(horses, goalRankOrderSnapshot) {
     if (!Array.isArray(goalRankOrderSnapshot)) return;
     const synced = this._replayGoalRankSynced;
@@ -414,6 +427,18 @@ class PhaseController {
       this._setPlacingLog(this._goalRankOrder.length, horse);
     }
     this._replayGoalRankSynced = goalRankOrderSnapshot.length;
+  }
+
+  _syncReplayGoalLogs(goalLogSnapshot) {
+    if (!Array.isArray(goalLogSnapshot)) return;
+    const synced = this._replayGoalLogSynced;
+    if (goalLogSnapshot.length <= synced) return;
+    for (let i = synced; i < goalLogSnapshot.length; i++) {
+      const line = goalLogSnapshot[i];
+      if (typeof line !== 'string' || line.length === 0) continue;
+      this._appendLog(line);
+    }
+    this._replayGoalLogSynced = goalLogSnapshot.length;
   }
 
   _playGoalApproachFromRecording(onDone) {
@@ -447,6 +472,8 @@ class PhaseController {
     this._goalBattledPairs = new Set();
     this._goalFinishedAtById = new Map();
     this._replayGoalRankSynced = 0;
+    this._goalReplayLogs = [];
+    this._replayGoalLogSynced = 0;
 
     const step = (ts) => {
       const elapsedMs = ts - transitionStartedAt;
@@ -482,6 +509,7 @@ class PhaseController {
           },
         });
         this._syncReplayGoalPlacing(horses, frame.goalRankOrderSnapshot);
+        this._syncReplayGoalLogs(frame.goalLogSnapshot);
         if (frame.goalAllFinishedAtMs != null) {
           this._goalAllFinishedAtMs = frame.goalAllFinishedAtMs;
         }
@@ -661,6 +689,7 @@ class PhaseController {
         1,
       ) * GOAL_TIME_SCALE;
     const goalRng = createRng((this.raceData?.race_id ?? 1) + 7919);
+    const goalBattleProximityLimits = buildGoalBattleProximityLimits();
     const transitionStartedAt = performance.now();
     const transitionHalfMs = GOAL_SCENE_TRANSITION_MS * 0.5;
     let goalSceneStarted = false;
@@ -681,6 +710,8 @@ class PhaseController {
     this._goalCameraRawProgress = null;
     this._goalBattledPairs = new Set();
     this._goalFinishedAtById = new Map();
+    this._goalReplayLogs = [];
+    this._replayGoalLogSynced = 0;
 
     const step = (ts) => {
       if (!goalSceneStarted) {
@@ -858,15 +889,27 @@ class PhaseController {
             !frameEngaged.has(cutInTarget.id) &&
             !this._hasGoalBattlePair(horse, cutInTarget)
           ) {
-            if (shouldBattle(goalRng, simHorses, horse, cutInTarget)) {
-              const result = resolveBattle(goalRng, horse, cutInTarget, phase);
+            if (
+              isPairBattleProximity(horse, cutInTarget, goalBattleProximityLimits) &&
+              shouldBattle(
+                goalRng,
+                simHorses,
+                horse,
+                cutInTarget,
+                goalBattleProximityLimits,
+                { rateBonus: CONFIG.GOAL_BATTLE_RATE_BONUS },
+              )
+            ) {
+              const result = resolveBattle(goalRng, horse, cutInTarget, phase, {
+                ensureWinnerAhead: false,
+              });
               applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
               this._markGoalBattlePair(horse, cutInTarget);
               const battleType = this._classifyGoalBattleType(horse, cutInTarget, {
                 isLaneChange: true,
               });
               const log = `[バトル:${battleType}] ${horse.name} vs ${cutInTarget.name} → 勝者: ${result.winner.name}`;
-              this._appendLog(log);
+              this._appendGoalReplayLog(log);
               frameEngaged.add(horse.id);
               frameEngaged.add(cutInTarget.id);
               if (result.winner.id !== horse.id) {
@@ -1102,15 +1145,31 @@ class PhaseController {
             !frameEngaged.has(horse.id) &&
             !frameEngaged.has(blockingFront.id) &&
             !this._hasGoalBattlePair(horse, blockingFront);
-          if (shouldTryOvertakeBattle && shouldBattle(goalRng, simHorses, horse, blockingFront)) {
-            const result = resolveBattle(goalRng, horse, blockingFront, phase);
+          const goalFrontGap = blockingFront.x - horse.x;
+          const goalInBattleRange = goalFrontGap <= goalBattleProximityLimits.maxDx;
+          if (
+            shouldTryOvertakeBattle &&
+            goalInBattleRange &&
+            isPairBattleProximity(horse, blockingFront, goalBattleProximityLimits) &&
+            shouldBattle(
+              goalRng,
+              simHorses,
+              horse,
+              blockingFront,
+              goalBattleProximityLimits,
+              { rateBonus: CONFIG.GOAL_BATTLE_RATE_BONUS },
+            )
+          ) {
+            const result = resolveBattle(goalRng, horse, blockingFront, phase, {
+              ensureWinnerAhead: false,
+            });
             applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
             this._markGoalBattlePair(horse, blockingFront);
             const battleType = this._classifyGoalBattleType(horse, blockingFront, {
               isLaneChange: false,
             });
             const log = `[バトル:${battleType}] ${horse.name} vs ${blockingFront.name} → 勝者: ${result.winner.name}`;
-            this._appendLog(log);
+            this._appendGoalReplayLog(log);
             frameEngaged.add(horse.id);
             frameEngaged.add(blockingFront.id);
             if (result.winner.id !== horse.id) {
@@ -1228,6 +1287,7 @@ class PhaseController {
           },
         },
         goalRankOrderSnapshot: [...this._goalRankOrder],
+        goalLogSnapshot: [...this._goalReplayLogs],
         goalAllFinishedAtMs: this._goalAllFinishedAtMs,
       });
 

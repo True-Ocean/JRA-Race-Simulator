@@ -87,6 +87,22 @@ function applyBattleStaminaImpact(winner, loser, options = {}) {
   loser.battleFatigue = (loser.battleFatigue ?? 0) + loserExtraDrain * 0.45;
 }
 
+/**
+ * バトル勝者が見た目上もわずかに前に出るよう、前後座標を補正する。
+ * 判定・衝突解消前提のため、最小限の差分のみを付与する。
+ */
+function ensureBattleWinnerAheadX(winner, loser, minLead = 0.12, maxCatchup = 0.38) {
+  if (!winner || !loser) return;
+  if (!Number.isFinite(winner.x) || !Number.isFinite(loser.x)) return;
+  const safeMinLead = Math.max(0.05, Number(minLead) || 0.12);
+  const safeMaxCatchup = Math.max(safeMinLead, Number(maxCatchup) || 0.38);
+  if (winner.x >= loser.x + safeMinLead) return;
+  const gapToCatch = loser.x - winner.x;
+  // 距離が離れすぎている場合はワープ的な前出しをしない。
+  if (gapToCatch > safeMaxCatchup) return;
+  winner.x = loser.x + safeMinLead;
+}
+
 export {
   clampLane,
   isNigeStyle,
@@ -97,4 +113,5 @@ export {
   calcWeightStaminaMult,
   getWeightStaminaMult,
   applyBattleStaminaImpact,
+  ensureBattleWinnerAheadX,
 };

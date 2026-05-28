@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { shouldBattle } from './battle.js';
+import { isPairBattleProximity, shouldBattle } from './battle.js';
 import {
   LEAD_BATTLE_PHASE_MAX,
   FINAL_DUEL_PHASE_MIN,
@@ -11,6 +11,7 @@ import {
   isNigeStyle,
   getJockeyReliabilityNorm,
   applyBattleStaminaImpact,
+  ensureBattleWinnerAheadX,
 } from './horse-utils.js';
 import { getPreferredLaneByStyle } from './lane-preference.js';
 
@@ -38,6 +39,7 @@ function resolveWeightedBattle(rng, a, b, weights, styleBonusFn = () => 0, optio
   if (options?.skipStaminaImpact !== true) {
     applyBattleStaminaImpact(winner, loser, impactOptions);
   }
+  ensureBattleWinnerAheadX(winner, loser);
   return {
     winner,
     loser,
@@ -81,7 +83,15 @@ function markInnerCutInBattlePair(a, b, phase) {
   b.lastInnerCutInPhase = phase.index;
 }
 
-function resolveLeadBattle(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
+function resolveLeadBattle(
+  rng,
+  horses,
+  phase,
+  phaseEventLogs,
+  globalLogs,
+  engagedHorseIds,
+  proximityLimits,
+) {
   if (phase.ratio > LEAD_BATTLE_PHASE_MAX) return;
   const sorted = [...horses].sort((a, b) => b.x - a.x);
   if (sorted.length < 2) return;
@@ -105,7 +115,8 @@ function resolveLeadBattle(rng, horses, phase, phaseEventLogs, globalLogs, engag
   }
   if (!pair) return;
   const [a, b] = pair;
-  if (!shouldBattle(rng, horses, a, b)) return;
+  if (!isPairBattleProximity(a, b, proximityLimits)) return;
+  if (!shouldBattle(rng, horses, a, b, proximityLimits)) return;
 
   const result = resolveWeightedBattle(rng, a, b, {
     cruise: 0.45,
@@ -120,7 +131,15 @@ function resolveLeadBattle(rng, horses, phase, phaseEventLogs, globalLogs, engag
   engagedHorseIds.add(b.id);
 }
 
-function resolveCornerPositionBattle(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
+function resolveCornerPositionBattle(
+  rng,
+  horses,
+  phase,
+  phaseEventLogs,
+  globalLogs,
+  engagedHorseIds,
+  proximityLimits,
+) {
   if (!phase.isCorner) return;
 
   const candidates = horses
@@ -139,7 +158,8 @@ function resolveCornerPositionBattle(rng, horses, phase, phaseEventLogs, globalL
       Math.abs(h.x - a.x) < 24
     );
     if (!blocker) continue;
-    if (!shouldBattle(rng, horses, a, blocker)) continue;
+    if (!isPairBattleProximity(a, blocker, proximityLimits)) continue;
+    if (!shouldBattle(rng, horses, a, blocker, proximityLimits)) continue;
 
     const result = resolveWeightedBattle(rng, a, blocker, {
       cruise: 0.20,
@@ -156,7 +176,15 @@ function resolveCornerPositionBattle(rng, horses, phase, phaseEventLogs, globalL
   }
 }
 
-function resolveFinalStraightDuel(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds) {
+function resolveFinalStraightDuel(
+  rng,
+  horses,
+  phase,
+  phaseEventLogs,
+  globalLogs,
+  engagedHorseIds,
+  proximityLimits,
+) {
   if (!(phase.isFinal || phase.ratio >= FINAL_DUEL_PHASE_MIN)) return;
 
   const sorted = [...horses].sort((a, b) => b.x - a.x);
@@ -168,7 +196,8 @@ function resolveFinalStraightDuel(rng, horses, phase, phaseEventLogs, globalLogs
       if (engagedHorseIds.has(b.id)) continue;
       if (Math.abs(a.x - b.x) > 18) continue;
       if (Math.abs(a.y - b.y) > 1.6) continue;
-      if (!shouldBattle(rng, horses, a, b)) continue;
+      if (!isPairBattleProximity(a, b, proximityLimits)) continue;
+      if (!shouldBattle(rng, horses, a, b, proximityLimits)) continue;
 
       const result = resolveWeightedBattle(rng, a, b, {
         cruise: 0.30,

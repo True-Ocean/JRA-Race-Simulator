@@ -1,6 +1,14 @@
 import { CONFIG } from '../config.js';
 
 export const MIN_FORWARD_GAP = 38;
+/** 描画/衝突 minXGap・drawNearXGap に対するバトル発動の前後許容倍率 */
+export const BATTLE_PROXIMITY_X_MULT = 1.20;
+/** collisionMetrics 未使用時の横（レーン）許容 */
+export const BATTLE_PROXIMITY_Y_FALLBACK = 1.12;
+/** ゴールシーンの前後許容（本編よりやや広め・画面の並走に合わせる） */
+export const GOAL_BATTLE_PROXIMITY_X_MULT = 1.48;
+/** 密集ボーナスを付与する周辺馬数の下限 */
+export const BATTLE_CROWD_MIN_NEARBY = 2;
 export const LATERAL_BLOCK_X_GAP = 42;
 export const LATERAL_BLOCK_LANE_GAP = 1.15;
 export const DIAGONAL_REAR_BLOCK_X_GAP = 30;

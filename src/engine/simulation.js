@@ -11,7 +11,12 @@ import {
   getFormationPaceMultiplier,
   getFormationOrderBias,
 } from './formation.js';
-import { detectContacts, shouldBattle, resolveBattle } from './battle.js';
+import {
+  buildBattleProximityLimits,
+  detectContacts,
+  shouldBattle,
+  resolveBattle,
+} from './battle.js';
 import { CONFIG } from '../config.js';
 import {
   MIN_FORWARD_GAP,
@@ -400,6 +405,7 @@ function sampleInnerRailGap(rng) {
 
 function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
   if (horse.startIrregularChecked === undefined) horse.startIrregularChecked = false;
+  if (horse.startEventType === undefined) horse.startEventType = null;
   if (horse.stumbleCooldown === undefined) horse.stumbleCooldown = 0;
 
   let mult = 1.0;
@@ -410,6 +416,7 @@ function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
     if (rng() < startDelayRate) {
       const lossRatio = 0.22 + rng() * 0.16;
       mult *= (1 - lossRatio);
+      horse.startEventType = 'slow';
       horse.startTroubleScore = (horse.startTroubleScore ?? 0) + 1.0;
       const lossPct = Math.round(lossRatio * 100);
       const log = `[出遅れ] ${horse.name} がスタートで遅れる（-${lossPct}%）`;
@@ -538,6 +545,7 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     horse.eventFatigueScore = 0;
     horse.recentEventLoad = 0;
     horse.battleFatigue = 0;
+    horse.startEventType = null;
     horse.startTroubleScore = 0;
     horse.staminaRatioAfterC3 = null;
     horse.stretchFanLane = null;
@@ -589,9 +597,9 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     const collisionMetrics = renderer
       ? renderer.getCollisionMetrics(xSpan, phase)
       : { minXGap: MIN_FORWARD_GAP, minYGap: COLLISION_MIN_Y_GAP };
-    // ① フェーズ特化バトル判定
-    const threshold      = phase.distance * 0.8;
-    const contacts       = detectContacts(horses, threshold);
+    // ① フェーズ特化バトル判定（描画の隣接距離に合わせた物理近接のみ）
+    const battleProximityLimits = buildBattleProximityLimits(collisionMetrics);
+    const contacts = detectContacts(horses, battleProximityLimits);
     const phaseEventLogs = [];
     const engagedHorseIds = new Set();
     const isEarlyOrderingPhase = isStartToHomePhase(phase);
@@ -609,9 +617,33 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       horse.eventFatigueScore = (horse.eventFatigueScore ?? 0) * 0.94;
     });
 
-    resolveLeadBattle(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds);
-    resolveCornerPositionBattle(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds);
-    resolveFinalStraightDuel(rng, horses, phase, phaseEventLogs, globalLogs, engagedHorseIds);
+    resolveLeadBattle(
+      rng,
+      horses,
+      phase,
+      phaseEventLogs,
+      globalLogs,
+      engagedHorseIds,
+      battleProximityLimits,
+    );
+    resolveCornerPositionBattle(
+      rng,
+      horses,
+      phase,
+      phaseEventLogs,
+      globalLogs,
+      engagedHorseIds,
+      battleProximityLimits,
+    );
+    resolveFinalStraightDuel(
+      rng,
+      horses,
+      phase,
+      phaseEventLogs,
+      globalLogs,
+      engagedHorseIds,
+      battleProximityLimits,
+    );
 
     if (isFinalStraightPhase(phase)) {
       for (const h of horses) {
@@ -622,7 +654,7 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
 
     for (const { a, b } of contacts) {
       if (engagedHorseIds.has(a.id) || engagedHorseIds.has(b.id)) continue;
-      if (!shouldBattle(rng, horses, a, b)) continue;
+      if (!shouldBattle(rng, horses, a, b, battleProximityLimits)) continue;
       const result = resolveBattle(rng, a, b, phase);
       applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
       const log = `[バトル:進路争い] ${result.winner.name} vs ${result.loser.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
@@ -721,11 +753,15 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
             + earlyRunnerBonus;
           const randomMult = 0.88 + rng() * 0.28; // 中程度のばらつき（0.88〜1.16）
           horse.startBurstFactor = baseMult * randomMult;
-          if (horse.startBurstFactor >= 1.22) {
+          // スタートイベントは「出遅れ/好スタート」のどちらか1回のみ。
+          if (horse.startEventType === 'slow') {
+            horse.startBurstFactor = Math.min(horse.startBurstFactor, 1.0);
+          } else if (horse.startBurstFactor >= 1.22 && horse.startEventType == null) {
             const gainPct = Math.round((horse.startBurstFactor - 1) * 100);
             const log = `[好スタート] ${horse.name} がスタートダッシュを決める（+${gainPct}%）`;
             globalLogs.push(log);
             phaseEventLogs.push(log);
+            horse.startEventType = 'good';
           }
         }
         adjustedAdvance *= horse.startBurstFactor;
@@ -1095,6 +1131,7 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
             isStartPhase,
             isEarlyInnerBurst,
             collisionMetrics,
+            battleProximityLimits,
             seekOutsideLane,
             lateralCap: laneDecisionMeta?.lateralCap,
           },
@@ -1173,6 +1210,7 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         phaseEventLogs,
         globalLogs,
         engagedHorseIds,
+        battleProximityLimits,
       );
       const prevAdvance = horse.lastAdvance ?? 0;
       let frameAdvance = forwardCheck.advance;
@@ -1340,13 +1378,6 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         earlyLeaderTimeline.push(`P${phase.index + 1}:${leader.name}`);
         if (prevEarlyLeaderId !== null && prevEarlyLeaderId !== leader.id) {
           earlyLeaderSwitches += 1;
-          const log = `[序盤先頭] フェーズ${phase.index + 1}で先頭交代 → ${leader.name}`;
-          globalLogs.push(log);
-          phaseEventLogs.push(log);
-        } else if (prevEarlyLeaderId === null) {
-          const log = `[序盤先頭] フェーズ${phase.index + 1}先頭 → ${leader.name}`;
-          globalLogs.push(log);
-          phaseEventLogs.push(log);
         }
         prevEarlyLeaderId = leader.id;
       }
