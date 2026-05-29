@@ -1,95 +1,603 @@
 {
-  "race_id": 20250601,
+  "race_id": 20260531,
   "entries": [
     {
       "gate": 1,
-      "horse": { "name": "オグリキャップ", "style": "差し", "sex_age": "牡3", "weight": 57, "ave_3f": 36.1, "last_3f": 33.0, "results": [1,1,2,1] },
-      "jockey": { "name": "南井克巳", "win_rate": 0.20, "top3_rate": 0.50 }
+      "horse": {
+        "name": "ライヒスアドラー",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 4,
+        "style": "差し",
+        "ave_3f": 37.0,
+        "last_3f": 33.8,
+        "results": [
+          3,
+          2,
+          3,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 35.6,
+          "max": 39.2,
+          "avg": 37.0
+        },
+        "last_3f_range": {
+          "min": 32.9,
+          "max": 35.4,
+          "avg": 33.8
+        }
+      },
+      "jockey": {
+        "name": "佐々木大",
+        "win_rate": 0.18,
+        "top3_rate": 0.27
+      }
     },
     {
       "gate": 2,
-      "horse": { "name": "ゴールドシップ", "style": "差し", "sex_age": "牡3", "weight": 57, "ave_3f": 36.8, "last_3f": 33.1, "results": [1,2,0,3] },
-      "jockey": { "name": "横山武史", "win_rate": 0.15, "top3_rate": 0.42 }
+      "horse": {
+        "name": "マテンロウゲイル",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 5,
+        "style": "先行",
+        "ave_3f": 37.7,
+        "last_3f": 33.9,
+        "results": [
+          1,
+          2,
+          1,
+          2,
+          2
+        ],
+        "ave_3f_range": {
+          "min": 36.3,
+          "max": 39.1,
+          "avg": 37.7
+        },
+        "last_3f_range": {
+          "min": 32.8,
+          "max": 35.3,
+          "avg": 33.9
+        }
+      },
+      "jockey": {
+        "name": "横山和生",
+        "win_rate": 0.07,
+        "top3_rate": 0.18
+      }
     },
     {
       "gate": 3,
-      "horse": { "name": "ディープインパクト", "style": "追込", "sex_age": "牡3", "weight": 57, "ave_3f": 35.9, "last_3f": 32.8, "results": [1,1,1,1] },
-      "jockey": { "name": "武豊", "win_rate": 0.20, "top3_rate": 0.50 }
+      "horse": {
+        "name": "ケントン",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 2,
+        "style": "先行",
+        "ave_3f": 37.8,
+        "last_3f": 36.9,
+        "results": [
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 36.6,
+          "max": 39.0,
+          "avg": 37.8
+        },
+        "last_3f_range": {
+          "min": 36.0,
+          "max": 37.7,
+          "avg": 36.9
+        }
+      },
+      "jockey": {
+        "name": "丹内祐次",
+        "win_rate": 0.05,
+        "top3_rate": 0.21
+      }
     },
     {
       "gate": 4,
-      "horse": { "name": "オルフェーヴル", "style": "逃げ", "sex_age": "牡3", "weight": 57, "ave_3f": 36.0, "last_3f": 34.3, "results": [1,1,2,2] },
-      "jockey": { "name": "池添謙一", "win_rate": 0.12, "top3_rate": 0.38 }
+      "horse": {
+        "name": "アルトラムス",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 3,
+        "style": "追込",
+        "ave_3f": 35.9,
+        "last_3f": 33.9,
+        "results": [
+          1,
+          3,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 35.7,
+          "max": 36.0,
+          "avg": 35.9
+        },
+        "last_3f_range": {
+          "min": 33.1,
+          "max": 34.6,
+          "avg": 33.9
+        }
+      },
+      "jockey": {
+        "name": "横山武史",
+        "win_rate": 0.04,
+        "top3_rate": 0.28
+      }
     },
     {
       "gate": 5,
-      "horse": { "name": "ブエナビスタ", "style": "差し", "sex_age": "牝3", "weight": 55, "ave_3f": 36.4, "last_3f": 33.3, "results": [2,1,1,0] },
-      "jockey": { "name": "岩田康誠", "win_rate": 0.18, "top3_rate": 0.45 }
+      "horse": {
+        "name": "バステール",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 3,
+        "style": "差し",
+        "ave_3f": 36.9,
+        "last_3f": 34.0,
+        "results": [
+          1,
+          1,
+          2
+        ],
+        "ave_3f_range": {
+          "min": 36.6,
+          "max": 37.2,
+          "avg": 36.9
+        },
+        "last_3f_range": {
+          "min": 33.2,
+          "max": 34.9,
+          "avg": 34.0
+        }
+      },
+      "jockey": {
+        "name": "川田将雅",
+        "win_rate": 0.2,
+        "top3_rate": 0.4
+      }
     },
     {
       "gate": 6,
-      "horse": { "name": "ジェンティルドンナ", "style": "先行", "sex_age": "牝3", "weight": 55, "ave_3f": 36.2, "last_3f": 33.5, "results": [1,1,2,1] },
-      "jockey": { "name": "戸崎圭太", "win_rate": 0.22, "top3_rate": 0.50 }
+      "horse": {
+        "name": "コンジェスタス",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 3,
+        "style": "先行",
+        "ave_3f": 36.5,
+        "last_3f": 35.3,
+        "results": [
+          1,
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 35.5,
+          "max": 37.8,
+          "avg": 36.5
+        },
+        "last_3f_range": {
+          "min": 35.3,
+          "max": 35.4,
+          "avg": 35.3
+        }
+      },
+      "jockey": {
+        "name": "西村淳也",
+        "win_rate": 0.11,
+        "top3_rate": 0.33
+      }
     },
     {
       "gate": 7,
-      "horse": { "name": "キタサンブラック", "style": "逃げ", "sex_age": "牡3", "weight": 57, "ave_3f": 35.9, "last_3f": 34.2, "results": [1,1,2,2] },
-      "jockey": { "name": "北村宏司", "win_rate": 0.14, "top3_rate": 0.40 }
+      "horse": {
+        "name": "メイショウハチコウ",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 3,
+        "style": "先行",
+        "ave_3f": 37.4,
+        "last_3f": 34.3,
+        "results": [
+          1,
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 36.3,
+          "max": 38.0,
+          "avg": 37.4
+        },
+        "last_3f_range": {
+          "min": 33.8,
+          "max": 35.0,
+          "avg": 34.3
+        }
+      },
+      "jockey": {
+        "name": "ディー",
+        "win_rate": 0.05,
+        "top3_rate": 0.2
+      }
     },
     {
       "gate": 8,
-      "horse": { "name": "アーモンドアイ", "style": "差し", "sex_age": "牝3", "weight": 55, "ave_3f": 35.8, "last_3f": 32.6, "results": [1,1,1,1] },
-      "jockey": { "name": "ルメール", "win_rate": 0.28, "top3_rate": 0.58 }
+      "horse": {
+        "name": "ショウナンガルフ",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 2,
+        "style": "追込",
+        "ave_3f": 37.8,
+        "last_3f": 35.2,
+        "results": [
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 37.8,
+          "max": 37.9,
+          "avg": 37.8
+        },
+        "last_3f_range": {
+          "min": 35.0,
+          "max": 35.4,
+          "avg": 35.2
+        }
+      },
+      "jockey": {
+        "name": "浜中俊",
+        "win_rate": 0.0,
+        "top3_rate": 0.0
+      }
     },
     {
       "gate": 9,
-      "horse": { "name": "コントレイル", "style": "追込", "sex_age": "牡3", "weight": 57, "ave_3f": 36.0, "last_3f": 32.9, "results": [1,1,1,2] },
-      "jockey": { "name": "福永雄一", "win_rate": 0.21, "top3_rate": 0.52 }
+      "horse": {
+        "name": "アウダーシア",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 4,
+        "style": "先行",
+        "ave_3f": 36.5,
+        "last_3f": 33.8,
+        "results": [
+          1,
+          1,
+          2,
+          2
+        ],
+        "ave_3f_range": {
+          "min": 36.0,
+          "max": 36.7,
+          "avg": 36.5
+        },
+        "last_3f_range": {
+          "min": 33.5,
+          "max": 34.0,
+          "avg": 33.8
+        }
+      },
+      "jockey": {
+        "name": "レーン",
+        "win_rate": 0.09,
+        "top3_rate": 0.47
+      }
     },
     {
       "gate": 10,
-      "horse": { "name": "グランアレグリア", "style": "先行", "sex_age": "牝3", "weight": 55, "ave_3f": 36.2, "last_3f": 33.2, "results": [1,1,2,1] },
-      "jockey": { "name": "川田将雅", "win_rate": 0.12, "top3_rate": 0.38 }
+      "horse": {
+        "name": "ジャスティンビスタ",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 2,
+        "style": "差し",
+        "ave_3f": 36.5,
+        "last_3f": 34.9,
+        "results": [
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 36.5,
+          "max": 36.6,
+          "avg": 36.5
+        },
+        "last_3f_range": {
+          "min": 34.7,
+          "max": 35.0,
+          "avg": 34.9
+        }
+      },
+      "jockey": {
+        "name": "坂井瑠星",
+        "win_rate": 0.05,
+        "top3_rate": 0.33
+      }
     },
     {
       "gate": 11,
-      "horse": { "name": "フィエールマン", "style": "差し", "sex_age": "牡3", "weight": 57, "ave_3f": 36.6, "last_3f": 33.2, "results": [1,0,1,3] },
-      "jockey": { "name": "吉田隼人", "win_rate": 0.25, "top3_rate": 0.55 }
+      "horse": {
+        "name": "リアライズシリウス",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 4,
+        "style": "先行",
+        "ave_3f": 35.9,
+        "last_3f": 34.2,
+        "results": [
+          2,
+          1,
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 35.3,
+          "max": 36.5,
+          "avg": 35.9
+        },
+        "last_3f_range": {
+          "min": 33.4,
+          "max": 34.8,
+          "avg": 34.2
+        }
+      },
+      "jockey": {
+        "name": "津村明秀",
+        "win_rate": 0.06,
+        "top3_rate": 0.24
+      }
     },
     {
       "gate": 12,
-      "horse": { "name": "リスグラシュー", "style": "差し", "sex_age": "牝3", "weight": 55, "ave_3f": 36.3, "last_3f": 33.1, "results": [2,1,1,1] },
-      "jockey": { "name": "レーン", "win_rate": 0.26, "top3_rate": 0.57 }
+      "horse": {
+        "name": "アスクエジンバラ",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 4,
+        "style": "差し",
+        "ave_3f": 36.6,
+        "last_3f": 34.9,
+        "results": [
+          2,
+          3,
+          2,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 35.9,
+          "max": 37.0,
+          "avg": 36.6
+        },
+        "last_3f_range": {
+          "min": 34.3,
+          "max": 35.4,
+          "avg": 34.9
+        }
+      },
+      "jockey": {
+        "name": "岩田康誠",
+        "win_rate": 0.0,
+        "top3_rate": 0.08
+      }
     },
     {
       "gate": 13,
-      "horse": { "name": "スペシャルウィーク", "style": "差し", "sex_age": "牡3", "weight": 57, "ave_3f": 36.2, "last_3f": 32.9, "results": [1,1,1,2] },
-      "jockey": { "name": "武豊", "win_rate": 0.23, "top3_rate": 0.53 }
+      "horse": {
+        "name": "パントルナイーフ",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 3,
+        "style": "差し",
+        "ave_3f": 37.1,
+        "last_3f": 33.5,
+        "results": [
+          1,
+          1,
+          2
+        ],
+        "ave_3f_range": {
+          "min": 36.5,
+          "max": 37.5,
+          "avg": 37.1
+        },
+        "last_3f_range": {
+          "min": 32.9,
+          "max": 34.6,
+          "avg": 33.5
+        }
+      },
+      "jockey": {
+        "name": "ルメール",
+        "win_rate": 0.39,
+        "top3_rate": 0.75
+      }
     },
     {
       "gate": 14,
-      "horse": { "name": "エフフォーリア", "style": "先行", "sex_age": "牡3", "weight": 57, "ave_3f": 36.3, "last_3f": 33.4, "results": [1,1,1,2] },
-      "jockey": { "name": "横山和生", "win_rate": 0.16, "top3_rate": 0.44 }
+      "horse": {
+        "name": "ゴーイントゥスカイ",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 3,
+        "style": "差し",
+        "ave_3f": 36.7,
+        "last_3f": 34.3,
+        "results": [
+          1,
+          3,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 36.5,
+          "max": 37.1,
+          "avg": 36.7
+        },
+        "last_3f_range": {
+          "min": 33.4,
+          "max": 35.2,
+          "avg": 34.3
+        }
+      },
+      "jockey": {
+        "name": "武豊",
+        "win_rate": 0.16,
+        "top3_rate": 0.32
+      }
     },
     {
       "gate": 15,
-      "horse": { "name": "タイトルホルダー", "style": "逃げ", "sex_age": "牡3", "weight": 57, "ave_3f": 36.1, "last_3f": 34.5, "results": [1,2,2,3] },
-      "jockey": { "name": "幸英明", "win_rate": 0.16, "top3_rate": 0.44 }
+      "horse": {
+        "name": "フォルテアンジェロ",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 3,
+        "style": "先行",
+        "ave_3f": 37.3,
+        "last_3f": 33.9,
+        "results": [
+          2,
+          2,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 36.9,
+          "max": 37.5,
+          "avg": 37.3
+        },
+        "last_3f_range": {
+          "min": 32.8,
+          "max": 34.9,
+          "avg": 33.9
+        }
+      },
+      "jockey": {
+        "name": "荻野極",
+        "win_rate": 0.08,
+        "top3_rate": 0.08
+      }
     },
     {
       "gate": 16,
-      "horse": { "name": "ドウデュース", "style": "差し", "sex_age": "牡3", "weight": 57, "ave_3f": 35.9, "last_3f": 32.7, "results": [1,2,1,1] },
-      "jockey": { "name": "松山弘平", "win_rate": 0.20, "top3_rate": 0.50 }
+      "horse": {
+        "name": "グリーンエナジー",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 3,
+        "style": "差し",
+        "ave_3f": 37.0,
+        "last_3f": 33.9,
+        "results": [
+          1,
+          1,
+          3
+        ],
+        "ave_3f_range": {
+          "min": 36.4,
+          "max": 37.8,
+          "avg": 37.0
+        },
+        "last_3f_range": {
+          "min": 32.9,
+          "max": 34.9,
+          "avg": 33.9
+        }
+      },
+      "jockey": {
+        "name": "戸崎圭太",
+        "win_rate": 0.11,
+        "top3_rate": 0.38
+      }
     },
     {
       "gate": 17,
-      "horse": { "name": "イクイノックス", "style": "差し", "sex_age": "牡3", "weight": 57, "ave_3f": 35.6, "last_3f": 32.5, "results": [1,1,1,1] },
-      "jockey": { "name": "ルメール", "win_rate": 0.28, "top3_rate": 0.58 }
+      "horse": {
+        "name": "ロブチェン",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 4,
+        "style": "逃げ",
+        "ave_3f": 36.6,
+        "last_3f": 34.4,
+        "results": [
+          1,
+          3,
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 35.3,
+          "max": 38.2,
+          "avg": 36.6
+        },
+        "last_3f_range": {
+          "min": 33.4,
+          "max": 35.4,
+          "avg": 34.4
+        }
+      },
+      "jockey": {
+        "name": "松山弘平",
+        "win_rate": 0.0,
+        "top3_rate": 0.24
+      }
     },
     {
       "gate": 18,
-      "horse": { "name": "サイレンススズカ", "style": "大逃げ", "sex_age": "牡3", "weight": 57, "ave_3f": 34.8, "last_3f": 33.4, "results": [1,1,0,1] },
-      "jockey": { "name": "武豊", "win_rate": 0.24, "top3_rate": 0.54 }
+      "horse": {
+        "name": "エムズビギン",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 3,
+        "style": "差し",
+        "ave_3f": 37.6,
+        "last_3f": 33.8,
+        "results": [
+          2,
+          1,
+          2
+        ],
+        "ave_3f_range": {
+          "min": 36.8,
+          "max": 38.6,
+          "avg": 37.6
+        },
+        "last_3f_range": {
+          "min": 33.5,
+          "max": 34.3,
+          "avg": 33.8
+        }
+      },
+      "jockey": {
+        "name": "ゴンサル",
+        "win_rate": 0.0,
+        "top3_rate": 0.0
+      }
     }
   ]
 }
