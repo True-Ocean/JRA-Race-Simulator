@@ -17,9 +17,31 @@
         max(14px, env(safe-area-inset-bottom, 0px))
         max(12px, env(safe-area-inset-left, 0px));
       display: grid;
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto 1fr auto;
       gap: 0;
       overflow: hidden;
+    }
+
+    .app-site-footer {
+      flex-shrink: 0;
+      width: min(100%, 1660px);
+      margin: 8px auto 0;
+      padding: 10px 4px 0;
+      border-top: 1px solid #1e3a5f;
+      font-size: 0.62rem;
+      line-height: 1.55;
+      color: #8a9bab;
+      text-align: center;
+    }
+    .app-site-footer p {
+      margin: 0 0 0.55em;
+    }
+    .app-site-footer p:last-child {
+      margin-bottom: 0;
+    }
+    .app-site-footer__credit {
+      color: #6e8499;
+      letter-spacing: 0.04em;
     }
 
     h1,
@@ -1447,9 +1469,18 @@
         grid-template-rows: auto;
         grid-template-areas:
           "header"
-          "main";
+          "main"
+          "footer";
         gap: 8px;
         align-content: start;
+      }
+
+      .app-site-footer {
+        grid-area: footer;
+        width: 100%;
+        margin-top: 4px;
+        padding-top: 12px;
+        padding-bottom: 4px;
       }
 
       /* Safari は display:contents 配下のタップが効かないことがあるため使わない */
@@ -2064,6 +2095,12 @@
     </div>
 
   </div>
+
+  <footer class="app-site-footer" aria-label="免責事項">
+    <p class="app-site-footer__disclaimer-en" lang="en">Disclaimer: This application is for entertainment purposes only. It does not provide financial or betting advice. Users are responsible for their own decisions.</p>
+    <p class="app-site-footer__disclaimer-ja" lang="ja">免責事項：本アプリはエンターテインメントを目的としており、金融または勝馬投票（賭博）に関する助言を提供するものではありません。利用者は自己の責任において本アプリを使用するものとします。</p>
+    <p class="app-site-footer__credit">Created by シャノワール. All rights reserved.</p>
+  </footer>
 
   <script type="module" src="./main.js"></script>
 </body>
