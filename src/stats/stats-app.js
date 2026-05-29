@@ -1,5 +1,6 @@
 import { resolveCourseDef, formatRaceInfo } from './race-display.js';
 import { calcWaku } from '../engine/params.js';
+import { loadMarksByHorseFromBundle } from '../engine/rating-adjustments.js';
 import {
   loadRaceBundleFromSession,
   persistRaceBundleToSession,
@@ -14,7 +15,8 @@ import { JRA_WAKU_COLORS } from '../ui/colors.js';
 
 let runtimeRaceData = null;
 let ratingAdjustments = {};
-let marks = {};
+/** @type {Record<number, string>} */
+let marksByHorse = {};
 const AUTO_MARKS = ['◎', '◯', '▲', '△', '★', '☆'];
 const MARK_SORT_RANK = new Map([
   ['◎', 0],
@@ -36,11 +38,14 @@ const SORT_KEYS = [
   'top3Rate',
   'bestRank',
   'worstRank',
+  'userMark',
 ];
 let sortState = { key: null, dir: 'asc' };
 let sortDelegationBound = false;
 let latestAutoMarks = new Map();
 let latestCompositeScores = new Map();
+/** @type {Record<number, string>} */
+let latestMarksByHorse = {};
 
 function getSortEntry(key) {
   return sortState.key === key ? sortState : null;
@@ -50,6 +55,10 @@ function metricValueForSort(row, key) {
   switch (key) {
     case 'mark': {
       const symbol = latestAutoMarks.get(row.id);
+      return MARK_SORT_RANK.get(symbol) ?? 99;
+    }
+    case 'userMark': {
+      const symbol = latestMarksByHorse[row.id] ?? '';
       return MARK_SORT_RANK.get(symbol) ?? 99;
     }
     case 'compositeScore':
@@ -344,7 +353,6 @@ function renderTable() {
   const { rows, trials } = computeAggregateRows({
     runtimeRaceData,
     ratingAdjustments,
-    marks,
   });
 
   const summary = document.getElementById('stats-trial-summary');
@@ -361,8 +369,10 @@ function renderTable() {
   const autoMarks = computeAutoMarks(rows, trials, compositeScores);
   latestAutoMarks = autoMarks;
   latestCompositeScores = compositeScores;
+  latestMarksByHorse = marksByHorse;
   const emptyMetricCells = Array.from({ length: 7 }, () => '<td class="stats-col-metric"></td>').join('');
   const markCol = '<col class="stats-col-mark" />';
+  const userMarkCol = '<col class="stats-col-user-mark" />';
   const metricCols = Array.from({ length: 7 }, () => '<col class="stats-col-metric" />').join('');
   const horseCols =
     '<col class="stats-col-horse-main" />' +
@@ -373,9 +383,10 @@ function renderTable() {
     markCol +
     horseCols +
     metricCols +
+    userMarkCol +
     '</colgroup>' +
     '<thead><tr>' +
-    sortThHtml('mark', '印', 'stats-col-mark') +
+    sortThHtml('mark', '推奨印', 'stats-col-mark') +
     horseGateSortThHtml() +
     sortThHtml('compositeScore', '総合スコア') +
     sortThHtml('avgRank', '平均着順') +
@@ -384,6 +395,7 @@ function renderTable() {
     sortThHtml('top3Rate', '複勝率') +
     sortThHtml('bestRank', 'ベスト着順') +
     sortThHtml('worstRank', 'ワースト着順') +
+    sortThHtml('userMark', '予想印', 'stats-col-user-mark') +
     '</tr></thead>';
   const displayRows = sortRowsCopy(rows);
   const body =
@@ -392,10 +404,13 @@ function renderTable() {
       .map(r => {
         const entry = runtimeRaceData.entries[r.id];
         const symbol = autoMarks.get(r.id) ?? '';
-        const markCell = `<td class="stats-col-mark" title="自動印">${escapeHtml(symbol)}</td>`;
+        const markCell = `<td class="stats-col-mark" title="推奨印">${escapeHtml(symbol)}</td>`;
+        const userSymbol = latestMarksByHorse[r.id] ?? '';
+        const userMarkCell =
+          `<td class="stats-col-user-mark" title="お好み設定の印">${escapeHtml(userSymbol)}</td>`;
         const statCells =
           trials === 0
-            ? `${markCell}${horseBlockCellsHtml(entry, r.gate, fieldSize)}${emptyMetricCells}`
+            ? `${markCell}${horseBlockCellsHtml(entry, r.gate, fieldSize)}${emptyMetricCells}${userMarkCell}`
             : `${markCell}${horseBlockCellsHtml(entry, r.gate, fieldSize)}` +
               `<td class="stats-col-metric">${fmtScore(compositeScores.get(r.id))}</td>` +
               `<td class="stats-col-metric">${fmtAvg(r.avgRank)}</td>` +
@@ -403,7 +418,8 @@ function renderTable() {
               `<td class="stats-col-metric">${pct(r.top2Rate)}</td>` +
               `<td class="stats-col-metric">${pct(r.top3Rate)}</td>` +
               `<td class="stats-col-metric">${r.bestRank ?? '—'}</td>` +
-              `<td class="stats-col-metric">${r.worstRank ?? '—'}</td>`;
+              `<td class="stats-col-metric">${r.worstRank ?? '—'}</td>` +
+              userMarkCell;
         return `<tr>${statCells}</tr>`;
       })
       .join('') +
@@ -444,7 +460,6 @@ async function init() {
   }
 
   ratingAdjustments = bundle.ratingAdjustments ?? bundle.userTweaks ?? {};
-  marks = bundle.marks ?? {};
   try {
     const courseCatalog = await fetch('./src/data/courses.json').then(r => r.json());
     const raceData = {
@@ -454,6 +469,7 @@ async function init() {
     };
     const courseDef = resolveCourseDef(raceData, courseCatalog);
     runtimeRaceData = { ...raceData, courseDef };
+    marksByHorse = loadMarksByHorseFromBundle(bundle, runtimeRaceData.entries.length);
   } catch (e) {
     console.error(e);
     if (errEl) errEl.textContent = 'コースデータの読み込みに失敗しました。';
@@ -465,9 +481,9 @@ async function init() {
     infoEl.innerHTML = formatRaceInfo(runtimeRaceData);
   }
 
-  persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, marks);
+  persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, marksByHorse);
 
-  const key = computeBucketKey(runtimeRaceData, ratingAdjustments, marks);
+  const key = computeBucketKey(runtimeRaceData, ratingAdjustments);
   const st = loadAggregateState();
   if (st.runs?.length && st.bucketKey && st.bucketKey !== key) {
     clearAggregateState();

@@ -175,7 +175,8 @@
     .stats-table col.stats-col-horse-sex { width: 5%; }
     .stats-table col.stats-col-horse-jockey { width: 9%; }
     .stats-table col.stats-col-mark { width: 4.5%; }
-    .stats-table col.stats-col-metric { width: 8.3%; }
+    .stats-table col.stats-col-user-mark { width: 4.5%; }
+    .stats-table col.stats-col-metric { width: 7.8%; }
     .stats-table th,
     .stats-table td {
       border: 1px solid #2a3f55;
@@ -199,16 +200,33 @@
       letter-spacing: -0.02em;
     }
     .stats-table th.stats-col-mark,
-    .stats-table td.stats-col-mark {
+    .stats-table td.stats-col-mark,
+    .stats-table th.stats-col-user-mark,
+    .stats-table td.stats-col-user-mark {
       text-align: center;
       font-weight: 700;
       white-space: nowrap;
       padding-left: 2px;
       padding-right: 2px;
     }
+    .stats-table th.stats-col-mark,
+    .stats-table th.stats-col-user-mark {
+      font-size: 0.72rem;
+      line-height: 1.2;
+      padding: 5px 3px;
+      letter-spacing: -0.02em;
+      cursor: pointer;
+      user-select: none;
+    }
     .stats-table td.stats-col-mark {
       color: #ffd166;
       text-shadow: 0 0 6px rgba(255, 209, 102, 0.35);
+      font-size: 0.95rem;
+      letter-spacing: 0.04em;
+    }
+    .stats-table td.stats-col-user-mark {
+      color: #a7f3d0;
+      text-shadow: 0 0 6px rgba(167, 243, 208, 0.28);
       font-size: 0.95rem;
       letter-spacing: 0.04em;
     }
@@ -364,13 +382,15 @@
         font-size: 0.62rem;
         padding: 6px 2px;
       }
-      .stats-table th.stats-col-mark {
+      .stats-table th.stats-col-mark,
+      .stats-table th.stats-col-user-mark {
         font-size: 0.66rem;
       }
       .stats-table td.stats-col-metric {
         font-size: 0.78rem;
       }
-      .stats-table td.stats-col-mark {
+      .stats-table td.stats-col-mark,
+      .stats-table td.stats-col-user-mark {
         font-size: 0.82rem;
       }
       #stats-race-info {
@@ -404,7 +424,8 @@
       .stats-table col.stats-col-horse-jockey {
         width: auto;
       }
-      .stats-table col.stats-col-mark {
+      .stats-table col.stats-col-mark,
+      .stats-table col.stats-col-user-mark {
         width: auto;
       }
       .stats-table col.stats-col-metric {
@@ -417,7 +438,9 @@
         white-space: nowrap;
       }
       .stats-table th.stats-col-mark,
-      .stats-table td.stats-col-mark {
+      .stats-table td.stats-col-mark,
+      .stats-table th.stats-col-user-mark,
+      .stats-table td.stats-col-user-mark {
         min-width: 1.8rem;
       }
       .stats-table th.stats-col-metric,
@@ -429,7 +452,9 @@
         padding: 4px 2px;
       }
       .stats-table th.stats-col-metric,
-      .stats-table th.stats-horse-sort-th {
+      .stats-table th.stats-horse-sort-th,
+      .stats-table th.stats-col-mark,
+      .stats-table th.stats-col-user-mark {
         font-size: 0.56rem;
         padding: 5px 1px;
         letter-spacing: -0.04em;
@@ -510,7 +535,12 @@
     <p id="stats-sort-hint" class="stats-muted">見出しクリックで並べ替え</p>
     <div id="stats-table-wrap"></div>
     <p id="stats-mark-note" class="stats-muted">
-      ◎: 1着経験馬で総合1位 / ◯▲: 2着以内経験馬で総合上位 / △: 3着以内経験馬で平均着順上位 / ★: 3着以内経験馬で複勝率上位 / ☆: 未選出馬から1着→2着以内→3着以内の順でロマン指数最大
+      <strong>【推奨印の説明】</strong><br>
+      ◎: 1着経験馬で総合1位<br>
+      ◯▲: 2着以内経験馬で総合上位<br>
+      △: 3着以内経験馬で平均着順上位<br>
+      ★: 3着以内経験馬で複勝率上位<br>
+      ☆: 未選出馬から1着→2着以内→3着以内の順でロマン指数最大
     </p>
   </div>
   <script type="module" src="./src/stats/stats-app.js"></script>

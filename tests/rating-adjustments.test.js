@@ -5,10 +5,13 @@ import {
   calcHorsesWithRatingAdjustments,
   computeBaselineAbilityRanks,
   formatEntryDetailLines,
+  loadMarksByHorseFromBundle,
   marksByHorseToSymbolMap,
+  normalizeMarksByHorse,
   PRE_RACE_MARK_OPTIONS,
   UNIQUE_MARK_SYMBOLS,
   ratingToMultiplier,
+  serializeMarksByHorse,
   symbolMapToMarksByHorse,
 } from '../src/engine/rating-adjustments.js';
 import { calcAllParams } from '../src/engine/params.js';
@@ -65,7 +68,7 @@ describe('rating-adjustments', () => {
     expect(ranks[0].cruise).toBeGreaterThanOrEqual(1);
   });
 
-  it('marksByHorse ↔ symbol map', () => {
+  it('marksByHorse ↔ symbol map（レガシー変換）', () => {
     const byHorse = { 0: '◎', 2: '△' };
     const sym = marksByHorseToSymbolMap(byHorse);
     expect(sym['◎']).toBe(0);
@@ -74,6 +77,16 @@ describe('rating-adjustments', () => {
     expect(back[0]).toBe('◎');
     expect(back[2]).toBe('△');
     expect(back[1]).toBe('');
+  });
+
+  it('予想印は同一記号を複数頭に付けられる', () => {
+    const byHorse = normalizeMarksByHorse({ 0: '◎', 1: '◎', 2: '△' }, 5);
+    expect(byHorse[0]).toBe('◎');
+    expect(byHorse[1]).toBe('◎');
+    expect(serializeMarksByHorse(byHorse, 5)).toEqual({ 0: '◎', 1: '◎', 2: '△' });
+    const loaded = loadMarksByHorseFromBundle({ marksByHorse: { 0: '◎', 1: '◎' } }, 5);
+    expect(loaded[0]).toBe('◎');
+    expect(loaded[1]).toBe('◎');
   });
 
   it('buildRatingMultipliers', () => {

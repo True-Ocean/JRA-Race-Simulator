@@ -3,7 +3,6 @@ import {
   PRE_RACE_MARK_OPTIONS,
   RATING_SLIDER_MAX,
   RATING_SLIDER_MIN,
-  UNIQUE_MARK_SYMBOLS,
   formatEntryDetailLines,
 } from '../engine/rating-adjustments.js';
 import { formatRaceInfo } from '../stats/race-display.js';
@@ -252,7 +251,7 @@ function makeDetailCell(entry) {
   return td;
 }
 
-function makeMarkCell(horseId, marksByHorse, allMarkButtons) {
+function makeMarkCell(horseId, marksByHorse, allMarkButtons, onMarksChange) {
   const td = document.createElement('td');
   td.className = 'pre-race-mark-cell';
 
@@ -265,20 +264,16 @@ function makeMarkCell(horseId, marksByHorse, allMarkButtons) {
     const sym = marksByHorse[horseId] ?? '';
     btn.textContent = sym || '—';
     btn.dataset.mark = sym;
-    btn.title = sym ? `印 ${sym}（クリックで変更）` : '印なし（クリックで設定）';
+    btn.title = sym ? `予想印 ${sym}（クリックで変更）` : '予想印なし（クリックで設定）';
   };
 
   btn.addEventListener('click', () => {
     const current = marksByHorse[horseId] ?? '';
     const idx = PRE_RACE_MARK_OPTIONS.indexOf(current);
     const next = PRE_RACE_MARK_OPTIONS[(idx + 1) % PRE_RACE_MARK_OPTIONS.length];
-    if (next && UNIQUE_MARK_SYMBOLS.has(next)) {
-      for (const [idStr, sym] of Object.entries(marksByHorse)) {
-        if (sym === next) marksByHorse[idStr] = '';
-      }
-    }
     marksByHorse[horseId] = next;
     allMarkButtons.forEach(({ paintFn, button, id }) => paintFn(id, button));
+    onMarksChange?.();
   });
 
   paint();
@@ -302,7 +297,6 @@ function makeMarkCell(horseId, marksByHorse, allMarkButtons) {
 function resetPreRaceEditorValues(tbody, p) {
   const {
     ratingAdjustments,
-    marksByHorse,
     totalEntries,
     runtimeRaceData,
     baselineEntryStyles,
@@ -311,7 +305,6 @@ function resetPreRaceEditorValues(tbody, p) {
 
   for (let id = 0; id < totalEntries; id++) {
     ratingAdjustments[id] = { horse: 0, jockey: 0, training: 0 };
-    marksByHorse[id] = '';
     const baselineStyle = baselineEntryStyles[id];
     if (baselineStyle != null && runtimeRaceData.entries[id]?.horse) {
       runtimeRaceData.entries[id].horse.style = baselineStyle;
@@ -329,11 +322,6 @@ function resetPreRaceEditorValues(tbody, p) {
         val.dataset.zero = '1';
       }
     });
-    const markBtn = tr.querySelector('.pre-race-mark-btn');
-    if (markBtn) {
-      markBtn.textContent = '—';
-      markBtn.dataset.mark = '';
-    }
     const syncStyle = styleSyncByRow.get(id);
     if (syncStyle) syncStyle();
   });
@@ -346,6 +334,7 @@ function resetPreRaceEditorValues(tbody, p) {
  * @param {Record<number, string>} p.marksByHorse
  * @param {string[]} p.baselineEntryStyles
  * @param {() => void} p.onClose
+ * @param {() => void} [p.onMarksChange]
  * @param {() => boolean | void} p.onApply
  * @param {() => void} p.onReset
  */
@@ -356,6 +345,7 @@ export function mountPreRaceEditor(p) {
     marksByHorse,
     baselineEntryStyles,
     onClose,
+    onMarksChange,
     onApply,
     onReset,
   } = p;
@@ -392,7 +382,7 @@ export function mountPreRaceEditor(p) {
     const tr = document.createElement('tr');
     tr.dataset.horseId = String(idx);
 
-    tr.appendChild(makeMarkCell(idx, marksByHorse, allMarkButtons));
+    tr.appendChild(makeMarkCell(idx, marksByHorse, allMarkButtons, onMarksChange));
 
     const waku = calcWaku(entry.gate, totalEntries);
     const wakuColors = JRA_WAKU_COLORS[waku] ?? { bg: '#888888', text: '#ffffff' };
@@ -511,7 +501,7 @@ export function mountPreRaceEditor(p) {
     closeActiveInfoPopover();
     if (!(await showPreRaceConfirm())) return;
     if (onApply?.() !== false) {
-      showPreRaceToast('お好み設定が反映されました');
+      showPreRaceToast('評価が反映されました');
     }
   });
 
@@ -520,14 +510,13 @@ export function mountPreRaceEditor(p) {
     if (!(await showPreRaceConfirm())) return;
     resetPreRaceEditorValues(tbody, {
       ratingAdjustments,
-      marksByHorse,
       totalEntries,
       runtimeRaceData,
       baselineEntryStyles,
       styleSyncByRow,
     });
     if (onReset?.() !== false) {
-      showPreRaceToast('初期設定にリセットされました');
+      showPreRaceToast('評価をリセットしました');
     }
   });
 

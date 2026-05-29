@@ -15,7 +15,7 @@ export const RATING_SLIDER_MAX = 5;
 /** プレレースで選べる印（空文字 = なし） */
 export const PRE_RACE_MARK_OPTIONS = ['', '◎', '◯', '▲', '△', '★', '☆', '×', '消'];
 
-/** 印は1頭のみ（◎◯▲△★☆ 各1頭まで） */
+/** 集計の推奨印で使う記号（予想印は重複可・×消も可） */
 export const UNIQUE_MARK_SYMBOLS = new Set(['◎', '◯', '▲', '△', '★', '☆']);
 
 /**
@@ -139,6 +139,56 @@ export function computeBaselineAbilityRanks(raceData) {
       fieldSize,
     };
   });
+  return out;
+}
+
+/**
+ * @param {Record<number, string>|Record<string, string>} raw
+ * @param {number} fieldSize
+ * @returns {Record<number, string>}
+ */
+export function normalizeMarksByHorse(raw = {}, fieldSize = 0) {
+  const out = createDefaultMarksByHorse(fieldSize);
+  for (const [idStr, symbol] of Object.entries(raw)) {
+    const id = Number(idStr);
+    if (!Number.isFinite(id) || id < 0 || id >= fieldSize) continue;
+    out[id] = typeof symbol === 'string' ? symbol : '';
+  }
+  return out;
+}
+
+/**
+ * @param {object|null|undefined} bundle
+ * @param {number} fieldSize
+ * @returns {Record<number, string>}
+ */
+export function loadMarksByHorseFromBundle(bundle, fieldSize) {
+  if (!bundle) return createDefaultMarksByHorse(fieldSize);
+  if (bundle.marksByHorse && typeof bundle.marksByHorse === 'object') {
+    return normalizeMarksByHorse(bundle.marksByHorse, fieldSize);
+  }
+  if (bundle.marks && typeof bundle.marks === 'object') {
+    const keys = Object.keys(bundle.marks);
+    const legacySymbolMap = keys.some(k => UNIQUE_MARK_SYMBOLS.has(k));
+    if (legacySymbolMap) {
+      return symbolMapToMarksByHorse(bundle.marks, fieldSize);
+    }
+    return normalizeMarksByHorse(bundle.marks, fieldSize);
+  }
+  return createDefaultMarksByHorse(fieldSize);
+}
+
+/**
+ * @param {Record<number, string>} marksByHorse
+ * @param {number} fieldSize
+ * @returns {Record<string, string>}
+ */
+export function serializeMarksByHorse(marksByHorse = {}, fieldSize = 0) {
+  const out = {};
+  for (let id = 0; id < fieldSize; id++) {
+    const sym = marksByHorse[id] ?? '';
+    if (sym) out[String(id)] = sym;
+  }
   return out;
 }
 

@@ -2,8 +2,7 @@ import {
   calcHorsesWithRatingAdjustments,
   createDefaultMarksByHorse,
   createDefaultRatingAdjustments,
-  marksByHorseToSymbolMap,
-  symbolMapToMarksByHorse,
+  loadMarksByHorseFromBundle,
 } from './src/engine/rating-adjustments.js';
 import { buildPhases } from './src/engine/phase.js';
 import { Renderer }       from './src/ui/renderer.js';
@@ -451,11 +450,12 @@ Promise.all([
       }
       Object.assign(
         marksByHorse,
-        symbolMapToMarksByHorse(savedBundle.marks ?? {}, runtimeRaceData.entries.length),
+        loadMarksByHorseFromBundle(savedBundle, runtimeRaceData.entries.length),
       );
     }
 
-    const getUserMarksForBundle = () => marksByHorseToSymbolMap(marksByHorse);
+    const persistRaceBundle = () =>
+      persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, marksByHorse);
 
     let initialHorses = [];
     let horseMetaByName = new Map();
@@ -680,7 +680,6 @@ Promise.all([
           addAggregateRun({
             runtimeRaceData,
             ratingAdjustments,
-            marks: getUserMarksForBundle(),
             source: currentRaceUsedAutoAdvance ? 'auto' : 'manual',
             orderIds,
           });
@@ -737,7 +736,7 @@ Promise.all([
       renderer.resetHorseRenderState();
       renderer.draw(initialHorses, phases[0], 0);
       refreshRaceInfo();
-      persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, getUserMarksForBundle());
+      persistRaceBundle();
     }
 
     /** 集計画面から戻ったときなど、保存済みのレース結果表示を復元する */
@@ -1230,7 +1229,7 @@ Promise.all([
             /* ignore */
           }
         }
-        persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, getUserMarksForBundle());
+        persistRaceBundle();
         window.location.assign('stats.html');
       };
       document.getElementById('btn-open-stats')?.addEventListener('click', () => openStatsPage('simulator'));
@@ -1244,7 +1243,7 @@ Promise.all([
     }
 
     function preRaceBeforeSettingsChange() {
-      const nextKey = computeBucketKey(runtimeRaceData, ratingAdjustments, getUserMarksForBundle());
+      const nextKey = computeBucketKey(runtimeRaceData, ratingAdjustments);
       const agg = loadAggregateState();
       if (agg.runs.length > 0 && agg.bucketKey && agg.bucketKey !== nextKey) {
         clearAggregateState();
@@ -1414,10 +1413,11 @@ Promise.all([
       marksByHorse,
       baselineEntryStyles,
       onClose: closePreferencesScreen,
+      onMarksChange: () => persistRaceBundle(),
       onApply: () => applyPreferencesToSimulator(),
       onReset: () => {
         preRaceBeforeSettingsChange();
-        persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, getUserMarksForBundle());
+        persistRaceBundle();
         if (simulatorInitialized) {
           applyComputedHorsesToUi();
         }
