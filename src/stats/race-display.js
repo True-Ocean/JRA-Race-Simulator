@@ -63,16 +63,4 @@ export function formatRaceInfo(raceData) {
   return `${headHtml}${lineSep}${between}${tailHtml}`;
 }
 
-export function resolveCourseDef(raceData, courseCatalog) {
-  const requestedId = raceData?.race_info?.course_id;
-  const courses = courseCatalog?.courses ?? [];
-  if (requestedId) {
-    const found = courses.find(c => c.id === requestedId);
-    if (found) return found;
-  }
-  if (courseCatalog?.defaultCourseId) {
-    const fallback = courses.find(c => c.id === courseCatalog.defaultCourseId);
-    if (fallback) return fallback;
-  }
-  return null;
-}
+export { resolveCourseDef } from '../lib/course-resolve.js';

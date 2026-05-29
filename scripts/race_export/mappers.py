@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 import pandas as pd
 
-from .config import DEFAULT_COURSE_ID, DISTANCE_TO_COURSE_ID, VENUE_SUFFIX
+from .config import VENUE_SUFFIX
 
 
 def normalize_date(value) -> str:
@@ -46,14 +46,6 @@ def normalize_grade(grade: str) -> str:
     return text
 
 
-def resolve_course_id(distance) -> str:
-    try:
-        distance_int = int(distance)
-    except (TypeError, ValueError):
-        return DEFAULT_COURSE_ID
-    return DISTANCE_TO_COURSE_ID.get(distance_int, DEFAULT_COURSE_ID)
-
-
 def build_race_info(row) -> dict:
     date_str = normalize_date(row["日付"])
     distance = int(row["距離"])
@@ -69,7 +61,6 @@ def build_race_info(row) -> dict:
             "track": str(row["TD"]).strip(),
             "distance": distance,
             "condition": str(row["状態"]).strip(),
-            "course_id": resolve_course_id(distance),
         },
     }
 

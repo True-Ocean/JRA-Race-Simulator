@@ -33,11 +33,5 @@ KESSHI_TO_STYLE = {
     "後方": "追込",
 }
 
-# distance (m) → course_id in courses.json
-DISTANCE_TO_COURSE_ID = {
-    2400: "long_2400",
-}
-DEFAULT_COURSE_ID = "mile_short"
-
 # venue short name → full name
 VENUE_SUFFIX = "競馬場"
