@@ -32,31 +32,10 @@ export const STUMBLE_BASE_RATE = 0.008;
 export const STUMBLE_PHASE_MAX = 0.55;
 export const EARLY_TROUBLE_DECAY_PER_100M = 0.88;
 export const EARLY_ORDER_TIE_NOISE = 1.2;
-export const EARLY_OUTER_NIGE_START_RATIO = 0.60;
-export const EARLY_OUTER_NIGE_ADV_GAIN_MAX = 0.18;
-export const EARLY_OUTER_NIGE_DRAIN_PER_100M = 0.45;
-/** スタートフェーズのみ: 隊列形成ペースの逃げ寄せを弱める（一気離れ抑制） */
-export const START_PHASE_NIGE_PACE_BLEND = 0.58;
-/** スタートフェーズのみ: 理想ギャップ追い込み（gapCatchBoost）に掛ける係数 */
-export const START_PHASE_GAP_CATCH_SCALE = 0.22;
-/** スタートフェーズのみ: 外ライン逃げダッシュの強さ */
-export const START_PHASE_OUTER_NIGE_SCALE = 0.52;
-export const OONIGE_BURST_ROLL_MIN = 0.92;
-export const OONIGE_BURST_ROLL_MAX = 1.12;
-export const OONIGE_BURST_PHASE_JITTER_MIN = 0.97;
-export const OONIGE_BURST_PHASE_JITTER_MAX = 1.03;
-export const OONIGE_DRAIN_BURST_LINK_GAIN = 1.4;
-export const OONIGE_PHASE_DRAIN_EARLY_MULT = 0.88;
-export const OONIGE_PHASE_DRAIN_LATE_MULT = 1.10;
-export const FRONTRUN_ROLL_MIN = 0.94;
-export const FRONTRUN_ROLL_MAX = 1.10;
-export const OONIGE_LATE_DRAIN_BASE_PER_100M = 1.24;
-export const OONIGE_LATE_DRAIN_LEAD_GAIN = 1.08;
 /**
  * スタミナ設計（展開駆動）
  * - 競争圧: 本番で「追われ・離せ・争い」→ 消費増（脚質ラベルでは決めない）
  * - 実行圧: ゴールで「脚を入れている」→ 燃焼増（着順の答え合わせはしない）
- * - 大逃げ巡航で温存 → 競争圧上昇で再消費 → 必要ならゴールで使い切りも可
  * - 競争なしで後方・高残もあり得る（バー緑は常にバグではない）
  */
 /** 安全策: 新スタミナモデル（イベント主導 + 距離微小消費）を段階導入 */
@@ -69,23 +48,6 @@ export const SAFE_LANE_EVENT_DRAIN_MULT = 0.45;
 export const SAFE_CORNER_EVENT_DRAIN_MULT = 0.35;
 /** 新モデル: 余剰加速イベント消費倍率 */
 export const SAFE_ACCEL_EVENT_DRAIN_MULT = 0.62;
-/** SAFEモデル下: 逃げ・大逃げのペース拡大ドレインを旧式の何割で復活させるか */
-export const SAFE_NIGE_PACE_DRAIN_MULT = 0.42;
-/** SAFE + 逃げ: 序盤〜中盤（ratio≤0.55）のフェーズ倍率 */
-export const SAFE_NIGE_EARLY_PACE_PHASE_MULT = 1.45;
-/** SAFE + 逃げ: 第4コーナー以降のフェーズ倍率 */
-export const SAFE_NIGE_LATE_PACE_PHASE_MULT = 0.92;
-/** SAFE + 大逃げ: 序盤のフェーズ倍率（逃げより抑える） */
-export const SAFE_OONIGE_EARLY_PACE_PHASE_MULT = 1.05;
-/** 大逃げ巡航: 2着との差がこの値(m相当)以上で巡航判定に入りやすくする */
-export const OONIGE_CRUISE_SECOND_GAP_MIN = 10;
-/** 大逃げ巡航: gapNeedNorm がこの以下なら「十分離せた」とみなす */
-export const OONIGE_CRUISE_GAP_NEED_MAX = 0.12;
-/** 大逃げ巡航時のペースドレイン倍率（SAFE復活分に掛ける） */
-export const OONIGE_CRUISE_DRAIN_MULT_MIN = 0.08;
-export const OONIGE_CRUISE_DRAIN_MULT_MAX = 0.26;
-/** SAFE + 大逃げ: バースト連動ドレインの巡航時上限（旧式 link×10 を抑える） */
-export const OONIGE_CRUISE_BURST_LINK_SCALE = 2.2;
 /** 新モデル: 終盤でイベント疲労を速度へ反映する重み */
 export const SAFE_GOAL_EVENT_FATIGUE_WEIGHT = 0.42;
 /** 新モデル: 終盤の stamina/m 正規化基準 */
@@ -93,24 +55,6 @@ export const SAFE_GOAL_STAMINA_PER_M_REF = 0.030;
 export const SAFE_GOAL_STAMINA_PER_M_RANGE = 0.090;
 /** スタート初速のうちこの倍率までは能力域とみなし、accel スタミナは超過分のみ課金 */
 export const START_BURST_STAMINA_FREE_CAP = 1.14;
-/** 逃げ・大逃げの「ペース拡大」追加ドレイン: 追い込み必要時の下限 */
-export const NIGE_PACE_EXTRA_DRAIN_FLOOR = 0.34;
-/** 先頭キープ時のペースドレイン下限（楽先頭でもゼロにしない） */
-export const NIGE_PACE_LEAD_HOLD_DRAIN_FLOOR = 0.58;
-/** 先頭で2着に余裕があるときの accel ドレイン下限 */
-export const NIGE_ACCEL_LEAD_EASE_MIN = 0.62;
-/** kick 予備ライン上限（initial 比）逃げ・大逃げ */
-export const KICK_RESERVE_FLOOR_NIGE_MAX = 0.17;
-export const KICK_RESERVE_FLOOR_OONIGE_MAX = 0.13;
-export const KICK_EARLY_DRAIN_NIGE_MULT = 1.04;
-/** 2着が1フェーズでこれ以上詰めたら競争圧（chasePressure） */
-export const CHASE_GAP_CLOSE_PER_PHASE = 2.5;
-export const CHASE_GAP_CLOSE_PRESSURE_GAIN = 0.92;
-/** 外ラチ逃げダッシュ: 先頭で十分離れているときのドレイン倍率 */
-export const NIGE_OUTER_DASH_CLEAR_LEAD_MULT = 0.58;
-/** 4角以降大逃げ: 楽に先頭をキープしているときの late ドレイン倍率 */
-export const OONIGE_LATE_CLEAR_LEAD_MULT = 0.62;
-export const OONIGE_LATE_CLEAR_LEAD_GAP = 20;
 // ゴールシーンは「ゴールラインから 200m 手前〜ゴール」が画面に収まるイメージ。
 // last_3f（最終3ハロン≈600m の通過秒）から intrinsic 速度を出し、スタミナ残量で毎フレーム上限を締める。
 export const GOAL_FURLONG_METERS = 200;
@@ -204,7 +148,6 @@ export const GOAL_CAMERA_LERP_MAX = 0.16;
 export const GOAL_ANCHOR_DYNAMIC_BOOST = 0.12;
 export const STAMINA_LANE_CHANGE_COST = 0.45;
 export const STAMINA_ACCEL_COST = 0.10;
-export const STAMINA_EARLY_ACCEL_MULT = 1.10;
 export const STAMINA_BATTLE_BASE_COST = 0.8;
 export const STAMINA_BATTLE_LOSER_EXTRA = 1.6;
 export const STAMINA_BATTLE_TRACKER_GAIN = 0.2;

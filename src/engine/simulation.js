@@ -42,52 +42,15 @@ import {
   STUMBLE_PHASE_MAX,
   EARLY_TROUBLE_DECAY_PER_100M,
   EARLY_ORDER_TIE_NOISE,
-  EARLY_OUTER_NIGE_START_RATIO,
-  EARLY_OUTER_NIGE_ADV_GAIN_MAX,
-  EARLY_OUTER_NIGE_DRAIN_PER_100M,
-  START_PHASE_NIGE_PACE_BLEND,
-  START_PHASE_GAP_CATCH_SCALE,
-  START_PHASE_OUTER_NIGE_SCALE,
-  OONIGE_BURST_ROLL_MIN,
-  OONIGE_BURST_ROLL_MAX,
-  OONIGE_BURST_PHASE_JITTER_MIN,
-  OONIGE_BURST_PHASE_JITTER_MAX,
-  OONIGE_DRAIN_BURST_LINK_GAIN,
-  OONIGE_PHASE_DRAIN_EARLY_MULT,
-  OONIGE_PHASE_DRAIN_LATE_MULT,
-  FRONTRUN_ROLL_MIN,
-  FRONTRUN_ROLL_MAX,
-  OONIGE_LATE_DRAIN_BASE_PER_100M,
-  OONIGE_LATE_DRAIN_LEAD_GAIN,
   USE_SAFE_STAMINA_MODEL,
   SAFE_BASE_STAMINA_PER_M,
   SAFE_LANE_EVENT_DRAIN_MULT,
   SAFE_CORNER_EVENT_DRAIN_MULT,
   SAFE_ACCEL_EVENT_DRAIN_MULT,
-  SAFE_NIGE_PACE_DRAIN_MULT,
-  SAFE_NIGE_EARLY_PACE_PHASE_MULT,
-  SAFE_NIGE_LATE_PACE_PHASE_MULT,
-  SAFE_OONIGE_EARLY_PACE_PHASE_MULT,
-  OONIGE_CRUISE_SECOND_GAP_MIN,
-  OONIGE_CRUISE_GAP_NEED_MAX,
-  OONIGE_CRUISE_DRAIN_MULT_MIN,
-  OONIGE_CRUISE_DRAIN_MULT_MAX,
-  OONIGE_CRUISE_BURST_LINK_SCALE,
   SAFE_GOAL_EVENT_FATIGUE_WEIGHT,
   SAFE_GOAL_STAMINA_PER_M_REF,
   SAFE_GOAL_STAMINA_PER_M_RANGE,
   START_BURST_STAMINA_FREE_CAP,
-  NIGE_PACE_EXTRA_DRAIN_FLOOR,
-  NIGE_PACE_LEAD_HOLD_DRAIN_FLOOR,
-  NIGE_ACCEL_LEAD_EASE_MIN,
-  KICK_RESERVE_FLOOR_NIGE_MAX,
-  KICK_RESERVE_FLOOR_OONIGE_MAX,
-  KICK_EARLY_DRAIN_NIGE_MULT,
-  CHASE_GAP_CLOSE_PER_PHASE,
-  CHASE_GAP_CLOSE_PRESSURE_GAIN,
-  NIGE_OUTER_DASH_CLEAR_LEAD_MULT,
-  OONIGE_LATE_CLEAR_LEAD_MULT,
-  OONIGE_LATE_CLEAR_LEAD_GAP,
   GOAL_FURLONG_METERS,
   GOAL_TIME_SCALE,
   GOAL_DISTANCE_METERS,
@@ -132,7 +95,6 @@ import {
   GOAL_ANCHOR_DYNAMIC_BOOST,
   STAMINA_LANE_CHANGE_COST,
   STAMINA_ACCEL_COST,
-  STAMINA_EARLY_ACCEL_MULT,
   STAMINA_BATTLE_BASE_COST,
   STAMINA_BATTLE_LOSER_EXTRA,
   STAMINA_BATTLE_TRACKER_GAIN,
@@ -222,33 +184,6 @@ function staminaAccelAbilityMult(staminaRatio) {
   return 0.62 + (r / 0.35) * 0.38;
 }
 
-function getOonigePhaseDrainMult(phase) {
-  return isAfterFourthCornerPhase(phase)
-    ? OONIGE_PHASE_DRAIN_LATE_MULT
-    : OONIGE_PHASE_DRAIN_EARLY_MULT;
-}
-
-function getOonigeLeadStretchRamp(phase) {
-  if (!phase) return 1;
-  const segmentId = String(phase.segmentId ?? '').toLowerCase();
-  const label = String(phase.segmentLabel ?? '');
-
-  if (segmentId || label) {
-    if (segmentId === 'start' || label.includes('スタート')) return 0.56;
-    if (segmentId === 'home' || label.includes('ホーム直線')) return 0.80;
-    if (segmentId === 'corner1' || label.includes('第1コーナー')) return 0.98;
-    if (segmentId === 'corner2' || label.includes('第2コーナー')) return 1.14;
-    if (segmentId === 'back' || label.includes('向正面')) return 1.38;
-    if (segmentId === 'corner3' || label.includes('第3コーナー')) return 1.82;
-    return 1.12;
-  }
-
-  const r = Number.isFinite(phase.ratio) ? phase.ratio : 0;
-  const t = Math.max(0, Math.min(1, r / 0.62));
-  const s = t * t * (3 - 2 * t);
-  return 0.48 + 1.34 * s;
-}
-
 function initUniversalKickProfile(horse, rng, last3fMin, last3fMax, last3fSpan) {
   const span = Math.max(0.001, last3fSpan);
   const last3fW = Number.isFinite(horse.last3f)
@@ -259,12 +194,6 @@ function initUniversalKickProfile(horse, rng, last3fMin, last3fMax, last3fSpan) 
   mult = Math.max(0.795, Math.min(0.99, mult));
   let floorR = 0.05 + sustainN * 0.135 + last3fW * 0.09 + (rng() - 0.5) * 0.045;
   floorR = Math.max(0.042, Math.min(0.27, floorR));
-  if (isOonigeStyle(horse.style)) {
-    floorR = Math.min(floorR, KICK_RESERVE_FLOOR_OONIGE_MAX);
-  } else if (isNigeStyle(horse.style)) {
-    floorR = Math.min(floorR, KICK_RESERVE_FLOOR_NIGE_MAX);
-    mult = Math.min(0.99, mult * KICK_EARLY_DRAIN_NIGE_MULT);
-  }
   horse.kickEarlyDrainMult = mult;
   horse.kickReserveFloorRatio = floorR;
   horse.kickDayRoll = 0.962 + rng() * 0.076;
@@ -309,86 +238,6 @@ function subtractStaminaWithReserve(horse, rawDrain, phase, trackFieldOrOptions 
     horse.eventFatigueScore = (horse.eventFatigueScore ?? 0) + d * fatigueGain;
     horse.recentEventLoad = (horse.recentEventLoad ?? 0) + d * fatigueGain;
   }
-}
-
-function getNigePaceExtraDrainMult({
-  isLeading,
-  gapNeedNorm,
-  oonigePressure,
-  frontBlocked,
-  inTrafficBattle,
-}) {
-  if (inTrafficBattle || frontBlocked) return 1.0;
-  if (!isLeading) return 0.92;
-  const posNeed = Math.max(0, gapNeedNorm);
-  const pressure = Math.max(0, Math.min(1, Number.isFinite(oonigePressure) ? oonigePressure : 0));
-  let squeeze = posNeed * 0.88 + pressure * 0.36;
-  if (posNeed <= 0.02) squeeze *= 0.38;
-  const t = Math.max(0, Math.min(1, squeeze));
-  const dynamic = NIGE_PACE_EXTRA_DRAIN_FLOOR + (1 - NIGE_PACE_EXTRA_DRAIN_FLOOR) * t;
-  return Math.max(dynamic, NIGE_PACE_LEAD_HOLD_DRAIN_FLOOR);
-}
-
-/**
- * 大逃げが先頭で十分離れているときの巡航ドレイン倍率。
- * 向正面〜中盤で oonigeBoost に連動した過剰消費を抑える。
- */
-function calcOonigeCruiseEase(isLeading, secondGap, gapNeedNorm) {
-  if (!isLeading) return 1;
-  if (secondGap < OONIGE_CRUISE_SECOND_GAP_MIN) return 1;
-  if (gapNeedNorm > OONIGE_CRUISE_GAP_NEED_MAX) return 1;
-  const comfort = Math.max(
-    0,
-    Math.min(1, (secondGap - OONIGE_CRUISE_SECOND_GAP_MIN) / 18),
-  );
-  return OONIGE_CRUISE_DRAIN_MULT_MAX
-    - comfort * (OONIGE_CRUISE_DRAIN_MULT_MAX - OONIGE_CRUISE_DRAIN_MULT_MIN);
-}
-
-/** 競争圧: 2着の詰め・僅差・ペース圧（0〜1） */
-function calcChasePressure({
-  isLeading,
-  secondGap,
-  gapNeedNorm,
-  oonigePressure,
-  prevSecondGap,
-}) {
-  if (!isLeading) return 0;
-  let p = 0;
-  const pressure = Math.max(0, Math.min(1, Number.isFinite(oonigePressure) ? oonigePressure : 0));
-  p = Math.max(p, pressure * 0.4);
-  if (gapNeedNorm > 0.04) {
-    p = Math.max(p, Math.min(1, gapNeedNorm * 0.9));
-  }
-  if (secondGap < 9) {
-    p = Math.max(p, ((9 - secondGap) / 9) * 0.75);
-  }
-  if (Number.isFinite(prevSecondGap) && prevSecondGap > secondGap + 0.4) {
-    const closed = (prevSecondGap - secondGap) / Math.max(0.5, CHASE_GAP_CLOSE_PER_PHASE);
-    p = Math.max(p, Math.min(1, closed * CHASE_GAP_CLOSE_PRESSURE_GAIN));
-  }
-  return Math.max(0, Math.min(1, p));
-}
-
-/** ペースドレイン倍率: 巡航 ease と競争圧から補間（1=フル消費） */
-function calcPaceDrainMultFromPressure(cruiseEase, chasePressure) {
-  const chase = Math.max(0, Math.min(1, chasePressure));
-  const ease = Math.max(0, Math.min(1, cruiseEase));
-  return ease + (1 - ease) * chase;
-}
-
-/** USE_SAFE_STAMINA_MODEL 時、逃げ・大逃げ専用ペースドレインを段階的に復活させる */
-function scaleSafeNigePaceDrain(rawDrain, phase, { isOonige = false } = {}) {
-  if (!Number.isFinite(rawDrain) || rawDrain <= 0) return 0;
-  if (!USE_SAFE_STAMINA_MODEL) return rawDrain;
-  let d = rawDrain * SAFE_NIGE_PACE_DRAIN_MULT;
-  if (!phase) return d;
-  if (isAfterFourthCornerPhase(phase)) {
-    d *= SAFE_NIGE_LATE_PACE_PHASE_MULT;
-  } else if (Number(phase.ratio) <= 0.55) {
-    d *= isOonige ? SAFE_OONIGE_EARLY_PACE_PHASE_MULT : SAFE_NIGE_EARLY_PACE_PHASE_MULT;
-  }
-  return d;
 }
 
 function sampleInnerRailGap(rng) {
@@ -475,22 +324,11 @@ function calcEarlyPhaseOrderScore(horse, rng, ave3fMax, ave3fSpan, allHorses, ph
   const burstBonus = (projectedBurst - 1.0) * 22;
   const lane = clampLane(horse.y);
   const innerLaneBonus = (LANE_WIDTH - lane) * 0.7;
-  const outerLanePressureNorm = calcOuterNigePressureNorm(lane);
-  const outerNigeBonus = isNigeStyle(horse.style)
-    ? outerLanePressureNorm * (isOonigeStyle(horse.style) ? 6.4 : 5.0)
-    : 0;
   const troublePenalty = (horse.startTroubleScore ?? 0) * 17;
   const tieNoise = (rng() - 0.5) * EARLY_ORDER_TIE_NOISE;
   const packRank = allHorses?.length ? calcPackRankNorm(horse, allHorses) : 0.5;
   const formationBias = getFormationOrderBias(horse, packRank, phaseRatio ?? 0);
-  return 34 + burstBonus + innerLaneBonus + outerNigeBonus - troublePenalty + tieNoise + formationBias;
-}
-
-function calcOuterNigePressureNorm(lane) {
-  const clampedLane = clampLane(lane);
-  const outerStartLane = 1 + (LANE_WIDTH - 1) * EARLY_OUTER_NIGE_START_RATIO;
-  const maxOuterSpan = Math.max(0.5, LANE_WIDTH - outerStartLane);
-  return Math.max(0, Math.min(1, (clampedLane - outerStartLane) / maxOuterSpan));
+  return 34 + burstBonus + innerLaneBonus - troublePenalty + tieNoise + formationBias;
 }
 
 function calcStumbleRate(horse) {
@@ -551,30 +389,6 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     horse.stretchFanLane = null;
     horse.laneCommitDir = 0;
     horse.laneCommitPhases = 0;
-    const ave3fWeight = Number.isFinite(horse.ave3f)
-      ? (ave3fMax - horse.ave3f) / ave3fSpan
-      : 0.5;
-    const last3fWeight = Number.isFinite(horse.last3f)
-      ? (last3fMax - horse.last3f) / last3fSpan
-      : 0.5;
-    const sustainWeight = Math.max(0, Math.min(1, horse.S_sustain / 100));
-    const maneuvWeight = Math.max(0, Math.min(1, horse.M_maneuv / 100));
-    const frontRunDrive = Math.max(
-      0,
-      Math.min(1, ave3fWeight * 0.44 + sustainWeight * 0.30 + maneuvWeight * 0.16 + last3fWeight * 0.10),
-    );
-    horse.frontRunDrive = isNigeStyle(horse.style) ? frontRunDrive : 0;
-    horse.oonigeDrive = Math.max(
-      0,
-      Math.min(1, ave3fWeight * 0.48 + last3fWeight * 0.20 + sustainWeight * 0.32),
-    );
-    horse.oonigeLeadStreak = 0;
-    horse.oonigeBurstRoll = isNigeStyle(horse.style)
-      ? FRONTRUN_ROLL_MIN + rng() * (FRONTRUN_ROLL_MAX - FRONTRUN_ROLL_MIN)
-      : 1.0;
-    horse.oonigePressure = isNigeStyle(horse.style) ? horse.frontRunDrive : 0;
-    horse.phasePrevSecondGap = undefined;
-    horse.phasePrevLeadGapLate = undefined;
     initUniversalKickProfile(horse, rng, last3fMin, last3fMax, last3fSpan);
     initFormationTarget(horse, rng, ave3fMax, ave3fSpan);
   });
@@ -681,22 +495,8 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         : CONFIG.STAMINA_MODIFIER_EMPTY;
 
       const horseLanePre = clampLane(horse.y);
-      const earlyFrontGapPre = getFrontGap(horse, horseLanePre, horses);
-      const earlyFrontBlockedPre =
-        earlyFrontGapPre < (collisionMetrics.minXGap + FINAL_FRONT_BLOCK_EXTRA_GAP);
-      const phaseTrafficBattlePre = engagedHorseIds.has(horse.id);
-      const sortedByFrontPre = [...horses].sort((a, b) => b.x - a.x);
-      const leaderPre = sortedByFrontPre[0] ?? null;
-      const runnerUpPre = sortedByFrontPre[1] ?? null;
-      const leadGapPre = Math.max(0, (leaderPre?.x ?? horse.x) - horse.x);
-      const isLeadingPre = Boolean(leaderPre && leaderPre.id === horse.id && leadGapPre <= 8);
-      const secondGapPre =
-        isLeadingPre && runnerUpPre ? Math.max(0, horse.x - runnerUpPre.x) : 0;
 
       let paceMult = getFormationPaceMultiplier(horse, phase.ratio, ave3fMax, ave3fSpan);
-      if (phase.index === 0 && isNigeStyle(horse.style)) {
-        paceMult = 1 + (paceMult - 1) * START_PHASE_NIGE_PACE_BLEND;
-      }
       const V_eff    = horse.S_cruise * staminaMod * horse.battlePenalty * paceMult;
       const desiredAdvance = V_eff * (phase.distance / 80);
       const irregularMult = applyIrregularEvents(
@@ -780,252 +580,25 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       const isFinalStraight = isFinalStraightPhase(phase);
       const isCorner4Only = isFourthCornerPhase(phase) && !isFinalStraight;
       const isLateStraight = isFinalStraight;
-      if (
-        isLateStraight
-        && (isNigeStyle(horse.style) || horse.style === '先行')
-        && isLeadingPre
-      ) {
-        const chaserNear = horses.some(h =>
-          h.id !== horse.id
-          && h.x < horse.x + 2
-          && h.x > horse.x - 42,
-        );
-        if (chaserNear) {
-          const holdDrain =
-            (Math.max(0, phase.distance) / 100)
-            * (0.55 + (horse.oonigePressure ?? horse.frontRunDrive ?? 0) * 0.9);
-          subtractStaminaWithReserve(horse, holdDrain, phase, {
-            trackField: 'staminaAccelCost',
-            fatigueGain: 0.32,
-          });
-        }
-      }
-      const isOonige = isOonigeStyle(horse.style);
-      if (isEarlyInnerBurst && isNigeStyle(horse.style)) {
-        const outerLanePressureNorm = calcOuterNigePressureNorm(horse.y);
-        if (outerLanePressureNorm > 0) {
-          const nigeGainMult = isOonigeStyle(horse.style) ? 1.24 : 1.0;
-          let dashGain = EARLY_OUTER_NIGE_ADV_GAIN_MAX * nigeGainMult * outerLanePressureNorm;
-          if (phase.index === 0) {
-            dashGain *= START_PHASE_OUTER_NIGE_SCALE;
-          }
-          adjustedAdvance *= (1 + dashGain);
-          let dashDrain =
-            (Math.max(0, phase.distance) / 100) *
-            EARLY_OUTER_NIGE_DRAIN_PER_100M *
-            (0.6 + 0.8 * outerLanePressureNorm) *
-            (isOonige ? 1.04 : 1.0);
-          if (
-            isLeadingPre &&
-            secondGapPre >= 7 &&
-            !phaseTrafficBattlePre &&
-            !earlyFrontBlockedPre
-          ) {
-            dashDrain *= NIGE_OUTER_DASH_CLEAR_LEAD_MULT;
-          }
-          let tunedDashDrain = scaleSafeNigePaceDrain(dashDrain, phase, { isOonige });
-          if (isOonige && isLeadingPre) {
-            const gapNeedDash = Math.max(-0.45, Math.min(1, (14 - secondGapPre) / 14));
-            const cruiseEase = calcOonigeCruiseEase(isLeadingPre, secondGapPre, gapNeedDash);
-            const chaseP = calcChasePressure({
-              isLeading: isLeadingPre,
-              secondGap: secondGapPre,
-              gapNeedNorm: gapNeedDash,
-              oonigePressure: horse.oonigePressure,
-              prevSecondGap: horse.phasePrevSecondGap,
-            });
-            tunedDashDrain *= calcPaceDrainMultFromPressure(cruiseEase, chaseP);
-          }
-          subtractStaminaWithReserve(horse, tunedDashDrain, phase, {
-            trackField: 'staminaAccelCost',
-            fatigueGain: 0.22,
-          });
-        }
-      }
-      if (isNigeStyle(horse.style) && !isAfterFourthCorner && phase.ratio <= 0.78) {
-        const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
-        const staminaGate = Math.max(0, Math.min(1, (staminaRatio - 0.22) / 0.60));
-        if (staminaGate > 0) {
-          const sortedByFront = [...horses].sort((a, b) => b.x - a.x);
-          const leader = sortedByFront[0] ?? null;
-          const runnerUp = sortedByFront[1] ?? null;
-          const leadX = leader?.x ?? horse.x;
-          const leadGap = Math.max(0, leadX - horse.x);
-          const isLeading = leadGap <= 8;
-          const secondGap = isLeading && runnerUp ? Math.max(0, horse.x - runnerUp.x) : 0;
-          horse.oonigeLeadStreak = isLeading
-            ? (horse.oonigeLeadStreak ?? 0) + 1
-            : 0;
-          const isEarlyBand = phase.ratio <= 0.35;
-          const isMiddleBand = phase.ratio <= 0.55;
-          const oonigeLeadRamp = isOonige ? getOonigeLeadStretchRamp(phase) : 1;
-          const frontDrive = Math.max(horse.frontRunDrive ?? 0, isOonige ? horse.oonigeDrive : 0);
-          // 大逃げ: ratio ティアだと後半セグメントが最弱になるため、ランプで伸びを駆動する
-          const baseBoost = isOonige
-            ? (0.028 + oonigeLeadRamp * 0.142)
-            : (isEarlyBand ? 0.042 : isMiddleBand ? 0.030 : 0.018);
-          const abilityBoost =
-            frontDrive *
-            (isOonige ? (0.052 + oonigeLeadRamp * 0.055) : 0.052);
-          const leadBoost = isLeading
-            ? (
-                isOonige
-                  ? (0.014 + oonigeLeadRamp * 0.048)
-                  : (isMiddleBand ? 0.014 : 0.010)
-              )
-            : 0;
-          const targetGapBase = isOonige
-            ? (14 + frontDrive * 26) * (0.72 + oonigeLeadRamp * 0.34)
-            : (8 + frontDrive * 18);
-          const targetGapPhaseMult = isOonige
-            ? (0.78 + oonigeLeadRamp * 0.38)
-            : (isEarlyBand ? 0.95 : isMiddleBand ? 1.20 : 1.10);
-          const targetLeadGap = targetGapBase * targetGapPhaseMult * (horse.oonigeBurstRoll ?? 1.0);
-          const gapNeed = targetLeadGap - secondGap;
-          const gapNeedNorm = Math.max(-0.45, Math.min(1, gapNeed / Math.max(8, targetLeadGap)));
-          const desiredPressure = Math.max(
-            0,
-            Math.min(
-              1,
-              (isOonige ? 0.24 : 0.20) +
-              frontDrive * (isOonige ? 0.62 : 0.48) +
-              (isLeading ? (isOonige ? 0.09 : 0.06) : 0) +
-              Math.max(0, gapNeedNorm) * (isOonige ? 0.50 : 0.42),
-            ),
+      if (isLateStraight && horse.style === '先行') {
+        const sortedByFrontPre = [...horses].sort((a, b) => b.x - a.x);
+        const leaderPre = sortedByFrontPre[0] ?? null;
+        const leadGapPre = Math.max(0, (leaderPre?.x ?? horse.x) - horse.x);
+        const isLeadingPre = Boolean(leaderPre && leaderPre.id === horse.id && leadGapPre <= 8);
+        if (isLeadingPre) {
+          const chaserNear = horses.some(h =>
+            h.id !== horse.id
+            && h.x < horse.x + 2
+            && h.x > horse.x - 42,
           );
-          const prevPressure = Number.isFinite(horse.oonigePressure) ? horse.oonigePressure : frontDrive;
-          const pressureFollow = isEarlyBand ? 0.22 : 0.16;
-          const pressure = prevPressure + (desiredPressure - prevPressure) * pressureFollow;
-          horse.oonigePressure = Math.max(0, Math.min(1, pressure));
-          const pressureBoost = (isOonige ? 0.78 : 0.74) + horse.oonigePressure * (isOonige ? 0.60 : 0.46);
-          const gapCatchCoeff = isOonige
-            ? (0.34 + Math.min(oonigeLeadRamp, 1.95) * 0.36)
-            : 0.28;
-          let gapCatchBoost = 1 + Math.max(0, gapNeedNorm) * gapCatchCoeff;
-          if (phase.index === 0) {
-            gapCatchBoost =
-              1 + (gapCatchBoost - 1) * START_PHASE_GAP_CATCH_SCALE;
-          }
-          // スタミナ枯れで gate=0 になると第3コーナーでも伸びが消える。先頭×高ランプ時は下限を設ける
-          let staminaGateEff = staminaGate;
-          if (isOonige && isLeading && oonigeLeadRamp >= 1.0) {
-            const rampTail = Math.max(0, oonigeLeadRamp - 1);
-            const gateFloor = Math.min(0.82, 0.26 + rampTail * 0.62);
-            staminaGateEff = Math.max(staminaGate, gateFloor);
-          }
-          const oonigeBoostBase =
-            (baseBoost + abilityBoost + leadBoost) * staminaGateEff * pressureBoost * gapCatchBoost;
-          const phaseJitter =
-            OONIGE_BURST_PHASE_JITTER_MIN +
-            rng() * (OONIGE_BURST_PHASE_JITTER_MAX - OONIGE_BURST_PHASE_JITTER_MIN);
-          const oonigeRoll = Number.isFinite(horse.oonigeBurstRoll) ? horse.oonigeBurstRoll : 1.0;
-          let oonigeBoost = oonigeBoostBase * oonigeRoll * phaseJitter;
-          if (isOonige) {
-            oonigeBoost *= oonigeLeadRamp;
-          }
-          adjustedAdvance *= (1 + oonigeBoost);
-          const streakPenalty = Math.min(0.25, (horse.oonigeLeadStreak ?? 0) * 0.03);
-          const burstDelta = Math.max(0, oonigeBoost - oonigeBoostBase);
-          let paceDrainMult = 1;
-          if (isOonige && isLeading) {
-            const cruiseEase = calcOonigeCruiseEase(isLeading, secondGap, gapNeedNorm);
-            const chaseP = calcChasePressure({
-              isLeading,
-              secondGap,
-              gapNeedNorm,
-              oonigePressure: horse.oonigePressure,
-              prevSecondGap: horse.phasePrevSecondGap,
+          if (chaserNear) {
+            const holdDrain = (Math.max(0, phase.distance) / 100) * 0.55;
+            subtractStaminaWithReserve(horse, holdDrain, phase, {
+              trackField: 'staminaAccelCost',
+              fatigueGain: 0.32,
             });
-            paceDrainMult = calcPaceDrainMultFromPressure(cruiseEase, chaseP);
           }
-          if (isLeading) {
-            horse.phasePrevSecondGap = secondGap;
-          }
-          const burstLinkScale = USE_SAFE_STAMINA_MODEL && isOonige && paceDrainMult < 0.45
-            ? OONIGE_CRUISE_BURST_LINK_SCALE
-            : 10;
-          const linkedDrainMult = 1 + burstDelta * OONIGE_DRAIN_BURST_LINK_GAIN * burstLinkScale;
-          const pressureDrain = 1 + horse.oonigePressure * (isOonige ? 0.30 : 0.44) + Math.max(0, gapNeedNorm) * (isOonige ? 0.22 : 0.30);
-          const oonigeBoostDrainCoeff = isOonige && USE_SAFE_STAMINA_MODEL && paceDrainMult < 0.45
-            ? 0.85
-            : 4.2;
-          const extraDrain =
-            (Math.max(0, phase.distance) / 100) *
-            (isOonige
-              ? (0.60 + oonigeBoost * oonigeBoostDrainCoeff + (isLeading ? 0.24 : 0))
-              : (0.82 + oonigeBoost * 5.2 + (isLeading ? 0.30 : 0))) *
-            (1 + streakPenalty) *
-            linkedDrainMult *
-            pressureDrain;
-          const paceExtraDrainMult = getNigePaceExtraDrainMult({
-            isLeading,
-            gapNeedNorm,
-            oonigePressure: horse.oonigePressure,
-            frontBlocked: earlyFrontBlockedPre,
-            inTrafficBattle: phaseTrafficBattlePre,
-          });
-          const tunedDrain = extraDrain * paceExtraDrainMult;
-          let safeDrain = scaleSafeNigePaceDrain(tunedDrain, phase, { isOonige });
-          if (isOonige) {
-            safeDrain *= paceDrainMult;
-          }
-          subtractStaminaWithReserve(horse, safeDrain, phase, {
-            trackField: 'staminaAccelCost',
-            fatigueGain: 0.42,
-          });
-        } else {
-          horse.oonigeLeadStreak = 0;
-          horse.oonigePressure = Math.max(0, (horse.oonigePressure ?? horse.frontRunDrive ?? 0) * 0.86);
         }
-      } else if (horse.oonigeLeadStreak > 0) {
-        horse.oonigeLeadStreak = 0;
-        horse.oonigePressure = Math.max(0, (horse.oonigePressure ?? horse.frontRunDrive ?? 0) * 0.90);
-      }
-      if (isOonigeStyle(horse.style) && isAfterFourthCorner) {
-        const sortedByFront = [...horses].sort((a, b) => b.x - a.x);
-        const leader = sortedByFront[0] ?? null;
-        const runnerUp = sortedByFront[1] ?? null;
-        const isLeading = leader?.id === horse.id;
-        const leadGapLate = isLeading && runnerUp ? Math.max(0, horse.x - runnerUp.x) : 0;
-        const prevLeadGapLate = horse.phasePrevLeadGapLate;
-        horse.phasePrevLeadGapLate = isLeading ? leadGapLate : undefined;
-        const lateStaminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
-        const lateRisk = Math.max(0, Math.min(1, (0.62 - lateStaminaRatio) / 0.62));
-        const leadLoad = Math.max(0, Math.min(1, leadGapLate / 28));
-        const paceLoad = Math.max(0, (horse.oonigePressure ?? horse.frontRunDrive ?? 0) * 0.65 + leadLoad * 0.35);
-        let lateChase = 0;
-        if (isLeading && Number.isFinite(prevLeadGapLate) && prevLeadGapLate > leadGapLate + 0.5) {
-          lateChase = Math.min(
-            1,
-            ((prevLeadGapLate - leadGapLate) / CHASE_GAP_CLOSE_PER_PHASE) * CHASE_GAP_CLOSE_PRESSURE_GAIN,
-          );
-        }
-        if (isLeading && leadGapLate < 10) {
-          lateChase = Math.max(lateChase, (10 - leadGapLate) / 10 * 0.65);
-        }
-        let lateDrain =
-          (Math.max(0, phase.distance) / 100) *
-          OONIGE_LATE_DRAIN_BASE_PER_100M *
-          (1 + lateRisk * 1.55 + paceLoad * OONIGE_LATE_DRAIN_LEAD_GAIN + lateChase * 1.35);
-        if (
-          isLeading &&
-          leadGapLate >= OONIGE_LATE_CLEAR_LEAD_GAP &&
-          lateChase < 0.2 &&
-          !phaseTrafficBattlePre &&
-          !earlyFrontBlockedPre
-        ) {
-          lateDrain *= OONIGE_LATE_CLEAR_LEAD_MULT;
-        }
-        let safeLateDrain = scaleSafeNigePaceDrain(lateDrain, phase, { isOonige: true });
-        if (isLeading) {
-          const lateCruise = calcOonigeCruiseEase(isLeading, leadGapLate, -0.2);
-          safeLateDrain *= calcPaceDrainMultFromPressure(lateCruise, lateChase);
-        }
-        subtractStaminaWithReserve(horse, safeLateDrain, phase, {
-          trackField: 'staminaAccelCost',
-          fatigueGain: 0.36,
-        });
-        horse.oonigePressure = Math.max(0, (horse.oonigePressure ?? 0) * 0.82);
       }
       const currentFrontGap = isAfterFourthCornerPhase(phase)
         ? getLocalPackFrontGap(horse, clampLane(horse.y), horses)
@@ -1238,28 +811,15 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
 
       const accelAmount = Math.max(0, frameAdvance - prevAdvance);
       if (accelAmount > 0.001) {
-        const earlyMult = isNigeStyle(horse.style) && phase.ratio <= 0.35 ? STAMINA_EARLY_ACCEL_MULT : 1.0;
         let baselineStaminaAdvance = V_eff * (phase.distance / 80) * irregularMult;
         if (phase.index === 0 && Number.isFinite(horse.startBurstFactor)) {
           baselineStaminaAdvance *= Math.min(horse.startBurstFactor, START_BURST_STAMINA_FREE_CAP);
         }
         const taxableAccel = Math.max(0, accelAmount - baselineStaminaAdvance);
-        let accelDrain =
+        const accelDrain =
           (taxableAccel < 0.02 ? 0 : taxableAccel) *
           STAMINA_ACCEL_COST *
-          earlyMult *
           getWeightStaminaMult(horse);
-        if (
-          isNigeStyle(horse.style) &&
-          isLeadingPre &&
-          !earlyFrontBlockedPre &&
-          !phaseTrafficBattlePre &&
-          runnerUpPre
-        ) {
-          const gapComfort = Math.max(0, Math.min(1, secondGapPre / 14));
-          const accelLeadEase = NIGE_ACCEL_LEAD_EASE_MIN + (1 - NIGE_ACCEL_LEAD_EASE_MIN) * (1 - gapComfort);
-          accelDrain *= accelLeadEase;
-        }
         const safeAccelDrain = USE_SAFE_STAMINA_MODEL
           ? accelDrain * SAFE_ACCEL_EVENT_DRAIN_MULT
           : accelDrain;
