@@ -34,7 +34,6 @@ describe('競争圧・実行圧', () => {
       loadDefaultRaceFixture(),
       { seed: 20260523 },
       {},
-      {},
       null,
     );
     const backIdx = phases.findIndex(

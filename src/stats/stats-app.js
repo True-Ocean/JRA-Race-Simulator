@@ -13,7 +13,7 @@ import {
 import { JRA_WAKU_COLORS } from '../ui/colors.js';
 
 let runtimeRaceData = null;
-let userTweaks = {};
+let ratingAdjustments = {};
 let marks = {};
 const AUTO_MARKS = ['◎', '◯', '▲', '△', '★', '☆'];
 const MARK_SORT_RANK = new Map([
@@ -343,7 +343,7 @@ function renderTable() {
   }
   const { rows, trials } = computeAggregateRows({
     runtimeRaceData,
-    userTweaks,
+    ratingAdjustments,
     marks,
   });
 
@@ -443,7 +443,7 @@ async function init() {
     return;
   }
 
-  userTweaks = bundle.userTweaks ?? {};
+  ratingAdjustments = bundle.ratingAdjustments ?? bundle.userTweaks ?? {};
   marks = bundle.marks ?? {};
   try {
     const courseCatalog = await fetch('./src/data/courses.json').then(r => r.json());
@@ -465,9 +465,9 @@ async function init() {
     infoEl.innerHTML = formatRaceInfo(runtimeRaceData);
   }
 
-  persistRaceBundleToSession(runtimeRaceData, userTweaks, marks);
+  persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, marks);
 
-  const key = computeBucketKey(runtimeRaceData, userTweaks, marks);
+  const key = computeBucketKey(runtimeRaceData, ratingAdjustments, marks);
   const st = loadAggregateState();
   if (st.runs?.length && st.bucketKey && st.bucketKey !== key) {
     clearAggregateState();

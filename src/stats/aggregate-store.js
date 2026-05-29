@@ -28,31 +28,31 @@ export function hashString(str) {
 }
 
 /**
- * race_id + レースJSON相当（出馬・条件・ユーザー微調整・印）のバケットキー
+ * race_id + レースJSON相当（出馬・条件・評価スライダー・印）のバケットキー
  */
-export function computeBucketKey(raceData, userTweaks, marks = {}) {
+export function computeBucketKey(raceData, ratingAdjustments, marks = {}) {
   const payload = {
     race_id: raceData.race_id,
     race_info: raceData.race_info,
     entries: raceData.entries,
-    userTweaks: userTweaks ?? {},
+    ratingAdjustments: ratingAdjustments ?? {},
     marks: marks ?? {},
   };
   return `${raceData.race_id}:${hashString(JSON.stringify(payload))}`;
 }
 
-export function buildRaceBundlePayload(runtimeRaceData, userTweaks, marks = {}) {
+export function buildRaceBundlePayload(runtimeRaceData, ratingAdjustments, marks = {}) {
   return {
     race_id: runtimeRaceData.race_id,
     race_info: runtimeRaceData.race_info,
     entries: runtimeRaceData.entries,
-    userTweaks: userTweaks ?? {},
+    ratingAdjustments: ratingAdjustments ?? {},
     marks: marks ?? {},
   };
 }
 
-export function persistRaceBundleToSession(runtimeRaceData, userTweaks, marks = {}) {
-  const payload = buildRaceBundlePayload(runtimeRaceData, userTweaks, marks);
+export function persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, marks = {}) {
+  const payload = buildRaceBundlePayload(runtimeRaceData, ratingAdjustments, marks);
   sessionStorage.setItem(STORAGE_KEY_BUNDLE, JSON.stringify(payload));
 }
 
@@ -94,11 +94,11 @@ export function clearAggregateState() {
 }
 
 /**
- * @param {{ runtimeRaceData: object, userTweaks: object, marks?: object, source: 'batch'|'manual'|'auto', orderIds: number[] }} p
+ * @param {{ runtimeRaceData: object, ratingAdjustments: object, marks?: object, source: 'batch'|'manual'|'auto', orderIds: number[] }} p
  */
 export function addAggregateRun(p) {
-  const { runtimeRaceData, userTweaks, marks, source, orderIds } = p;
-  const bucketKey = computeBucketKey(runtimeRaceData, userTweaks, marks);
+  const { runtimeRaceData, ratingAdjustments, marks, source, orderIds } = p;
+  const bucketKey = computeBucketKey(runtimeRaceData, ratingAdjustments, marks);
   let state = loadAggregateState();
   if (!state.runs) state.runs = [];
   if (!state.bucketKey || state.bucketKey !== bucketKey) {
@@ -126,11 +126,11 @@ function manualRunsOnly(runs) {
 }
 
 /**
- * @param {{ runtimeRaceData: object, userTweaks: object, marks?: object }} p
+ * @param {{ runtimeRaceData: object, ratingAdjustments: object, marks?: object }} p
  */
 export function computeAggregateRows(p) {
-  const { runtimeRaceData, userTweaks, marks } = p;
-  const bucketKey = computeBucketKey(runtimeRaceData, userTweaks, marks);
+  const { runtimeRaceData, ratingAdjustments, marks } = p;
+  const bucketKey = computeBucketKey(runtimeRaceData, ratingAdjustments, marks);
   const state = loadAggregateState();
   const keyOk = Boolean(state.bucketKey) && state.bucketKey === bucketKey;
   const runs = keyOk ? manualRunsOnly(state.runs) : [];

@@ -49,7 +49,7 @@ describe('runSimulation path integration', () => {
   });
 
   it('走行後 pathMeters が増え、外枠ほど長い傾向がある', () => {
-    const { snapshots, results } = runSimulation(raceData, { seed: 42 }, {}, {}, null);
+    const { snapshots, results } = runSimulation(raceData, { seed: 42 }, {}, null);
     const last = snapshots[snapshots.length - 1]?.horses ?? [];
     expect(last.length).toBeGreaterThan(0);
     for (const h of last) {
@@ -67,8 +67,8 @@ describe('runSimulation path integration', () => {
   });
 
   it('同 seed で pathMeters が再現する', () => {
-    const a = runSimulation(raceData, { seed: 7 }, {}, {}, null);
-    const b = runSimulation(raceData, { seed: 7 }, {}, {}, null);
+    const a = runSimulation(raceData, { seed: 7 }, {}, null);
+    const b = runSimulation(raceData, { seed: 7 }, {}, null);
     const pathsA = a.results.map(h => h.pathMeters).join(',');
     const pathsB = b.results.map(h => h.pathMeters).join(',');
     expect(pathsA).toBe(pathsB);

@@ -46,13 +46,11 @@ export function calcWaku(gate, total) {
 }
 
 /**
- * 全馬のパラメータを計算して返す
+ * 全馬のパラメータを計算して返す（DB由来ベース値。ユーザー調整は rating-adjustments.js）
  * @param {Object} raceData - 入力JSON
- * @param {Object} userTweaks - { horseId: { cruise, maneuv, sustain }, ... }
- * @param {Object} marks - { '◎': horseId, '〇': horseId, '▲': horseId }
  * @returns {Array} 計算済み馬オブジェクトの配列
  */
-export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
+export function calcAllParams(raceData) {
   const entries = raceData.entries;
 
   // 全馬の最速値を取得（小さいほど速い）
@@ -63,13 +61,6 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
     const id     = idx;
     const horse  = entry.horse;
     const jockey = entry.jockey;
-    const tweak  = userTweaks[id] || { cruise: 0, maneuv: 0, sustain: 0 };
-
-    // 印補正
-    let markBonus = 0;
-    if (marks['◎'] === id) markBonus = 10;
-    else if (marks['〇'] === id) markBonus = 5;
-    else if (marks['▲'] === id) markBonus = 3;
 
     const normalize = v => Math.max(0, Math.min(100, v));
     const scaleRate = (value, min, max) => normalize(((value - min) / (max - min)) * 100);
@@ -91,11 +82,10 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
       : 50;
 
     // 生スコア計算
-    const rawCruise  = (minAve3f  / horse.ave_3f)  * 80 + tweak.cruise  * 2;
-    const rawManeuv  = (jockeyWinRate * 200)        + tweak.maneuv  * 2 + markBonus;
-    const rawSustain = (horseTop3Rate * 50)              
-                     + (minLast3f / horse.last_3f)  * 30 
-                     + tweak.sustain * 2;
+    const rawCruise  = (minAve3f  / horse.ave_3f)  * 80;
+    const rawManeuv  = jockeyWinRate * 200;
+    const rawSustain = (horseTop3Rate * 50)
+                     + (minLast3f / horse.last_3f)  * 30;
 
     // [0, 100] に正規化
     const S_cruise  = normalize(rawCruise);

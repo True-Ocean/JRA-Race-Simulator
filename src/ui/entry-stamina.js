@@ -27,7 +27,7 @@ function getStaminaBarClassName(staminaDisplayPct) {
 
 function updateEntryStaminaBars(horses) {
   horses.forEach(horse => {
-    const rowEl = document.querySelector(`[data-horse-id="${horse.id}"]`);
+    const rowEl = document.querySelector(`#entry-list [data-horse-id="${horse.id}"]`);
     if (!rowEl) return;
     const displayPct = getStaminaDisplayBarPct(horse);
     const barEl = rowEl.querySelector('.stamina-remain-bar');

@@ -1,5 +1,5 @@
 import { createRng } from './rng.js';
-import { calcAllParams } from './params.js';
+import { calcHorsesWithRatingAdjustments } from './rating-adjustments.js';
 import {
   buildPhases,
   calcStaminaCons,
@@ -358,10 +358,10 @@ function calcStumbleRate(horse) {
   return Math.max(0.002, Math.min(0.03, rate));
 }
 
-export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {}, renderer = null) {
+export function runSimulation(raceData, options = {}, ratingAdjustments = {}, renderer = null) {
   const seedBase = options.seed ?? raceData.race_id;
   const rng      = createRng(seedBase);
-  const horses    = calcAllParams(raceData, userTweaks, marks);
+  const horses    = calcHorsesWithRatingAdjustments(raceData, ratingAdjustments);
   const courseDef = raceData.courseDef ?? null;
   const phases    = buildPhases(raceData.race_info.distance, courseDef);
   const track     = raceData.race_info.track;

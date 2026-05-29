@@ -1,4 +1,10 @@
-import { calcAllParams, calcWaku } from './src/engine/params.js';
+import {
+  calcHorsesWithRatingAdjustments,
+  createDefaultMarksByHorse,
+  createDefaultRatingAdjustments,
+  marksByHorseToSymbolMap,
+  symbolMapToMarksByHorse,
+} from './src/engine/rating-adjustments.js';
 import { buildPhases } from './src/engine/phase.js';
 import { Renderer }       from './src/ui/renderer.js';
 import {
@@ -6,6 +12,7 @@ import {
   clearAggregateState,
   computeBucketKey,
   loadAggregateState,
+  loadRaceBundleFromSession,
   persistRaceBundleToSession,
   SESSION_KEY_OPEN_SCREEN,
   SESSION_KEY_OPEN_SIMULATOR,
@@ -45,6 +52,12 @@ import {
   updateEntryStaminaBars,
 } from './src/ui/entry-stamina.js';
 import { setPlaybackButton } from './src/ui/playback-dock-label.js';
+import {
+  closeActiveInfoPopover,
+  getEntryStyleBadgeClass,
+  mountPreRaceEditor,
+  schedulePreRaceTableFit,
+} from './src/ui/pre-race-editor.js';
 
 
 /** レースサマリ用ログ行かどうか（イベント抽出から除外する） */
@@ -306,278 +319,11 @@ function hideRaceSummaryScreen() {
 // =====================
 /** 残スタミナ表示: 実比率この％未満はバー0%、この％でバー100%（見せ方のスケール） */
 
-/** 出馬表の脚質バッジ用クラス（index.html の .entry-style--* と対応） */
-const ENTRY_STYLE_BADGE_CLASS = {
-  大逃げ: 'entry-style--oonige',
-  逃げ: 'entry-style--nige',
-  先行: 'entry-style--senko',
-  差し: 'entry-style--sashi',
-  追込: 'entry-style--oikomi',
-};
-
-function getEntryStyleBadgeClass(style) {
-  return ENTRY_STYLE_BADGE_CLASS[style] ?? 'entry-style--default';
-}
-
-/** プレレース編集で選べる脚質（シミュレーションが参照するラベルと一致） */
-const PRE_RACE_STYLE_OPTIONS = ['大逃げ', '逃げ', '先行', '差し', '追込'];
-
 function cloneRaceEntries(entries) {
   try {
     return structuredClone(entries);
   } catch {
     return JSON.parse(JSON.stringify(entries));
-  }
-}
-
-function clampNumber(n, lo, hi) {
-  return Math.min(hi, Math.max(lo, n));
-}
-
-function round1(n) {
-  return Math.round(n * 10) / 10;
-}
-
-function round100(n) {
-  return Math.round(n * 100) / 100;
-}
-
-/**
- * プレレース表の見やすさを保ちつつ、必要時のみ軽く縮小する
- */
-function updatePreRaceTableFit() {
-  const editor = document.getElementById('pre-race-editor');
-  const wrap = document.querySelector('.pre-race-table-wrap');
-  const inner = document.querySelector('.pre-race-table-inner');
-  if (!editor || !wrap || !inner) return;
-  if (editor.hidden) return;
-
-  inner.style.zoom = '';
-  inner.style.transform = '';
-  inner.style.marginBottom = '';
-
-  const availH = wrap.clientHeight;
-  const nh = inner.scrollHeight;
-  if (availH < 8 || nh < 1) return;
-
-  const scaleByHeight = availH / nh;
-  const scale = Math.max(0.9, Math.min(1, scaleByHeight));
-  if (scale >= 0.999) return;
-
-  inner.style.transform = `scale(${scale})`;
-  inner.style.transformOrigin = 'top center';
-  inner.style.marginBottom = `${-(nh * (1 - scale))}px`;
-}
-
-function schedulePreRaceTableFit() {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => updatePreRaceTableFit());
-  });
-}
-
-/**
- * 出走表プレレース編集 UI を構築する（runtimeRaceData.entries を直接更新）
- */
-function mountPreRaceEditor(runtimeRaceData, onConfirm, onBeforeConfirm, options = {}) {
-  const tbody = document.getElementById('pre-race-tbody');
-  const infoEl = document.getElementById('pre-race-race-info');
-  const btn = document.getElementById('btn-pre-race-confirm');
-  if (!tbody || !btn) return;
-
-  if (infoEl) {
-    infoEl.innerHTML = formatRaceInfo(runtimeRaceData);
-  }
-
-  tbody.innerHTML = '';
-
-  function makeStepperCell(get, set, min, max, step, fmt, normalizeValue = round100) {
-    const td = document.createElement('td');
-    td.className = 'pre-race-num-cell';
-    const inner = document.createElement('div');
-    inner.className = 'pre-race-stepper';
-    const down = document.createElement('button');
-    down.type = 'button';
-    down.textContent = '−';
-    const val = document.createElement('span');
-    val.className = 'pre-race-val';
-    const up = document.createElement('button');
-    up.type = 'button';
-    up.textContent = '+';
-    const paint = () => {
-      val.textContent = fmt(get());
-    };
-    const applyDelta = delta => {
-      set(normalizeValue(clampNumber(get() + delta, min, max)));
-      paint();
-    };
-    down.addEventListener('click', () => applyDelta(-step));
-    up.addEventListener('click', () => applyDelta(step));
-    paint();
-    inner.append(down, val, up);
-    td.appendChild(inner);
-    return td;
-  }
-
-  const totalEntries = runtimeRaceData.entries.length;
-
-  runtimeRaceData.entries.forEach(entry => {
-    if (!entry.jockey) entry.jockey = {};
-    const horse = entry.horse;
-    const jockey = entry.jockey;
-    if (!Number.isFinite(jockey.win_rate)) jockey.win_rate = 0;
-    if (!Number.isFinite(jockey.top3_rate)) jockey.top3_rate = 0.5;
-
-    const tr = document.createElement('tr');
-
-    const waku = calcWaku(entry.gate, totalEntries);
-    const wakuColors = JRA_WAKU_COLORS[waku] ?? { bg: '#888888', text: '#ffffff' };
-
-    const tdGate = document.createElement('td');
-    tdGate.className = 'pre-race-gate-cell';
-    const gateBadge = document.createElement('span');
-    gateBadge.className = 'entry-gate';
-    gateBadge.textContent = String(entry.gate);
-    gateBadge.style.background = wakuColors.bg;
-    gateBadge.style.color = wakuColors.text;
-    gateBadge.style.border = '1px solid rgba(255,255,255,0.3)';
-    tdGate.appendChild(gateBadge);
-    tr.appendChild(tdGate);
-
-    const tdName = document.createElement('td');
-    tdName.className = 'pre-race-name';
-    tdName.textContent = horse.name ?? '';
-    tdName.title = horse.name ?? '';
-    tr.appendChild(tdName);
-
-    const tdSexAge = document.createElement('td');
-    tdSexAge.className = 'pre-race-readonly';
-    const sexAgeLabel = horse.sex_age ?? '';
-    const sexSpan = document.createElement('span');
-    sexSpan.className = 'entry-demographics';
-    sexSpan.textContent = sexAgeLabel;
-    if (sexAgeLabel.startsWith('牝')) sexSpan.classList.add('is-female');
-    else if (sexAgeLabel.startsWith('牡')) sexSpan.classList.add('is-male');
-    tdSexAge.appendChild(sexSpan);
-    tr.appendChild(tdSexAge);
-
-    const tdWeightRo = document.createElement('td');
-    tdWeightRo.className = 'pre-race-readonly';
-    tdWeightRo.textContent = Number.isFinite(horse.weight) ? `${horse.weight}kg` : '—';
-    tr.appendChild(tdWeightRo);
-
-    const tdJockeyName = document.createElement('td');
-    tdJockeyName.className = 'pre-race-jockey-name';
-    tdJockeyName.textContent = jockey.name ?? '';
-    tdJockeyName.title = jockey.name ?? '';
-    tr.appendChild(tdJockeyName);
-
-    const tdStyle = document.createElement('td');
-    const styleWrap = document.createElement('span');
-    const syncStyleBadgeClass = () => {
-      styleWrap.className = `entry-style-inline pre-race-style-wrap ${getEntryStyleBadgeClass(horse.style)}`;
-    };
-    syncStyleBadgeClass();
-
-    const sel = document.createElement('select');
-    sel.className = 'pre-race-select';
-    const styleSet = new Set(PRE_RACE_STYLE_OPTIONS);
-    if (horse.style && !styleSet.has(horse.style)) {
-      const o = document.createElement('option');
-      o.value = horse.style;
-      o.textContent = horse.style;
-      sel.appendChild(o);
-    }
-    PRE_RACE_STYLE_OPTIONS.forEach(s => {
-      const o = document.createElement('option');
-      o.value = s;
-      o.textContent = s;
-      if (horse.style === s) o.selected = true;
-      sel.appendChild(o);
-    });
-    sel.addEventListener('change', () => {
-      horse.style = sel.value;
-      syncStyleBadgeClass();
-    });
-    styleWrap.appendChild(sel);
-    tdStyle.appendChild(styleWrap);
-    tr.appendChild(tdStyle);
-
-    tr.appendChild(
-      makeStepperCell(
-        () => horse.ave_3f,
-        v => {
-          horse.ave_3f = v;
-        },
-        32,
-        42,
-        0.1,
-        v => round1(v).toFixed(1),
-        round1,
-      ),
-    );
-
-    tr.appendChild(
-      makeStepperCell(
-        () => horse.last_3f,
-        v => {
-          horse.last_3f = v;
-        },
-        30,
-        37,
-        0.1,
-        v => round1(v).toFixed(1),
-        round1,
-      ),
-    );
-
-    tr.appendChild(
-      makeStepperCell(
-        () => jockey.win_rate,
-        v => {
-          jockey.win_rate = v;
-        },
-        0.05,
-        0.45,
-        0.01,
-        v => `${Math.round(round100(v) * 100)}%`,
-        round100,
-      ),
-    );
-
-    tr.appendChild(
-      makeStepperCell(
-        () => jockey.top3_rate,
-        v => {
-          jockey.top3_rate = v;
-        },
-        0.3,
-        0.7,
-        0.01,
-        v => `${Math.round(round100(v) * 100)}%`,
-        round100,
-      ),
-    );
-
-    tbody.appendChild(tr);
-  });
-
-  btn.addEventListener('click', () => {
-    if (typeof onBeforeConfirm === 'function' && onBeforeConfirm() === false) return;
-    onConfirm();
-  });
-
-  schedulePreRaceTableFit();
-  const wrapEl = document.querySelector('.pre-race-table-wrap');
-  if (wrapEl && typeof ResizeObserver !== 'undefined') {
-    const ro = new ResizeObserver(() => schedulePreRaceTableFit());
-    ro.observe(wrapEl);
-  }
-  window.addEventListener('resize', schedulePreRaceTableFit);
-
-  if (options.openSimulatorDirect) {
-    if (!(typeof onBeforeConfirm === 'function' && onBeforeConfirm() === false)) {
-      onConfirm();
-    }
   }
 }
 
@@ -678,16 +424,38 @@ Promise.all([
     };
     const courseDef = resolveCourseDef(raceData, courseCatalog);
     const runtimeRaceData = { ...raceData, courseDef };
+    /** 脚質リセット用（JSON 初期値） */
+    const baselineEntryStyles = raceData.entries.map(e => e.horse?.style ?? '');
     const phases        = buildPhases(runtimeRaceData.race_info.distance, courseDef);
     const track         = raceData.race_info.track;
     const condition     = raceData.race_info.condition;
     const renderer      = new Renderer('field-canvas', phases.length, track, condition, courseDef);
 
-    /** calcAllParams のユーザー微調整（巡航・瞬発・持久） */
-    const userTweaksState = {};
-    runtimeRaceData.entries.forEach((_, idx) => {
-      userTweaksState[idx] = { cruise: 0, maneuv: 0, sustain: 0 };
-    });
+    /** プレレース評価スライダー（馬・騎手・調教） */
+    const ratingAdjustments = createDefaultRatingAdjustments(runtimeRaceData.entries.length);
+    /** ユーザー予想印（シミュレーション非連動） */
+    const marksByHorse = createDefaultMarksByHorse(runtimeRaceData.entries.length);
+
+    const savedBundle = loadRaceBundleFromSession();
+    if (savedBundle?.race_id === runtimeRaceData.race_id) {
+      if (savedBundle.ratingAdjustments && typeof savedBundle.ratingAdjustments === 'object') {
+        for (const [idStr, adj] of Object.entries(savedBundle.ratingAdjustments)) {
+          const id = Number(idStr);
+          if (!Number.isFinite(id) || !adj) continue;
+          ratingAdjustments[id] = {
+            horse: Number(adj.horse) || 0,
+            jockey: Number(adj.jockey) || 0,
+            training: Number(adj.training) || 0,
+          };
+        }
+      }
+      Object.assign(
+        marksByHorse,
+        symbolMapToMarksByHorse(savedBundle.marks ?? {}, runtimeRaceData.entries.length),
+      );
+    }
+
+    const getUserMarksForBundle = () => marksByHorseToSymbolMap(marksByHorse);
 
     let initialHorses = [];
     let horseMetaByName = new Map();
@@ -911,8 +679,8 @@ Promise.all([
           const orderIds = buildSummaryPlacingOrderIds(lastFinishOrderIds, simResults);
           addAggregateRun({
             runtimeRaceData,
-            userTweaks: userTweaksState,
-            marks: {},
+            ratingAdjustments,
+            marks: getUserMarksForBundle(),
             source: currentRaceUsedAutoAdvance ? 'auto' : 'manual',
             orderIds,
           });
@@ -962,14 +730,14 @@ Promise.all([
     }
 
     function applyComputedHorsesToUi() {
-      initialHorses = calcAllParams(runtimeRaceData, userTweaksState, {});
+      initialHorses = calcHorsesWithRatingAdjustments(runtimeRaceData, ratingAdjustments);
       rebuildHorseMetaByName(initialHorses);
       renderEntryList(initialHorses);
       updateEntryStaminaBars(initialHorses);
       renderer.resetHorseRenderState();
       renderer.draw(initialHorses, phases[0], 0);
       refreshRaceInfo();
-      persistRaceBundleToSession(runtimeRaceData, userTweaksState, {});
+      persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, getUserMarksForBundle());
     }
 
     /** 集計画面から戻ったときなど、保存済みのレース結果表示を復元する */
@@ -992,7 +760,7 @@ Promise.all([
       if (Array.isArray(replayBundle?.initialHorses) && replayBundle.initialHorses.length > 0) {
         initialHorses = replayBundle.initialHorses.map(h => ({ ...h }));
       } else {
-        initialHorses = calcAllParams(runtimeRaceData, userTweaksState, {});
+        initialHorses = calcHorsesWithRatingAdjustments(runtimeRaceData, ratingAdjustments);
       }
       rebuildHorseMetaByName(finalHorses);
       finalHorses.forEach(horse => {
@@ -1250,7 +1018,7 @@ Promise.all([
       syncPlacingPanelsHtml('');
 
       refreshRaceInfo();
-      const sim = runSimulation(runtimeRaceData, currentOptions(), userTweaksState, {}, renderer);
+      const sim = runSimulation(runtimeRaceData, currentOptions(), ratingAdjustments, renderer);
       simResults = sim.results;
       simLogs = sim.logs;
       simSnapshots = sim.snapshots;
@@ -1462,7 +1230,7 @@ Promise.all([
             /* ignore */
           }
         }
-        persistRaceBundleToSession(runtimeRaceData, userTweaksState, {});
+        persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, getUserMarksForBundle());
         window.location.assign('stats.html');
       };
       document.getElementById('btn-open-stats')?.addEventListener('click', () => openStatsPage('simulator'));
@@ -1471,35 +1239,37 @@ Promise.all([
       btnBackToPreRace?.addEventListener('click', () => {
         resetSimulatorToIdle();
         hideRaceSummaryScreen();
-        const preRaceEl = document.getElementById('pre-race-editor');
-        if (preRaceEl) preRaceEl.hidden = false;
-        if (btnBackToPreRace) btnBackToPreRace.hidden = true;
-        schedulePreRaceTableFit();
+        openPreRaceScreen();
       });
     }
 
-    function preRaceBeforeConfirm() {
-      const nextKey = computeBucketKey(runtimeRaceData, userTweaksState, {});
+    function preRaceBeforeSettingsChange() {
+      const nextKey = computeBucketKey(runtimeRaceData, ratingAdjustments, getUserMarksForBundle());
       const agg = loadAggregateState();
       if (agg.runs.length > 0 && agg.bucketKey && agg.bucketKey !== nextKey) {
-        const ok = window.confirm(
-          'パラメータ（出走内容や微調整）が変わります。これまでの集計はリセットされ、シミュレータ画面へ進みます。よろしいですか？',
-        );
-        if (!ok) return false;
         clearAggregateState();
       }
       return true;
+    }
+
+    function applyPreferencesToSimulator() {
+      if (!preRaceBeforeSettingsChange()) return false;
+      applyComputedHorsesToUi();
+      return true;
+    }
+
+    function closePreferencesScreen() {
+      closeActiveInfoPopover();
+      const preRaceEl = document.getElementById('pre-race-editor');
+      if (preRaceEl) preRaceEl.hidden = true;
+      if (btnBackToPreRace) btnBackToPreRace.hidden = false;
+      syncSimulatorChromeForAutoMode();
     }
 
     const openScreen =
       typeof sessionStorage !== 'undefined'
         ? sessionStorage.getItem(SESSION_KEY_OPEN_SCREEN)
         : '';
-    const openSimulatorDirect =
-      openScreen === 'simulator' ||
-      openScreen === 'summary' ||
-      (typeof sessionStorage !== 'undefined' &&
-        sessionStorage.getItem(SESSION_KEY_OPEN_SIMULATOR) === '1');
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem(SESSION_KEY_OPEN_SIMULATOR);
       sessionStorage.removeItem(SESSION_KEY_OPEN_SCREEN);
@@ -1512,6 +1282,24 @@ Promise.all([
       if (preRaceEl) preRaceEl.hidden = false;
       if (btnBackToPreRace) btnBackToPreRace.hidden = true;
       schedulePreRaceTableFit();
+    };
+
+    let simulatorInitialized = false;
+
+    function ensureSimulatorInitialized() {
+      if (simulatorInitialized) return;
+      simulatorInitialized = true;
+      const restored = restoreSimulatorStateFromSession();
+      if (restored) {
+        applyRestoredRaceVisuals();
+      } else {
+        applyComputedHorsesToUi();
+      }
+    }
+
+    const openSimulatorHome = () => {
+      closePreferencesScreen();
+      ensureSimulatorInitialized();
     };
 
     const tryRestoreSummaryScreen = () => {
@@ -1584,31 +1372,13 @@ Promise.all([
       }
     };
 
-    let simulatorScreenOpened = false;
-
-    const openSimulatorScreen = () => {
-      const preRaceEl = document.getElementById('pre-race-editor');
-      if (preRaceEl) preRaceEl.hidden = true;
-      if (btnBackToPreRace) btnBackToPreRace.hidden = false;
-      if (!simulatorScreenOpened) {
-        simulatorScreenOpened = true;
-        const restored = restoreSimulatorStateFromSession();
-        if (restored) {
-          applyRestoredRaceVisuals();
-        } else {
-          applyComputedHorsesToUi();
-        }
-      }
-      syncSimulatorChromeForAutoMode();
-    };
-
     bindRaceControlsOnce();
     initEntryPanelMobileCollapse();
 
     if (openScreen === 'pre-race') {
       openPreRaceScreen();
     } else if (openScreen === 'summary') {
-      openSimulatorScreen();
+      openSimulatorHome();
       let restored = false;
       if (typeof sessionStorage !== 'undefined') {
         const raw = sessionStorage.getItem(SESSION_KEY_SUMMARY_STATE);
@@ -1634,16 +1404,26 @@ Promise.all([
       if (!restored && Array.isArray(simResults) && Array.isArray(simSnapshots)) {
         restored = tryRestoreSummaryScreen();
       }
-    } else if (!openSimulatorDirect) {
-      openSimulatorScreen();
+    } else {
+      openSimulatorHome();
     }
 
-    mountPreRaceEditor(
+    mountPreRaceEditor({
       runtimeRaceData,
-      openSimulatorScreen,
-      preRaceBeforeConfirm,
-      { openSimulatorDirect },
-    );
+      ratingAdjustments,
+      marksByHorse,
+      baselineEntryStyles,
+      onClose: closePreferencesScreen,
+      onApply: () => applyPreferencesToSimulator(),
+      onReset: () => {
+        preRaceBeforeSettingsChange();
+        persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, getUserMarksForBundle());
+        if (simulatorInitialized) {
+          applyComputedHorsesToUi();
+        }
+        return true;
+      },
+    });
 
     // iOS の bfcache 復帰時も完了画面の描画を維持
     window.addEventListener('pageshow', (ev) => {

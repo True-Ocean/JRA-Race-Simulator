@@ -708,6 +708,8 @@
       max-width: 100%;
       box-sizing: border-box;
       overflow: hidden;
+      /* 参考データポップオーバー用 */
+      isolation: isolate;
     }
     #pre-race-editor[hidden],
     #race-summary-screen[hidden] {
@@ -724,9 +726,68 @@
     .pre-race-toolbar {
       display: flex;
       align-items: center;
-      justify-content: flex-start;
-      margin-bottom: 16px;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
       width: 100%;
+    }
+    .pre-race-toolbar-right {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .pre-race-message-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 400;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 16px;
+      background: rgba(6, 17, 30, 0.72);
+    }
+    .pre-race-message-overlay[hidden] {
+      display: none !important;
+    }
+    .pre-race-message-dialog {
+      width: min(calc(100vw - 32px), 24rem);
+      padding: 20px 18px 16px;
+      text-align: center;
+      color: #e7f3fb;
+      background: #0f1e30;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+    }
+    .pre-race-message-text {
+      margin: 0;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    .pre-race-message-text--with-actions {
+      margin-bottom: 18px;
+    }
+    .pre-race-confirm-actions {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+    .pre-race-confirm-actions .app-nav-btn {
+      min-width: 5.5rem;
+      padding: 7px 16px;
+      font-size: 0.82rem;
+    }
+    .app-nav-btn--secondary {
+      background: #142538;
+      border-color: #334155;
+      color: #94a3b8;
+    }
+    .app-nav-btn--secondary:hover {
+      filter: brightness(1.08);
+      color: #e7f3fb;
     }
     #pre-race-race-info {
       font-size: 0.84rem;
@@ -767,18 +828,18 @@
     }
     .pre-race-table {
       width: 100%;
-      min-width: 980px;
+      min-width: 880px;
       table-layout: fixed;
       border-collapse: collapse;
       font-size: 0.68rem;
     }
+    .pre-race-table col.col-mark { width: 2.4rem; }
     .pre-race-table col.col-gate { width: 2.6rem; }
-    .pre-race-table col.col-name { width: 16%; min-width: 6rem; }
-    .pre-race-table col.col-sex { width: 3.1rem; }
-    .pre-race-table col.col-weight-ro { width: 3.1rem; }
-    .pre-race-table col.col-jockey { width: 13%; min-width: 5.5rem; }
+    .pre-race-table col.col-name { width: 15%; min-width: 6.5rem; }
+    .pre-race-table col.col-jockey { width: 8.5%; min-width: 4.5rem; }
     .pre-race-table col.col-style { width: 4.85rem; }
-    .pre-race-table col.col-num { width: 6.1rem; }
+    .pre-race-table col.col-rating { width: 5.5rem; }
+    .pre-race-table col.col-detail { width: 3.4rem; }
     .pre-race-gate-cell {
       text-align: center;
       vertical-align: middle;
@@ -793,9 +854,12 @@
       font-variant-numeric: tabular-nums;
     }
     .pre-race-jockey-name {
-      font-size: 0.66rem;
-      color: #93c5fd;
+      display: block;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: #cbd5e1;
       text-align: left;
+      line-height: 1.35;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -825,10 +889,154 @@
     }
     .pre-race-table td.pre-race-name {
       text-align: left;
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding-left: 6px;
+    }
+    .pre-race-table td.pre-race-jockey {
+      text-align: left;
+      padding-left: 4px;
+      font-size: 0.92rem;
+    }
+    .pre-race-name-block {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      min-width: 0;
+    }
+    .pre-race-name-line {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      width: 100%;
+    }
+    .pre-race-name-text {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      color: #fff;
+      flex: 1;
+      min-width: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .pre-race-jockey-inline {
+      font-size: 0.6rem;
+      color: #93c5fd;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .pre-race-info-btn {
+      flex: 0 0 auto;
+      width: 1.35rem;
+      height: 1.35rem;
+      padding: 0;
+      font-size: 0.62rem;
+      font-weight: 700;
+      line-height: 1;
+      border-radius: 50%;
+      border: 1px solid #334155;
+      background: #142538;
+      color: #7eb8d4;
+      cursor: pointer;
+    }
+    .pre-race-info-btn:hover {
+      color: #e7f3fb;
+      border-color: #445566;
+    }
+    .pre-race-detail-cell {
+      text-align: center;
+      vertical-align: middle;
+      padding: 4px 2px;
+    }
+    .pre-race-info-popover {
+      position: absolute;
+      z-index: 400;
+      min-width: 9rem;
+      max-width: 14rem;
+      padding: 8px 10px;
+      background: #0f1e30;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      font-size: 0.64rem;
+      color: #c7dbe8;
+      line-height: 1.45;
+    }
+    .pre-race-info-popover-line {
+      white-space: nowrap;
+    }
+    .pre-race-mark-cell {
+      padding: 4px 2px;
+    }
+    .pre-race-mark-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.75rem;
+      min-height: 1.75rem;
+      padding: 2px 4px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      border: 1px solid #334155;
+      background: #0f1e30;
+      color: #64748b;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .pre-race-mark-btn[data-mark]:not([data-mark=""]) {
+      color: #fde68a;
+      border-color: #854d0e;
+      background: #1c1910;
+    }
+    .pre-race-rating-cell {
+      padding: 4px 3px;
+    }
+    .pre-race-rating-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .pre-race-rating-val {
+      font-size: 0.62rem;
+      font-variant-numeric: tabular-nums;
+      color: #7eb8d4;
+      min-height: 0.85rem;
+      line-height: 1;
+    }
+    .pre-race-rating-val[data-zero="1"] {
+      color: #475569;
+    }
+    .pre-race-rating-slider {
+      width: 100%;
+      max-width: 4.8rem;
+      height: 5px;
+      margin: 0;
+      cursor: pointer;
+    }
+    .pre-race-rating-slider--horse { accent-color: #38bdf8; }
+    .pre-race-rating-slider--jockey { accent-color: #c084fc; }
+    .pre-race-rating-slider--training { accent-color: #4ade80; }
+    .pre-race-rating-ticks {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 4.8rem;
+      font-size: 0.62rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      color: #64748b;
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+    .pre-race-rating-ticks span:nth-child(2) {
+      color: #cbd5e1;
       font-weight: 700;
     }
     /* 脚質：出馬表と同じバッジ色（ラッパーに entry-style--* を付与） */
@@ -886,28 +1094,6 @@
       display: inline-block;
       min-width: 2.6rem;
       font-variant-numeric: tabular-nums;
-      color: #e7f3fb;
-    }
-    #btn-pre-race-confirm {
-      padding: 6px 14px;
-      font-size: 0.78rem;
-      font-family: inherit;
-      letter-spacing: 0;
-      cursor: pointer;
-      background: #1e3a52;
-      border: 1px solid #445566;
-      color: #e7f3fb;
-      width: 9.4rem;
-      border-radius: 0;
-      transition: none;
-    }
-    #btn-pre-race-confirm:hover {
-      background: #1e3a52;
-      color: #e7f3fb;
-      filter: brightness(1.08);
-    }
-    #btn-pre-race-confirm:active {
-      background: #1e3a52;
       color: #e7f3fb;
     }
 
@@ -1533,25 +1719,69 @@
           max(12px, env(safe-area-inset-left, 0px));
       }
       .pre-race-toolbar {
-        justify-content: center;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        margin-bottom: 0;
+      }
+      .pre-race-toolbar > .app-nav-btn {
+        width: 100%;
+        max-width: none;
+        min-height: 34px;
+        min-width: 0;
+        padding: 5px 8px;
+        font-size: 0.7rem;
+        letter-spacing: 0.03em;
+        box-sizing: border-box;
+      }
+      .pre-race-toolbar-right {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        width: 100%;
+        margin-left: 0;
+      }
+      .pre-race-toolbar-right .app-nav-btn {
+        width: 100%;
+        max-width: none;
+        min-height: 34px;
+        min-width: 0;
+        padding: 5px 8px;
+        font-size: 0.7rem;
+        letter-spacing: 0.03em;
+        box-sizing: border-box;
+      }
+      .pre-race-table col.col-name {
+        width: 14%;
+        min-width: 4.6rem;
+      }
+      .pre-race-table col.col-jockey {
+        width: 11%;
+        min-width: 4.2rem;
+      }
+      .pre-race-table td.pre-race-name,
+      .pre-race-name-text {
+        font-size: 0.72rem;
+      }
+      .pre-race-table td.pre-race-jockey,
+      .pre-race-jockey-name {
+        font-size: 0.68rem;
+        line-height: 1.3;
+      }
+      .pre-race-jockey-name {
+        white-space: normal;
+        word-break: keep-all;
+        overflow: visible;
+        text-overflow: clip;
+      }
+      .pre-race-rating-slider {
+        max-width: none;
+        min-height: 28px;
       }
       .pre-race-table-inner {
         width: 100%;
         margin: 0;
         justify-content: flex-start;
-      }
-      #btn-pre-race-confirm {
-        width: 100%;
-        max-width: 20rem;
-        min-height: 44px;
-        margin: 0 auto;
-        display: block;
-      }
-      .pre-race-stepper button {
-        min-width: 44px;
-        min-height: 40px;
-        padding: 6px 10px;
-        font-size: 0.72rem;
       }
       .pre-race-table {
         font-size: 0.72rem;
@@ -1679,46 +1909,62 @@
   </style>
 </head>
 <body>
-  <!-- プレレース：出走パラメータ調整（初期表示） -->
-  <div id="pre-race-editor" hidden aria-label="出走パラメータ編集">
+  <!-- お好み設定（全画面オーバーレイ） -->
+  <div id="pre-race-editor" hidden aria-label="お好み設定">
+    <div id="pre-race-toast" class="pre-race-message-overlay" hidden role="status" aria-live="polite">
+      <div class="pre-race-message-dialog">
+        <p id="pre-race-toast-message" class="pre-race-message-text"></p>
+      </div>
+    </div>
+    <div id="pre-race-confirm" class="pre-race-message-overlay" hidden role="alertdialog" aria-modal="true" aria-labelledby="pre-race-confirm-message">
+      <div class="pre-race-message-dialog">
+        <p id="pre-race-confirm-message" class="pre-race-message-text pre-race-message-text--with-actions"></p>
+        <div class="pre-race-confirm-actions">
+          <button type="button" id="pre-race-confirm-cancel" class="app-nav-btn app-nav-btn--secondary">いいえ</button>
+          <button type="button" id="pre-race-confirm-ok" class="app-nav-btn">はい</button>
+        </div>
+      </div>
+    </div>
     <div class="pre-race-header">
       <div class="pre-race-toolbar">
-        <button type="button" id="btn-pre-race-confirm" class="app-nav-btn">シミュレーター画面</button>
+        <button type="button" id="btn-pre-race-close" class="app-nav-btn">シミュレーター画面</button>
+        <div class="pre-race-toolbar-right">
+          <button type="button" id="btn-pre-race-apply" class="app-nav-btn">設定反映</button>
+          <button type="button" id="btn-pre-race-reset" class="app-nav-btn app-nav-btn--secondary">設定リセット</button>
+        </div>
       </div>
       <h1 class="app-main-title">
         <span class="title-brand-icon" aria-hidden="true">🏇</span>
         <span class="title-text">JRA RACE SIMULATOR</span>
       </h1>
-      <p class="app-subtitle app-subtitle--pre-race">パラメーター調整</p>
+      <p class="app-subtitle app-subtitle--pre-race">お好み設定</p>
       <div id="pre-race-race-info"></div>
     </div>
     <div class="pre-race-table-wrap">
       <div class="pre-race-table-inner">
       <table class="pre-race-table" id="pre-race-entry-table">
         <colgroup>
+          <col class="col-mark">
           <col class="col-gate">
           <col class="col-name">
-          <col class="col-sex">
-          <col class="col-weight-ro">
           <col class="col-jockey">
           <col class="col-style">
-          <col class="col-num">
-          <col class="col-num">
-          <col class="col-num">
-          <col class="col-num">
+          <col class="col-rating">
+          <col class="col-rating">
+          <col class="col-rating">
+          <col class="col-detail">
         </colgroup>
         <thead>
           <tr>
+            <th>印</th>
             <th>馬番</th>
             <th>馬名</th>
-            <th>性齢</th>
-            <th>斤量</th>
             <th>騎手</th>
             <th>脚質</th>
-            <th>Ave-3F</th>
-            <th>上り3F</th>
-            <th>騎手勝率</th>
-            <th>騎手3着内率</th>
+            <th title="能力・スピードの読み（±5 = ±5%）">馬</th>
+            <th title="乗り・勝負所の読み（±5 = ±5%）">騎手</th>
+            <th title="当日コンディション（±5 = ±5%）">調教</th>
+            <th>詳細データ</th>
           </tr>
         </thead>
         <tbody id="pre-race-tbody"></tbody>
@@ -1759,7 +2005,7 @@
 
   <header class="simulator-page-header">
     <div class="simulator-toolbar">
-      <button type="button" id="btn-back-to-pre-race" class="app-nav-btn" hidden aria-label="パラメーター調整">パラメーター調整</button>
+      <button type="button" id="btn-back-to-pre-race" class="app-nav-btn" hidden aria-label="お好み設定">お好み設定</button>
       <div class="simulator-toolbar-right">
         <button type="button" id="btn-show-summary" class="app-nav-btn" disabled>📊 レースサマリー</button>
         <button type="button" id="btn-open-stats" class="app-nav-btn">📈 集計画面</button>

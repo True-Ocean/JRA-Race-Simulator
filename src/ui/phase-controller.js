@@ -194,7 +194,7 @@ class PhaseController {
     // ログは最初の描画フレームと同タイミングで _enqueueLogs する（案A）
     this._animateHorses(fromForAnimation, snap.horses, phase, idx === 0, snap.eventLogs);
 
-    updateEntryStaminaBars(fromForAnimation ?? snap.horses);
+    updateEntryStaminaBars(snap.horses);
   }
 
   // 馬カードをアニメーションで表示（段階的に進行度を上げる）
