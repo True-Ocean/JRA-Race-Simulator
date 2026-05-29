@@ -34,6 +34,8 @@ export class Renderer {
     this.courseDef    = courseDef ?? null;
     this.innerRailSide = this._resolveInnerRailSide(this.courseDef);
     this.horseRenderState = new Map();
+    /** @type {Map<number, number>} ゴールシーン描画で前フレームに使った progress（後退防止用） */
+    this._goalLastDrawProgressById = new Map();
     this._resize();
     window.addEventListener('resize', () => this._resize());
   }
@@ -89,6 +91,29 @@ export class Renderer {
 
   resetHorseRenderState() {
     this.horseRenderState.clear();
+    this._goalLastDrawProgressById.clear();
+  }
+
+  /**
+   * ゴールシーン本編 1 コマ目: 最終直線の描画位置から、goal progress に合わせてスナップする。
+   * @param {Array<{ id: number, y?: number }>} horses
+   * @param {Map<number, number>} progressById
+   */
+  resetGoalDrawProgress() {
+    this._goalLastDrawProgressById.clear();
+  }
+
+  syncGoalRenderState(horses, progressById) {
+    if (!progressById) return;
+    horses.forEach(horse => {
+      const progress = progressById.get(horse.id);
+      if (!Number.isFinite(progress)) return;
+      const lane = Math.max(1, Math.min(CONFIG.LANE_COUNT, horse.y ?? 1));
+      const cy = this.progressToY(progress);
+      const cx = this.laneToX(lane);
+      this.horseRenderState.set(horse.id, { cx, cy });
+      this._goalLastDrawProgressById.set(horse.id, progress);
+    });
   }
 
   // Lane1=最内（innerRailSide に応じて左右反転）
@@ -412,6 +437,7 @@ export class Renderer {
       });
     } else {
       const horseRenderY = new Map();
+      const goalLayoutProgressById = new Map();
       const placed = [];
       const sortedForLayout = [...horses].sort((a, b) => b.x - a.x);
       sortedForLayout.forEach(horse => {
@@ -459,18 +485,18 @@ export class Renderer {
         let finalY = baseY;
 
         // レーン境界での丸め誤差を避けるため、連続値レーンの近傍だけ押し出す。
-        // ゴールシーンでは horse.x と描画 Y の対応が他のフェーズと違うため、
-        // sim-x ベースの nearX 制約は使わず、描画 Y の近接そのものをトリガーにする。
+        // ゴールシーンでは nearX を維持し、押し出しが sim 上の進行度 (baseY) より後方にならないよう抑える。
         const isGoalRunMode = Boolean(options.goalRun);
         for (const prev of placed) {
           const nearLane = Math.abs(prev.lane - lane) < metrics.drawNearLaneGap;
           if (!nearLane || cardSpacing <= 0) continue;
-          if (!isGoalRunMode) {
-            const nearX = Math.abs(prev.x - horse.x) < metrics.drawNearXGap;
-            if (!nearX) continue;
-          }
+          const nearX = Math.abs(prev.x - horse.x) < metrics.drawNearXGap;
+          if (!nearX) continue;
           if (Math.abs(finalY - prev.y) < cardSpacing) {
-            finalY = prev.y + cardSpacing;
+            const pushedY = prev.y + cardSpacing;
+            if (!isGoalRunMode || pushedY <= baseY + 0.5) {
+              finalY = pushedY;
+            }
           }
         }
         if (phase.index === 0) {
@@ -478,6 +504,9 @@ export class Renderer {
           finalY = Math.min(finalY, this._getStartFrontCy());
         }
         horseRenderY.set(horse.id, finalY);
+        if (isGoalRunMode) {
+          goalLayoutProgressById.set(horse.id, mappedProgress);
+        }
         placed.push({ id: horse.id, lane, x: horse.x, y: finalY });
       });
       horses.forEach(horse => {
@@ -485,6 +514,7 @@ export class Renderer {
         targetPose.set(horse.id, {
           lane,
           cy: horseRenderY.get(horse.id) ?? this.progressToY(0.05),
+          goalProgress: goalLayoutProgressById.get(horse.id) ?? null,
         });
       });
     }
@@ -499,6 +529,7 @@ export class Renderer {
           ? 0.48
           : (phase.index === 0 ? 0.26 : 0.40));
 
+    const isGoalRun = Boolean(options.goalRun);
     sortedHorses.forEach(horse => {
       const target = targetPose.get(horse.id);
       if (!target) return;
@@ -506,14 +537,39 @@ export class Renderer {
       const targetCy = target.cy;
       const prev = this.horseRenderState.get(horse.id);
       const cx = prev ? (prev.cx + (targetCx - prev.cx) * smoothing) : targetCx;
-      const cy = prev ? (prev.cy + (targetCy - prev.cy) * smoothing) : targetCy;
+      let cy;
+      if (prev) {
+        const lerped = prev.cy + (targetCy - prev.cy) * smoothing;
+        if (isGoalRun && Number.isFinite(target.goalProgress)) {
+          const lastProgress = this._goalLastDrawProgressById.get(horse.id);
+          const progressAdvanced = !Number.isFinite(lastProgress)
+            || target.goalProgress >= lastProgress - 1e-6;
+          // progress が進んでいる間だけ「画面上の後退 (cy 増加)」を禁止する。
+          cy = progressAdvanced ? Math.min(prev.cy, lerped) : lerped;
+        } else {
+          cy = lerped;
+        }
+      } else {
+        cy = targetCy;
+      }
       this.horseRenderState.set(horse.id, { cx, cy });
       if (!isFinite(cx) || !isFinite(cy)) return;
       this._drawCard(horse, cx, cy);
     });
 
+    if (isGoalRun && options.goalRun?.progressById) {
+      options.goalRun.progressById.forEach((progress, id) => {
+        if (Number.isFinite(progress)) {
+          this._goalLastDrawProgressById.set(id, progress);
+        }
+      });
+    }
+
     for (const id of this.horseRenderState.keys()) {
-      if (!activeHorseIds.has(id)) this.horseRenderState.delete(id);
+      if (!activeHorseIds.has(id)) {
+        this.horseRenderState.delete(id);
+        this._goalLastDrawProgressById.delete(id);
+      }
     }
   }
 

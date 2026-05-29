@@ -474,6 +474,8 @@ class PhaseController {
     this._replayGoalRankSynced = 0;
     this._goalReplayLogs = [];
     this._replayGoalLogSynced = 0;
+    this.renderer.resetGoalDrawProgress();
+    let replayGoalRenderSynced = false;
 
     const step = (ts) => {
       const elapsedMs = ts - transitionStartedAt;
@@ -496,6 +498,10 @@ class PhaseController {
         const progressById = this._mapEntriesToMap(goalRun.progressById);
         const laneIntentById = this._mapEntriesToMap(goalRun.laneIntentById);
         const overtakePressureById = this._mapEntriesToMap(goalRun.overtakePressureById);
+        if (!replayGoalRenderSynced) {
+          this.renderer.syncGoalRenderState(horses, progressById);
+          replayGoalRenderSynced = true;
+        }
         this.renderer.draw(horses, phase, 1, {
           phaseLabel: goalRun.phaseLabel ?? 'ゴールシーン',
           furlong: goalRun.furlong ?? { t: frame.rawT ?? 0 },
@@ -712,6 +718,7 @@ class PhaseController {
     this._goalFinishedAtById = new Map();
     this._goalReplayLogs = [];
     this._replayGoalLogSynced = 0;
+    this.renderer.resetGoalDrawProgress();
 
     const step = (ts) => {
       if (!goalSceneStarted) {
@@ -1245,6 +1252,10 @@ class PhaseController {
             this._markHorseGoalFinished(horse, elapsed);
           }
         });
+      }
+
+      if (isFirstGoalFrame) {
+        this.renderer.syncGoalRenderState(simHorses, goalRenderProgressById);
       }
 
       const drawOptions = {
