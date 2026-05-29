@@ -86,6 +86,10 @@ import {
 import { buildFinishTimeRows } from './finish-times.js';
 import { updateEntryStaminaBars } from './entry-stamina.js';
 import {
+  calcPathInterpT,
+  interpolateStaminaForDisplay,
+} from '../engine/path-stamina.js';
+import {
   calcGoalChaseUrgency,
   calcPackRankNorm,
   assignStretchFanLanesForPack,
@@ -219,12 +223,18 @@ class PhaseController {
         const lateralProgress = gateSlide;
         const rendered = toHorses.map(to => {
           const from = fromById.get(to.id) ?? to;
+          const x = from.x + (to.x - from.x) * moveProgress;
+          const y = from.y + (to.y - from.y) * lateralProgress;
+          const pathMeters =
+            (from.pathMeters ?? 0)
+            + ((to.pathMeters ?? 0) - (from.pathMeters ?? 0)) * moveProgress;
+          const t = calcPathInterpT(from, to, x, pathMeters);
           return {
             ...to,
-            x: from.x + (to.x - from.x) * moveProgress,
-            // ゲートが下がる演出に合わせて、横移動は少し遅れて開始する
-            y: from.y + (to.y - from.y) * lateralProgress,
-            stamina: from.stamina + (to.stamina - from.stamina) * moveProgress,
+            x,
+            y,
+            pathMeters,
+            stamina: interpolateStaminaForDisplay(from, to, t),
           };
         });
 
@@ -265,11 +275,18 @@ class PhaseController {
       // 前フェーズ位置 -> 今フェーズ位置へ線形補間
       const tweened = toHorses.map(to => {
         const from = fromById.get(to.id) ?? to;
+        const x = from.x + (to.x - from.x) * progress;
+        const y = from.y + (to.y - from.y) * progress;
+        const pathMeters =
+          (from.pathMeters ?? 0)
+          + ((to.pathMeters ?? 0) - (from.pathMeters ?? 0)) * progress;
+        const t = calcPathInterpT(from, to, x, pathMeters);
         return {
           ...to,
-          x: from.x + (to.x - from.x) * progress,
-          y: from.y + (to.y - from.y) * progress,
-          stamina: from.stamina + (to.stamina - from.stamina) * progress,
+          x,
+          y,
+          pathMeters,
+          stamina: interpolateStaminaForDisplay(from, to, t),
         };
       });
 

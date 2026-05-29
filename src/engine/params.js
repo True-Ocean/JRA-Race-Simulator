@@ -138,6 +138,9 @@ export function calcAllParams(raceData, userTweaks = {}, marks = {}) {
       targetLane:     startLane,
       battlePenalty:  1.0,    // 次フェーズに適用する速度係数
       distanceLoss:   0,      // コーナー距離ロスの累計
+      pathMeters:     0,      // 累積走行経路長（m）
+      pathAtPhaseStart: 0,
+      staminaPathCost: 0,
       battleLosses:   0,      // フェーズ内バトル敗北数（スタミナ消費計算用）
       logs:           [],
     };

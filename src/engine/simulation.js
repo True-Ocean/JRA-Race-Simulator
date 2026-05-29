@@ -43,6 +43,7 @@ import {
   EARLY_TROUBLE_DECAY_PER_100M,
   EARLY_ORDER_TIE_NOISE,
   USE_SAFE_STAMINA_MODEL,
+  USE_PATH_BASED_STAMINA,
   SAFE_BASE_STAMINA_PER_M,
   SAFE_LANE_EVENT_DRAIN_MULT,
   SAFE_CORNER_EVENT_DRAIN_MULT,
@@ -123,6 +124,10 @@ import {
   STRETCH_LANE_SUBSTEPS,
   CORNER4_STRETCH_KICK_SCALE,
 } from './constants.js';
+import {
+  calcPathSegmentMeters,
+  calcPathStaminaDrain,
+} from './path-stamina.js';
 import {
   clampLane,
   isNigeStyle,
@@ -210,6 +215,18 @@ function applyUniversalReserveDrain(horse, rawDrain, phase) {
     d = Math.min(d, maxDrain);
   }
   return d;
+}
+
+function recordHorsePathSegment(horse, prevX, prevY, phase, trackMod) {
+  const segM = calcPathSegmentMeters(prevX, prevY, horse.x, horse.y, phase.distance);
+  if (segM <= 0) return;
+  horse.pathMeters = (horse.pathMeters ?? 0) + segM;
+  if (!USE_PATH_BASED_STAMINA) return;
+  const drain = calcPathStaminaDrain(segM, trackMod, horse.y, phase);
+  subtractStaminaWithReserve(horse, drain, phase, {
+    trackField: 'staminaPathCost',
+    category: 'base',
+  });
 }
 
 function subtractStaminaWithReserve(horse, rawDrain, phase, trackFieldOrOptions = null) {
@@ -378,6 +395,7 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
     horse.staminaAccelCost = 0;
     horse.staminaBattleCost = 0;
     horse.staminaCornerCost = 0;
+    horse.staminaPathCost = 0;
     horse.staminaBaseCost = 0;
     horse.staminaEventCost = 0;
     horse.eventFatigueScore = 0;
@@ -394,6 +412,9 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
   });
 
   for (const phase of phases) {
+    horses.forEach(horse => {
+      horse.pathAtPhaseStart = horse.pathMeters ?? 0;
+    });
     const segmentIdLower = String(phase.segmentId ?? '').toLowerCase();
     const isCorner4Entry =
       segmentIdLower === 'corner4' ||
@@ -643,6 +664,8 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         : (isCorner4Only ? 1 : 1);
       const prevLaneYBeforeStretch = horse.y;
       let driftShift = 0;
+      let pathPrevX = horse.x;
+      let pathPrevY = horse.y;
       for (let stretchStep = 0; stretchStep < stretchLaneSteps; stretchStep += 1) {
         const probeLane = isFinalStraight
           ? clampLane(horse.spurEntryTargetLane ?? horse.y)
@@ -730,6 +753,9 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         if (Number.isFinite(laneCheck.xNudge) && laneCheck.xNudge > 0 && stretchStep === 0) {
           horse.x += laneCheck.xNudge;
         }
+        recordHorsePathSegment(horse, pathPrevX, pathPrevY, phase, trackMod);
+        pathPrevX = horse.x;
+        pathPrevY = horse.y;
       }
       const laneShift = Math.abs(horse.y - prevLaneYBeforeStretch);
       if (laneShift > 0.08 && isFinalStraight) {
@@ -794,6 +820,7 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         frameAdvance = prevAdvance + accelIntent * accelMultByStamina;
       }
       horse.x += frameAdvance;
+      recordHorsePathSegment(horse, pathPrevX, pathPrevY, phase, trackMod);
 
       if (
         isFinalStraight
@@ -831,7 +858,7 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
       horse.lastAdvance = frameAdvance;
 
       applyCornerLoss(phase, horse);
-      if (phase.isCorner) {
+      if (phase.isCorner && !USE_PATH_BASED_STAMINA) {
         const lane = laneIndex(horse.y);
         const outerDrain = Math.max(0, lane - 3) * STAMINA_CORNER_OUTER_PER_LANE;
         if (outerDrain > 0) {
@@ -845,12 +872,14 @@ export function runSimulation(raceData, options = {}, userTweaks = {}, marks = {
         }
       }
 
-      const cons = USE_SAFE_STAMINA_MODEL
-        ? Math.max(0, phase.distance) * trackMod * SAFE_BASE_STAMINA_PER_M
-        : calcStaminaCons(phase, horse, trackMod);
-      subtractStaminaWithReserve(horse, cons, phase, {
-        category: 'base',
-      });
+      if (!USE_PATH_BASED_STAMINA) {
+        const cons = USE_SAFE_STAMINA_MODEL
+          ? Math.max(0, phase.distance) * trackMod * SAFE_BASE_STAMINA_PER_M
+          : calcStaminaCons(phase, horse, trackMod);
+        subtractStaminaWithReserve(horse, cons, phase, {
+          category: 'base',
+        });
+      }
 
       horse.battleLosses  = 0;
       horse.battlePenalty = 1.0;

@@ -40,8 +40,16 @@ export const EARLY_ORDER_TIE_NOISE = 1.2;
  */
 /** 安全策: 新スタミナモデル（イベント主導 + 距離微小消費）を段階導入 */
 export const USE_SAFE_STAMINA_MODEL = true;
+/** 経路積算ベースのスタミナ消費（走行距離に連動） */
+export const USE_PATH_BASED_STAMINA = true;
 /** 新モデル: 距離起因の微小消費（1m あたり） */
 export const SAFE_BASE_STAMINA_PER_M = 0.0048;
+/** 経路モデル: 1m あたりのスタミナ（初期は SAFE_BASE と同値） */
+export const PATH_STAMINA_PER_M = SAFE_BASE_STAMINA_PER_M;
+/** レーン 1 幅の換算（m）— 描画目安 3.0m と揃える */
+export const LANE_TO_METERS = 3.0;
+/** sim-x 換算: advance = V_eff * (phase.distance / SIM_X_METERS_DIVISOR) */
+export const SIM_X_METERS_DIVISOR = 80;
 /** 新モデル: 進路変更イベント消費倍率 */
 export const SAFE_LANE_EVENT_DRAIN_MULT = 0.45;
 /** 新モデル: コーナー外回しイベント消費倍率 */

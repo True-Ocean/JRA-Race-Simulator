@@ -118,6 +118,7 @@ function snapshotCorner4ExitState(allHorses) {
     const lane = clampLane(horse.y);
     horse.corner4ExitLane = lane;
     horse.corner4ExitX = horse.x;
+    horse.corner4ExitPathMeters = horse.pathMeters ?? 0;
     horse.corner4ExitRank = getRunningOrderRank(horse, allHorses);
     horse.corner4ExitFrontGap = getLocalPackFrontGap(horse, lane, allHorses);
   }
