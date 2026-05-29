@@ -2,6 +2,8 @@ BKUP/
 .DS_Store
 node_modules/
 .venv/
+__pycache__/
+*.pyc
 
 # Editor metadata（tasks / keybindings はリポジトリ共有）
 .vscode/*
