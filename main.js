@@ -694,6 +694,7 @@ Promise.all([
         autoAdvanceActive = false;
         currentRaceUsedAutoAdvance = false;
         syncSimulatorChromeForAutoMode();
+        persistSimulatorStateToSession();
       }, 300);
     }
 
@@ -1236,7 +1237,6 @@ Promise.all([
       document.getElementById('btn-open-stats-summary')?.addEventListener('click', () => openStatsPage('summary'));
 
       btnBackToPreRace?.addEventListener('click', () => {
-        resetSimulatorToIdle();
         hideRaceSummaryScreen();
         openPreRaceScreen();
       });
@@ -1274,8 +1274,8 @@ Promise.all([
       sessionStorage.removeItem(SESSION_KEY_OPEN_SCREEN);
     }
 
-    const openPreRaceScreen = () => {
-      resetSimulatorToIdle();
+    const openPreRaceScreen = ({ reset = false } = {}) => {
+      if (reset) resetSimulatorToIdle();
       hideRaceSummaryScreen();
       const preRaceEl = document.getElementById('pre-race-editor');
       if (preRaceEl) preRaceEl.hidden = false;
@@ -1294,6 +1294,7 @@ Promise.all([
       } else {
         applyComputedHorsesToUi();
       }
+      syncSimulatorChromeForAutoMode();
     }
 
     const openSimulatorHome = () => {
@@ -1375,7 +1376,7 @@ Promise.all([
     initEntryPanelMobileCollapse();
 
     if (openScreen === 'pre-race') {
-      openPreRaceScreen();
+      openPreRaceScreen({ reset: true });
     } else if (openScreen === 'summary') {
       openSimulatorHome();
       let restored = false;
