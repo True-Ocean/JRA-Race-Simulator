@@ -201,7 +201,27 @@ export const COLLISION_REAR_BUFFER_X = 14;
 export const INNER_CUTIN_BUFFER_MULT = 1.25;
 export const PACK_DENSITY_PENALTY_QUAD = 1.1;
 export const STAMINA_CORNER_OUTER_PER_LANE = 0.30;
+/** 本編・ゴール共通のベーススタミナ消費倍率（新ボーナス導入に伴い全体をやや厳しく） */
+export const GLOBAL_STAMINA_DRAIN_MULT = 1.11;
+/** career.stamina_efficiency による消費抑制の上限（ベース↑の一部のみ相殺） */
+export const STAMINA_EFFICIENCY_MAX = 0.04;
 export const GOAL_STAMINA_DRAIN_MULT = 1.35;
+/** ゴール: 表示％連動の発揮率レンジ（緑黄赤・毎フレーム） */
+export const GOAL_EXPRESSION_GREEN_MIN = 1.04;
+export const GOAL_EXPRESSION_GREEN_MAX = 1.08;
+export const GOAL_EXPRESSION_YELLOW_MIN = 0.96;
+export const GOAL_EXPRESSION_YELLOW_MAX = 1.00;
+export const GOAL_EXPRESSION_RED_MIN = 0.82;
+export const GOAL_EXPRESSION_RED_MAX = 0.92;
+/** ゴール速度: goal_class_index（G1着順主）による乗算レンジ */
+export const GOAL_EXPRESSION_CAREER_MIN = 0.90;
+export const GOAL_EXPRESSION_CAREER_MAX = 1.14;
+/** ゴール加速: 同上（実績馬の伸び切り） */
+export const GOAL_CAREER_ACCEL_MIN = 0.88;
+export const GOAL_CAREER_ACCEL_MAX = 1.12;
+export const GOAL_ACCEL_MULT_GREEN = 1.0;
+export const GOAL_ACCEL_MULT_YELLOW = 0.88;
+export const GOAL_ACCEL_MULT_RED = 0.72;
 /** ゴールシーン終了時の目標スタミナ残量（initial 比） */
 export const GOAL_STAMINA_BURN_TARGET_RATIO = 0.12;
 /** 残スタミナをゴールまで燃やす燃焼の強さ（距離×mps 式は使わない穏やかな時間ベース） */

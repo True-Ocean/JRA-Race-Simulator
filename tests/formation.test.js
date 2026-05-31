@@ -5,7 +5,11 @@ import {
   getFormationOrderBias,
   calcFormationAdvanceMult,
   calcFormationRangeOffset,
+  calcPackActualRankBlend,
+  calcCloserFrontAdvanceMult,
   resolveFormationRankNorm,
+  resolveFormationRankNormForCloserFront,
+  CLOSER_FRONT_ADVANCE_FLOOR,
   STYLE_FORMATION_TARGET_RANK,
   enforceFrontRunnerAheadOfClosers,
 } from '../src/engine/formation.js';
@@ -77,10 +81,50 @@ describe('formation', () => {
     expect(resolveFormationRankNorm(horse, 0.95, clustered)).toBeCloseTo(0.12, 5);
   });
 
-  it('隊列が広がったら実位置で判定する', () => {
+  it('隊列 spread 中間では目標順位と実位置をブレンドする', () => {
+    const horse = { formationTargetRank: 0.12, x: 5 };
+    const midSpread = [{ id: 1, x: 0 }, { id: 2, x: 30 }];
+    const rank = resolveFormationRankNorm(horse, 0, midSpread);
+    expect(rank).toBeGreaterThan(0.12);
+    expect(rank).toBeLessThan(1);
+  });
+
+  it('隊列が十分広がったら実位置で判定する', () => {
     const horse = { formationTargetRank: 0.12, x: 5 };
     const spread = [{ id: 1, x: 0, formationTargetRank: 0.12 }, { id: 2, x: 200, formationTargetRank: 0.12 }];
     expect(resolveFormationRankNorm(horse, 0, spread)).toBeCloseTo(1, 5);
+  });
+
+  it('packSpread に応じて actualRankBlend が段階的に上がる', () => {
+    expect(calcPackActualRankBlend(5)).toBe(0);
+    expect(calcPackActualRankBlend(48)).toBe(1);
+    const mid = calcPackActualRankBlend(29);
+    expect(mid).toBeGreaterThan(0.2);
+    expect(mid).toBeLessThan(0.9);
+  });
+
+  it('固い隊列でも差しが実際に先頭なら overFront が立つ', () => {
+    const horse = { id: 2, style: '差し', formationTargetRank: 0.5, x: 8 };
+    const clustered = [{ id: 1, x: 0 }, horse];
+    const off = calcFormationRangeOffset(1, horse, clustered);
+    expect(off.overFront).toBeGreaterThan(0.15);
+    const rankFront = resolveFormationRankNormForCloserFront(horse, 1, clustered);
+    expect(rankFront).toBeLessThan(horse.formationTargetRank);
+  });
+
+  it('固い隊列で差しが後方にいれば overFront は立たない', () => {
+    const horse = { id: 1, style: '差し', formationTargetRank: 0.5, x: 0 };
+    const clustered = [horse, { id: 2, x: 8 }];
+    const off = calcFormationRangeOffset(0, horse, clustered);
+    expect(off.overFront).toBe(0);
+  });
+
+  it('差しの前出しペナルティは下限付きで急落しない', () => {
+    const deep = calcCloserFrontAdvanceMult(0.35, 1, { launch: true });
+    expect(deep).toBeGreaterThanOrEqual(CLOSER_FRONT_ADVANCE_FLOOR);
+    expect(deep).toBeLessThan(1);
+    const shallow = calcCloserFrontAdvanceMult(0.08, 1, { launch: true });
+    expect(shallow).toBeGreaterThan(deep);
   });
 
   it('max より後ろでも advanceMult が極端に落ちない', () => {

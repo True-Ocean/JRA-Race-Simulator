@@ -30,7 +30,7 @@ LEFT JOIN "Jockey" j ON j."騎手" = rt."騎手"
 ORDER BY rt."番"
 """
 SQL_HORSE_RECORDS = """
-SELECT "馬名", "日付", "距離", "Ave-3F", "上り3F", "着順", "決手"
+SELECT "馬名", "日付", "距離", "Ave-3F", "上り3F", "着順", "決手", "クラス名"
 FROM "HorseRecords"
 ORDER BY "馬名", "日付" DESC
 """
@@ -63,9 +63,11 @@ def build_entries(race_table: pd.DataFrame, horse_stats_by_name: dict) -> list[d
                     "style": stats["style"],
                     "ave_3f": stats["ave_3f"],
                     "last_3f": stats["last_3f"],
+                    "last_3f_raw": stats.get("last_3f_raw"),
                     "results": stats["results"],
                     "ave_3f_range": stats["ave_3f_range"],
                     "last_3f_range": stats["last_3f_range"],
+                    "career": stats.get("career"),
                 }
             )
         else:

@@ -22,6 +22,7 @@ description: >-
 - 作業ディレクトリ: リポジトリルート
 - `python scripts/export_race_json.py` だけは使わない（システム Python には依存関係が無いことがある）
 - 出力: `src/data/race-info.json`, `src/data/race-entries.json`（上書き）
+- 各馬 `horse` に `career`（`class_index`, `stamina_efficiency`, `graded`）、`last_3f_raw`、実効 `last_3f` を含む
 
 ## エージェントの実行手順
 

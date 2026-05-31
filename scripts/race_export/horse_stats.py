@@ -3,6 +3,7 @@ from statistics import median
 
 import pandas as pd
 
+from .career_stats import aggregate_career, apply_class_index_to_last3f
 from .config import (
     DEFAULT_AVE_3F,
     DEFAULT_LAST_3F,
@@ -139,8 +140,14 @@ def aggregate_horse_stats(
     grouped: dict[str, dict] = {}
 
     for horse_name, group in horse_records_df.groupby("馬名", sort=False):
+        career = aggregate_career(group)
         selected = _select_runs(group, target_distance)
         ave_range, last_range, dist_bias = _pair_aggregate(selected)
+        last_3f_raw = last_range["avg"] if last_range else None
+        last_3f_effective = apply_class_index_to_last3f(
+            last_3f_raw,
+            career["class_index"],
+        )
 
         if (
             ave_range
@@ -159,11 +166,13 @@ def aggregate_horse_stats(
             "records_used": int(len(selected)),
             "style": _resolve_style(selected),
             "ave_3f": ave_range["avg"] if ave_range else None,
-            "last_3f": last_range["avg"] if last_range else None,
+            "last_3f": last_3f_effective if last_3f_effective is not None else None,
+            "last_3f_raw": last_3f_raw,
             "ave_3f_range": ave_range,
             "last_3f_range": last_range,
             "results": _build_results(selected),
             "distance_bias_m": dist_bias,
+            "career": career,
         }
 
     return grouped
@@ -199,7 +208,17 @@ def apply_fallbacks(entries: list[dict], warnings: list[str]) -> list[dict]:
             horse["style"] = DEFAULT_STYLE
             horse["ave_3f"] = round(float(fallback_ave), 1)
             horse["last_3f"] = round(float(fallback_last), 1)
+            horse["last_3f_raw"] = horse["last_3f"]
             horse["results"] = []
+            horse["career"] = {
+                "class_index": 0.5,
+                "stamina_efficiency": 0.5,
+                "runs_all": 0,
+                "win_rate": 0.0,
+                "top3_rate": 0.0,
+                "peak_grade": None,
+                "graded": {},
+            }
             warnings.append(f"HorseRecords missing: {horse['name']} (fallback applied)")
 
         if jockey.get("win_rate") is None or jockey.get("top3_rate") is None:

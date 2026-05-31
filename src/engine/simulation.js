@@ -16,6 +16,8 @@ import {
   getFormationTargetRank,
   isFrontRunnerStyle,
   enforceFrontRunnerAheadOfClosers,
+  isCloserStyle,
+  CLOSER_START_BURST_MAX,
 } from './formation.js';
 import { getFormationBattleRateMult } from './battle-formation.js';
 import {
@@ -35,6 +37,7 @@ import {
   resolveBattle,
 } from './battle.js';
 import { CONFIG } from '../config.js';
+import { getCombinedStaminaDrainMult } from './stamina-drain.js';
 import {
   MIN_FORWARD_GAP,
   LATERAL_BLOCK_X_GAP,
@@ -257,7 +260,10 @@ function subtractStaminaWithReserve(horse, rawDrain, phase, trackFieldOrOptions 
       : 0;
     category = trackFieldOrOptions.category ?? category;
   }
-  const d = applyUniversalReserveDrain(horse, rawDrain, phase);
+  const scaledRaw = Number.isFinite(rawDrain) && rawDrain > 0
+    ? rawDrain * getCombinedStaminaDrainMult(horse)
+    : rawDrain;
+  const d = applyUniversalReserveDrain(horse, scaledRaw, phase);
   if (d <= 0) return;
   horse.stamina = Math.max(0, horse.stamina - d);
   if (trackField && horse[trackField] !== undefined) horse[trackField] += d;
@@ -622,10 +628,17 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
             + (reliability - 0.5) * 0.12;
           const randomMult = 0.88 + rng() * 0.28;
           horse.startBurstFactor = baseMult * randomMult;
+          if (isCloserStyle(horse.style)) {
+            horse.startBurstFactor = Math.min(horse.startBurstFactor, CLOSER_START_BURST_MAX);
+          }
           // スタートイベントは「出遅れ/好スタート」のどちらか1回のみ。
           if (horse.startEventType === 'slow') {
             horse.startBurstFactor = Math.min(horse.startBurstFactor, 1.0);
-          } else if (horse.startBurstFactor >= 1.22 && horse.startEventType == null) {
+          } else if (
+            horse.startBurstFactor >= 1.22
+            && horse.startEventType == null
+            && !isCloserStyle(horse.style)
+          ) {
             const log = `[好スタート] ${horse.name}`;
             globalLogs.push(log);
             phaseEventLogs.push(log);

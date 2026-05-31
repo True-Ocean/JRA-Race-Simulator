@@ -9,6 +9,8 @@ import {
   getPaceIntroBlend,
   resolveFormationEndProgress,
   resolveSimBoundaries,
+  isRearPelotonForwardExempt,
+  isLaunchPhase,
 } from '../src/engine/phase-context.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -88,6 +90,20 @@ describe('phase-context', () => {
     expect(getLaunchBlend(phases[1], ctx)).toBe(1);
     expect(getSettleBlend(phases[2], ctx)).toBe(1);
     expect(getPaceIntroBlend(phases[3], ctx)).toBe(1);
+  });
+
+  it('launch 中: 差し・追込は前方ブロック免除されない', () => {
+    const course = courses.courses.find(c => c.id === 'tokyo_turf_2400');
+    const phases = buildPhases(2400, course);
+    const ctx = createPhaseContext(2400, course, phases);
+    const start = phases.find(p => p.segmentId === 'start');
+    const horses = [
+      { id: 1, style: '逃げ', x: 0 },
+      { id: 2, style: '差し', x: 2 },
+    ];
+    expect(isLaunchPhase(start, ctx)).toBe(true);
+    expect(isRearPelotonForwardExempt(horses[0], horses, start, ctx)).toBe(true);
+    expect(isRearPelotonForwardExempt(horses[1], horses, start, ctx)).toBe(false);
   });
 
   it('settleEndProgress は corner1 終端と一致する', () => {

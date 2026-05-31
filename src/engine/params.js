@@ -1,5 +1,7 @@
 import { CONFIG } from '../config.js';
 import { calcWeightStaminaMult } from './horse-utils.js';
+import { calcCareerDrainMult } from './stamina-drain.js';
+import { resolveGoalClassIndex } from './career-goal.js';
 
 /** 隊列形成期の脚質ベース巡航（馬群内差を小さく保つ） */
 const STYLE_FORMATION_CRUISE = {
@@ -121,6 +123,14 @@ export function calcAllParams(raceData) {
 
     const startLane = calcInitialLane(entry.gate, entries.length);
 
+    const career = horse.career ?? null;
+    const classIndex = Number.isFinite(career?.class_index) ? career.class_index : 0.5;
+    const goalClassIndex = resolveGoalClassIndex(career);
+    const staminaEfficiency = Number.isFinite(career?.stamina_efficiency)
+      ? career.stamina_efficiency
+      : 0.5;
+    const careerDrainMult = calcCareerDrainMult(staminaEfficiency);
+
     return {
       id,
       gate:           entry.gate,
@@ -133,6 +143,12 @@ export function calcAllParams(raceData) {
       weightStaminaMult: calcWeightStaminaMult(horse.weight),
       ave3f:          horse.ave_3f,
       last3f:         horse.last_3f,
+      last3fRaw:      horse.last_3f_raw ?? horse.last_3f,
+      classIndex,
+      goalClassIndex,
+      staminaEfficiency,
+      careerDrainMult,
+      careerGraded:   career?.graded ?? null,
       S_formation,
       S_pace,
       S_kick,

@@ -8,7 +8,7 @@ import {
   PACE_FADE_PROGRESS,
   LAUNCH_PHASE_COUNT_FALLBACK,
 } from './constants.js';
-import { FORMATION_CLUSTER_X_SPAN } from './formation.js';
+import { FORMATION_CLUSTER_X_SPAN, isCloserStyle } from './formation.js';
 
 function clamp01(v) {
   return Math.max(0, Math.min(1, v));
@@ -293,10 +293,11 @@ export function shouldPreserveForwardX(phase, ctx) {
   return isFormationPhase(phase, ctx);
 }
 
-/** スタート直後ペロトンの前方ブロック免除（launch 期のみ） */
+/** スタート直後ペロトンの前方ブロック免除（launch 期のみ・逃げ・先行・逃げ系） */
 export function isRearPelotonForwardExempt(horse, allHorses, phase, ctx) {
   if (!isLaunchPhase(phase, ctx)) return false;
   if (!Array.isArray(allHorses) || allHorses.length < 2) return false;
+  if (isCloserStyle(horse?.style)) return false;
   const minX = Math.min(...allHorses.map(h => h.x ?? 0));
   return (horse.x ?? 0) <= minX + FORMATION_CLUSTER_X_SPAN;
 }

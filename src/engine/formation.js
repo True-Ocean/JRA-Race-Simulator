@@ -12,7 +12,7 @@ export const STYLE_FORMATION_TARGET_RANK = {
 
 /** settle 期: 差し・追込の前出し抑え込み */
 export const FORMATION_FRONT_PENALTY_K = 9.5;
-/** launch 期: 差し・追込の前出し抑え込み（settle より弱め） */
+/** @deprecated B 以降は calcCloserFrontAdvanceMult（線形＋下限）を使用 */
 export const LAUNCH_CLOSER_FRONT_PENALTY_K = 6.0;
 /** launch 期: 後方の軽い追い上げ */
 export const LAUNCH_REAR_CATCHUP_K = 0.10;
@@ -22,11 +22,54 @@ export const SETTLE_REAR_CATCHUP_K = 0.22;
 export const FORMATION_LEAD_HOLD_K = 0.06;
 /** 縦位置が固まっているとみなす x 差（シミュ単位） */
 export const FORMATION_CLUSTER_X_SPAN = 10;
+/** この spread 以上で隊列判定が実位置 100%（その間は smoothstep でブレンド） */
+export const FORMATION_CLUSTER_BLEND_END_SPAN = 48;
+/** 差し・追込の前出し: advance 倍率の下限（B: 急激な停止を防ぐ） */
+export const CLOSER_FRONT_ADVANCE_FLOOR = 0.72;
+/** launch 期の前出し線形ペナルティ係数 */
+export const CLOSER_FRONT_LINEAR_PENALTY_K_LAUNCH = 1.35;
+/** settle 期の前出し線形ペナルティ係数 */
+export const CLOSER_FRONT_LINEAR_PENALTY_K_SETTLE = 1.85;
+/** 差し・追込のスタートバースト上限（A: 好スタート暴れ抑制） */
+export const CLOSER_START_BURST_MAX = 1.0;
 
 const DEFAULT_FORMATION_RANGE = { min: 0.30, max: 0.65 };
 
 function clamp01(v) {
   return Math.max(0, Math.min(1, v));
+}
+
+function smoothstep01(t) {
+  const x = clamp01(t);
+  return x * x * (3 - 2 * x);
+}
+
+/**
+ * 隊列の縦幅に応じて「実位置判定」へ移行する度合い（0=目標順位, 1=実位置）
+ * @param {number} packSpread
+ */
+export function calcPackActualRankBlend(packSpread) {
+  const start = FORMATION_CLUSTER_X_SPAN;
+  const end = Math.max(start + 1, FORMATION_CLUSTER_BLEND_END_SPAN);
+  if (!Number.isFinite(packSpread) || packSpread <= start) return 0;
+  if (packSpread >= end) return 1;
+  return smoothstep01((packSpread - start) / (end - start));
+}
+
+/**
+ * 差し・追込の前出しペナルティ（B: 線形＋下限、blend で段階的に強化）
+ * @param {number} overFront
+ * @param {number} phaseBlend launch/settle ブレンド 0..1
+ * @param {{ launch?: boolean }} [options]
+ */
+export function calcCloserFrontAdvanceMult(overFront, phaseBlend, options = {}) {
+  if (!Number.isFinite(overFront) || overFront <= 0.04) return 1;
+  const blend = clamp01(phaseBlend);
+  const eff = overFront * blend;
+  const k = options.launch
+    ? CLOSER_FRONT_LINEAR_PENALTY_K_LAUNCH
+    : CLOSER_FRONT_LINEAR_PENALTY_K_SETTLE;
+  return Math.max(CLOSER_FRONT_ADVANCE_FLOOR, 1 - k * eff);
 }
 
 export function isFrontRunnerStyle(style) {
@@ -69,8 +112,7 @@ export function toFormationRankNorm(packRankNorm) {
 }
 
 /**
- * 隊列判定用 rankNorm。
- * スタート直後（隊列が固まっている）のみ目標順位を使い、広がったら実位置を優先する。
+ * 隊列判定用 rankNorm（C: 目標順位 ↔ 実位置を packSpread で smoothstep ブレンド）
  */
 export function resolveFormationRankNorm(horse, packRankNorm, allHorses) {
   const fromPack = toFormationRankNorm(packRankNorm);
@@ -78,16 +120,29 @@ export function resolveFormationRankNorm(horse, packRankNorm, allHorses) {
     return fromPack;
   }
   const xs = allHorses.map(h => h.x);
-  const maxX = Math.max(...xs);
-  const minX = Math.min(...xs);
-  const packSpread = maxX - minX;
-  if (
-    packSpread < FORMATION_CLUSTER_X_SPAN
-    && Number.isFinite(horse.formationTargetRank)
-  ) {
-    return clamp01(horse.formationTargetRank);
+  const packSpread = Math.max(...xs) - Math.min(...xs);
+  const target = Number.isFinite(horse.formationTargetRank)
+    ? clamp01(horse.formationTargetRank)
+    : fromPack;
+  const actualBlend = calcPackActualRankBlend(packSpread);
+  return clamp01(target * (1 - actualBlend) + fromPack * actualBlend);
+}
+
+/**
+ * 差し・追込の前出し判定用 rankNorm（A: 実位置が目標より前なら常に反映）
+ * rankNorm は 0=先頭側。小さい方が前。
+ */
+export function resolveFormationRankNormForCloserFront(horse, packRankNorm, allHorses) {
+  const fromPack = toFormationRankNorm(packRankNorm);
+  if (!isCloserStyle(horse?.style)) {
+    return allHorses
+      ? resolveFormationRankNorm(horse, packRankNorm, allHorses)
+      : fromPack;
   }
-  return fromPack;
+  const blended = allHorses
+    ? resolveFormationRankNorm(horse, packRankNorm, allHorses)
+    : fromPack;
+  return Math.min(blended, fromPack);
 }
 
 export function getEffectiveFormationRange(horse) {
@@ -109,15 +164,19 @@ export function getEffectiveFormationRange(horse) {
 }
 
 export function calcFormationRangeOffset(packRankNorm, horse, allHorses = null) {
+  const fromPack = toFormationRankNorm(packRankNorm);
   const r = allHorses
     ? resolveFormationRankNorm(horse, packRankNorm, allHorses)
-    : toFormationRankNorm(packRankNorm);
+    : fromPack;
+  const rFront = allHorses
+    ? resolveFormationRankNormForCloserFront(horse, packRankNorm, allHorses)
+    : fromPack;
   const { min, max } = getEffectiveFormationRange(horse);
   return {
     min,
     max,
     rankNorm: r,
-    overFront: Math.max(0, min - r),
+    overFront: Math.max(0, min - rFront),
     overRear: Math.max(0, r - max),
   };
 }
@@ -169,7 +228,7 @@ export function getFormationForwardRelief(horse, packRankNorm, allHorses) {
     return { gapMult: 0.84, advanceFloor: 0.36 };
   }
 
-  // 差し・追込が脚質レンジより前に出すぎ → 緩和なし
+  // 差し・追込が脚質レンジより前: 前進 floor なし（スタート飛び出し防止）
   if (isCloserStyle(horse?.style) && overFront > 0.03) {
     return { gapMult: 1, advanceFloor: 0 };
   }
@@ -229,8 +288,7 @@ function calcLaunchAdvanceMult(packRankNorm, horse, blend, allHorses) {
     mult = Math.min(1.08, 1 + LAUNCH_REAR_CATCHUP_K * overRear * blend);
   }
   if (isCloserStyle(horse.style) && overFront > 0.04) {
-    const frontPen = LAUNCH_CLOSER_FRONT_PENALTY_K * overFront * overFront * blend;
-    mult *= Math.exp(-frontPen);
+    mult *= calcCloserFrontAdvanceMult(overFront, blend, { launch: true });
   }
   mult *= calcStyleCatchUpMult(rankNorm, horse, blend);
   return mult;
@@ -254,7 +312,13 @@ function calcSettleAdvanceMult(packRankNorm, horse, blend, allHorses) {
     return Math.min(1.12, rearBoost * calcStyleCatchUpMult(rankNorm, horse, blend));
   }
 
-  const effectiveOverFront = isCloserStyle(horse.style) ? overFront : overFront * 0.35;
+  if (isCloserStyle(horse.style)) {
+    const frontMult = calcCloserFrontAdvanceMult(overFront, blend, { launch: false });
+    const rearBoost = 1 + SETTLE_REAR_CATCHUP_K * overRear * blend;
+    return frontMult * Math.min(1.12, rearBoost);
+  }
+
+  const effectiveOverFront = overFront * 0.35;
   const frontPen = FORMATION_FRONT_PENALTY_K * effectiveOverFront * effectiveOverFront * blend;
   const frontMult = Math.exp(-frontPen);
   const rearBoost = 1 + SETTLE_REAR_CATCHUP_K * overRear * blend;
