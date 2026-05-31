@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { buildBattleLogLine } from './battle-log.js';
 import { isPairBattleProximity, shouldBattle } from './battle.js';
 import {
   LEAD_BATTLE_PHASE_MAX,
@@ -142,7 +143,7 @@ function resolveLeadBattle(
     sustain: 0.05,
     stamina: 0.15,
   }, h => getStyleBattleBonus(h, phase), { phase });
-  const log = `[バトル:先頭争い] ${a.name} vs ${b.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
+  const log = buildBattleLogLine('先頭争い', result.winner, result.loser);
   phaseEventLogs.push(log);
   globalLogs.push(log);
   engagedHorseIds.add(a.id);
@@ -186,7 +187,7 @@ function resolveCornerPositionBattle(
       sustain: 0.05,
       stamina: 0.20,
     }, h => getStyleBattleBonus(h, phase), { phase });
-    const log = `[バトル:コーナー争い] ${a.name} vs ${blocker.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
+    const log = buildBattleLogLine('コーナー争い', result.winner, result.loser);
     phaseEventLogs.push(log);
     globalLogs.push(log);
     engagedHorseIds.add(a.id);
@@ -224,7 +225,7 @@ function resolveFinalStraightDuel(
         sustain: 0.45,
         stamina: 0.10,
       });
-      const log = `[バトル:直線争い] ${a.name} vs ${b.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
+      const log = buildBattleLogLine('直線争い', result.winner, result.loser);
       phaseEventLogs.push(log);
       globalLogs.push(log);
       engagedHorseIds.add(a.id);

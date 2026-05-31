@@ -134,6 +134,8 @@ export const GOAL_MAX_SPEED_RATIO = 1.95;
 export const GOAL_POST_SCROLL_MS = 700;
 export const GOAL_POST_CLEAR_METERS = GOAL_FURLONG_METERS * 1.25;
 export const RACE_SUMMARY_HEADER_LINE = 'ここまでのレースサマリ';
+/** フェーズ内にイベントが無いときのレースログ表示 */
+export const PHASE_CALM_LOG_LINE = '全馬スムーズなレース運び';
 export const RACE_SUMMARY_SCENE_LABELS = new Set([
   'スタート',
   'ホーム直線',

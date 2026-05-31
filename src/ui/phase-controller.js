@@ -4,6 +4,7 @@ import {
   shouldBattle,
   resolveBattle,
 } from '../engine/battle.js';
+import { buildBattleLogLine } from '../engine/battle-log.js';
 import { CONFIG } from '../config.js';
 import { createRng } from '../engine/rng.js';
 import {
@@ -46,6 +47,7 @@ import {
   GOAL_STAMINA_DRAIN_RESERVE_STAMINA_GAIN,
   GOAL_LEADING_UNLEASH_SCALE,
   GOAL_AI,
+  PHASE_CALM_LOG_LINE,
   LANE_WIDTH,
   LATERAL_BLOCK_X_GAP,
   DIAGONAL_REAR_BLOCK_X_GAP,
@@ -250,8 +252,8 @@ class PhaseController {
         );
         this.lastRenderedHorses = rendered.map(h => ({ ...h }));
         updateEntryStaminaBars(rendered);
-        if (frame === 1 && Array.isArray(eventLogs) && eventLogs.length > 0) {
-          this._enqueueLogs(eventLogs);
+        if (frame === 1) {
+          this._enqueuePhaseEventLogs(eventLogs);
         }
         if (frame >= totalFrames) {
           this.lastRenderedHorses = toHorses.map(h => ({ ...h }));
@@ -292,8 +294,8 @@ class PhaseController {
       this.renderer.draw(tweened, phase, 1);
       this.lastRenderedHorses = tweened.map(h => ({ ...h }));
       updateEntryStaminaBars(tweened);
-      if (frame === 1 && Array.isArray(eventLogs) && eventLogs.length > 0) {
-        this._enqueueLogs(eventLogs);
+      if (frame === 1) {
+        this._enqueuePhaseEventLogs(eventLogs);
       }
       if (progress >= 1) {
         this.lastRenderedHorses = toHorses.map(h => ({ ...h }));
@@ -304,6 +306,14 @@ class PhaseController {
       setTimeout(step, this.frameMs);
     };
     setTimeout(step, this.frameMs);
+  }
+
+  _enqueuePhaseEventLogs(eventLogs) {
+    if (Array.isArray(eventLogs) && eventLogs.length > 0) {
+      this._enqueueLogs(eventLogs);
+      return;
+    }
+    this._appendLog(PHASE_CALM_LOG_LINE);
   }
 
   // ログを1行ずつ時間差で表示
@@ -921,7 +931,7 @@ class PhaseController {
               const battleType = this._classifyGoalBattleType(horse, cutInTarget, {
                 isLaneChange: true,
               });
-              const log = `[バトル:${battleType}] ${horse.name} vs ${cutInTarget.name} → 勝者: ${result.winner.name}`;
+              const log = buildBattleLogLine(battleType, result.winner, result.loser);
               this._appendGoalReplayLog(log);
               frameEngaged.add(horse.id);
               frameEngaged.add(cutInTarget.id);
@@ -1160,7 +1170,7 @@ class PhaseController {
             const battleType = this._classifyGoalBattleType(horse, blockingFront, {
               isLaneChange: false,
             });
-            const log = `[バトル:${battleType}] ${horse.name} vs ${blockingFront.name} → 勝者: ${result.winner.name}`;
+            const log = buildBattleLogLine(battleType, result.winner, result.loser);
             this._appendGoalReplayLog(log);
             frameEngaged.add(horse.id);
             frameEngaged.add(blockingFront.id);

@@ -4,6 +4,7 @@ import {
   shouldBattle,
   resolveBattle,
 } from './battle.js';
+import { buildBattleLogLine } from './battle-log.js';
 import {
   MIN_FORWARD_GAP,
   LATERAL_BLOCK_X_GAP,
@@ -170,7 +171,7 @@ function resolveLaneMovement(
         shouldBattle(rng, allHorses, horse, diagonalRearHorse, battleProximityLimits)) {
       const result = resolveBattle(rng, horse, diagonalRearHorse, phase);
       applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
-      const log = `[バトル:斜め後方割り込み] ${horse.name} が ${diagonalRearHorse.name} の前へ進出 → 勝者: ${result.winner.name}`;
+      const log = buildBattleLogLine('斜め後方割り込み', result.winner, result.loser);
       globalLogs.push(log);
       phaseEventLogs.push(log);
       engagedHorseIds.add(horse.id);
@@ -294,7 +295,7 @@ function resolveLaneMovement(
       markInnerCutInBattlePair(horse, laneBlocker, phase);
       engagedHorseIds.add(horse.id);
       engagedHorseIds.add(laneBlocker.id);
-      const log = `[バトル:内前争い] ${horse.name} が ${laneBlocker.name} の前を取りに行く → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
+      const log = buildBattleLogLine('内前争い', result.winner, result.loser);
       globalLogs.push(log);
       phaseEventLogs.push(log);
       if (result.winner.id === horse.id) {
@@ -317,7 +318,7 @@ function resolveLaneMovement(
       shouldBattle(rng, allHorses, horse, laneBlocker, battleProximityLimits)) {
     const result = resolveBattle(rng, horse, laneBlocker, phase);
     applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
-    const log = `[バトル:進路争い] ${horse.name} が ${laneBlocker.name} に進路争い → 勝者: ${result.winner.name}`;
+    const log = buildBattleLogLine('進路争い', result.winner, result.loser);
     globalLogs.push(log);
     phaseEventLogs.push(log);
     engagedHorseIds.add(horse.id);
@@ -494,9 +495,7 @@ function resolveForwardMovement(
       })) {
     const result = resolveBattle(rng, horse, front, phase, { phaseCtx: phase?._phaseCtx });
     applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
-    const laneGap = Math.abs(front.y - horse.y).toFixed(2);
-    const frontGap = Math.max(0, front.x - horse.x).toFixed(1);
-    const log = `[バトル:同レーン争い] ${horse.name} が ${front.name} を交わしに行く (前方差:${frontGap}, レーン差:${laneGap}) → 勝者: ${result.winner.name}`;
+    const log = buildBattleLogLine('同レーン争い', result.winner, result.loser);
     globalLogs.push(log);
     phaseEventLogs.push(log);
     engagedHorseIds.add(horse.id);

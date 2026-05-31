@@ -1,3 +1,4 @@
+import { buildBattleLogLine } from './battle-log.js';
 import { createRng } from './rng.js';
 import { calcHorsesWithRatingAdjustments } from './rating-adjustments.js';
 import {
@@ -191,7 +192,6 @@ import {
   calcSpurEntryTargetLane,
   calcSpurEntryAdvanceMult,
   snapshotCorner4ExitState,
-  getRunningOrderRank,
   shouldFreezeStretchLane,
   isStretchSpreadCandidate,
   buildLaneDecisionContext,
@@ -299,8 +299,7 @@ function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
       mult *= (1 - lossRatio);
       horse.startEventType = 'slow';
       horse.startTroubleScore = (horse.startTroubleScore ?? 0) + 1.0;
-      const lossPct = Math.round(lossRatio * 100);
-      const log = `[出遅れ] ${horse.name} がスタートで遅れる（-${lossPct}%）`;
+      const log = `[出遅れ] ${horse.name}`;
       globalLogs.push(log);
       phaseEventLogs.push(log);
     }
@@ -319,8 +318,7 @@ function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
       horse.stumbleCooldown = 2;
       subtractStaminaWithReserve(horse, 1.0 + rng() * 2.0, phase, null);
       horse.startTroubleScore = (horse.startTroubleScore ?? 0) + 0.65;
-      const lossPct = Math.round(lossRatio * 100);
-      const log = `[つまずき] ${horse.name} がつまずく（-${lossPct}%）`;
+      const log = `[つまずき] ${horse.name}`;
       globalLogs.push(log);
       phaseEventLogs.push(log);
     }
@@ -541,13 +539,6 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
       battleProximityLimits,
     );
 
-    if (isFinalStraightPhase(phase)) {
-      for (const h of horses) {
-        h.spurEntryStartRank = getRunningOrderRank(h, horses);
-        h.spurEntryClimbLogged = false;
-      }
-    }
-
     for (const { a, b } of contacts) {
       if (engagedHorseIds.has(a.id) || engagedHorseIds.has(b.id)) continue;
       const front = a.x >= b.x ? a : b;
@@ -556,7 +547,7 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
       if (!shouldBattle(rng, horses, a, b, battleProximityLimits, { formationRateMult })) continue;
       const result = resolveBattle(rng, a, b, phase, { phaseCtx });
       applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
-      const log = `[バトル:進路争い] ${result.winner.name} vs ${result.loser.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
+      const log = buildBattleLogLine('進路争い', result.winner, result.loser);
       globalLogs.push(log);
       phaseEventLogs.push(log);
       engagedHorseIds.add(a.id);
@@ -635,8 +626,7 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
           if (horse.startEventType === 'slow') {
             horse.startBurstFactor = Math.min(horse.startBurstFactor, 1.0);
           } else if (horse.startBurstFactor >= 1.22 && horse.startEventType == null) {
-            const gainPct = Math.round((horse.startBurstFactor - 1) * 100);
-            const log = `[好スタート] ${horse.name} がスタートダッシュを決める（+${gainPct}%）`;
+            const log = `[好スタート] ${horse.name}`;
             globalLogs.push(log);
             phaseEventLogs.push(log);
             horse.startEventType = 'good';
@@ -897,20 +887,6 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
       }
       horse.x += frameAdvance;
       recordHorsePathSegment(horse, pathPrevX, pathPrevY, phase, trackMod);
-
-      if (
-        isFinalStraight
-        && Number.isFinite(horse.spurEntryStartRank)
-      ) {
-        const rankNow = getRunningOrderRank(horse, horses);
-        const gained = horse.spurEntryStartRank - rankNow;
-        if (gained >= 1 && !horse.spurEntryClimbLogged) {
-          horse.spurEntryClimbLogged = true;
-          const log = `[仕掛け:繰り上がり] ${horse.name} が直線入口で ${gained} 順繰り上がり（${horse.spurEntryStartRank + 1}→${rankNow + 1}番手）`;
-          globalLogs.push(log);
-          phaseEventLogs.push(log);
-        }
-      }
 
       const accelAmount = Math.max(0, frameAdvance - prevAdvance);
       if (accelAmount > 0.001) {

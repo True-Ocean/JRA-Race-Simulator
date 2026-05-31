@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>JRA RACE SIMULATOR</title>
+  <title>Horse Race Simulator</title>
   <meta name="description" content="中央競馬を題材にしたブラウザレースシミュレーター。出走馬の能力・脚質・コース条件をもとにレースを再現し、プレレース編集・サマリー・集計まで操作できます。">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="JRA RACE SIMULATOR">
-  <meta property="og:title" content="JRA RACE SIMULATOR">
+  <meta property="og:site_name" content="Horse Race Simulator">
+  <meta property="og:title" content="Horse Race Simulator">
   <meta property="og:description" content="中央競馬を題材にしたブラウザレースシミュレーター。出走馬の能力・脚質・コース条件をもとにレースを再現できます。">
   <meta property="og:url" content="https://true-ocean.github.io/JRA-Race-Simulator/">
   <meta property="og:image" content="https://true-ocean.github.io/JRA-Race-Simulator/og-image.png">
@@ -15,7 +15,7 @@
   <meta property="og:image:height" content="929">
   <meta property="og:locale" content="ja_JP">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="JRA RACE SIMULATOR">
+  <meta name="twitter:title" content="Horse Race Simulator">
   <meta name="twitter:description" content="中央競馬を題材にしたブラウザレースシミュレーター。出走馬の能力・脚質・コース条件をもとにレースを再現できます。">
   <meta name="twitter:image" content="https://true-ocean.github.io/JRA-Race-Simulator/og-image.png">
   <style>
@@ -643,6 +643,31 @@
       line-height: 1.55;
     }
     .log-entry.battle { font-weight: bold; }
+    .log-entry.battle .battle-matchup {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35em 0.45em;
+      margin-top: 4px;
+      font-weight: 600;
+      line-height: 1.45;
+    }
+    .battle-side {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25em;
+    }
+    .battle-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .battle-vs {
+      flex-shrink: 0;
+      opacity: 0.78;
+    }
     .log-entry.irregular { font-weight: bold; }
     .log-tag { font-weight: bold; margin-right: 6px; }
     .log-tag.battle-default { color: #f0a040; }
@@ -653,11 +678,11 @@
     .log-tag.battle-block { color: #fb7185; }
     .log-tag.irregular-start { color: #f97316; }
     .log-tag.irregular-stumble { color: #facc15; }
-    .log-tag.spur-climb {
-      color: #34d399;
-      text-shadow: 0 0 8px rgba(52, 211, 153, 0.45);
-    }
     .log-tag.spur-entry { color: #6ee7b7; }
+    .log-entry.phase-calm {
+      color: #94a3b8;
+      font-style: italic;
+    }
     .log-entry.scene-heading {
       font-weight: 700;
       color: #7dd3fc;
@@ -1980,7 +2005,7 @@
       </div>
       <h1 class="app-main-title">
         <span class="title-brand-icon" aria-hidden="true">🏇</span>
-        <span class="title-text">JRA RACE SIMULATOR</span>
+        <span class="title-text">Horse Race Simulator</span>
       </h1>
       <p class="app-subtitle app-subtitle--pre-race">お好み設定</p>
       <div id="pre-race-race-info"></div>
@@ -2030,7 +2055,7 @@
       <div class="summary-title-block">
         <h1 class="app-main-title">
           <span class="title-brand-icon" aria-hidden="true">🏇</span>
-          <span class="title-text">JRA RACE SIMULATOR</span>
+          <span class="title-text">Horse Race Simulator</span>
         </h1>
         <p class="app-subtitle app-subtitle--summary">レースサマリー</p>
       </div>
@@ -2058,7 +2083,7 @@
     </div>
     <h1>
       <span class="title-brand-icon" aria-hidden="true">🏇</span>
-      <span class="title-text">JRA RACE SIMULATOR</span>
+      <span class="title-text">Horse Race Simulator</span>
     </h1>
     <p class="app-subtitle app-subtitle--simulator">シミュレーター</p>
   </header>
