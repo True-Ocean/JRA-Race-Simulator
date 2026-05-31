@@ -30,7 +30,7 @@ LEFT JOIN "Jockey" j ON j."騎手" = rt."騎手"
 ORDER BY rt."番"
 """
 SQL_HORSE_RECORDS = """
-SELECT "馬名", "日付", "Ave-3F", "上り3F", "着順", "決手"
+SELECT "馬名", "日付", "距離", "Ave-3F", "上り3F", "着順", "決手"
 FROM "HorseRecords"
 ORDER BY "馬名", "日付" DESC
 """
@@ -147,7 +147,12 @@ def run_export() -> dict:
         raise ValueError(f"RaceInfo must have exactly 1 row, got {len(race_info_df)}")
 
     race_info_payload = build_race_info(race_info_df.iloc[0])
-    horse_stats_by_name = aggregate_horse_stats(horse_records_df)
+    target_distance = int(race_info_payload["race_info"]["distance"])
+    horse_stats_by_name = aggregate_horse_stats(
+        horse_records_df,
+        target_distance=target_distance,
+        warnings=warnings,
+    )
     entries = build_entries(race_table_df, horse_stats_by_name)
     entries = apply_fallbacks(entries, warnings)
 

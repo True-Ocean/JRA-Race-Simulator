@@ -9,13 +9,23 @@ import {
 } from './constants.js';
 import {
   isNigeStyle,
+  isOonigeStyle,
   getJockeyReliabilityNorm,
   applyBattleStaminaImpact,
   ensureBattleWinnerAheadX,
 } from './horse-utils.js';
 import { getPreferredLaneByStyle } from './lane-preference.js';
+import { isFormationPhase } from './phase-context.js';
+import {
+  calcBattleEfficiency,
+  getStyleBattleBonus,
+  shouldSkipCornerBattleForFrontRunner,
+} from './battle-formation.js';
 
-function battleScore(rng, horse, weights, styleBonusFn) {
+function battleScore(rng, horse, weights, styleBonusFn, phase = null) {
+  if (phase?._phaseCtx && isFormationPhase(phase, phase._phaseCtx)) {
+    return calcBattleEfficiency(horse, phase, phase._phaseCtx, rng() * 8 - 4);
+  }
   const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
   return (
     horse.S_cruise * weights.cruise +
@@ -28,8 +38,9 @@ function battleScore(rng, horse, weights, styleBonusFn) {
 }
 
 function resolveWeightedBattle(rng, a, b, weights, styleBonusFn = () => 0, options = {}) {
-  const eA = battleScore(rng, a, weights, styleBonusFn);
-  const eB = battleScore(rng, b, weights, styleBonusFn);
+  const phase = options.phase ?? null;
+  const eA = battleScore(rng, a, weights, styleBonusFn, phase);
+  const eB = battleScore(rng, b, weights, styleBonusFn, phase);
   const winner = eA > eB ? a : b;
   const loser  = eA > eB ? b : a;
   const penaltyRecovery = getJockeyReliabilityNorm(loser) * 0.24;
@@ -104,15 +115,22 @@ function resolveLeadBattle(
   if (leadPack.length < 2) return;
 
   let pair = null;
+  let nigePair = null;
   for (let i = 0; i < leadPack.length; i++) {
     for (let j = i + 1; j < leadPack.length; j++) {
       if (Math.abs(leadPack[i].y - leadPack[j].y) < 1.4) {
-        pair = [leadPack[i], leadPack[j]];
-        break;
+        const candidate = [leadPack[i], leadPack[j]];
+        pair = pair ?? candidate;
+        if (
+          isNigeStyle(leadPack[i].style) || isNigeStyle(leadPack[j].style) ||
+          isOonigeStyle(leadPack[i].style) || isOonigeStyle(leadPack[j].style)
+        ) {
+          nigePair = candidate;
+        }
       }
     }
-    if (pair) break;
   }
+  if (nigePair) pair = nigePair;
   if (!pair) return;
   const [a, b] = pair;
   if (!isPairBattleProximity(a, b, proximityLimits)) return;
@@ -123,7 +141,7 @@ function resolveLeadBattle(
     maneuv: 0.35,
     sustain: 0.05,
     stamina: 0.15,
-  });
+  }, h => getStyleBattleBonus(h, phase), { phase });
   const log = `[バトル:先頭争い] ${a.name} vs ${b.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
   phaseEventLogs.push(log);
   globalLogs.push(log);
@@ -158,6 +176,7 @@ function resolveCornerPositionBattle(
       Math.abs(h.x - a.x) < 24
     );
     if (!blocker) continue;
+    if (shouldSkipCornerBattleForFrontRunner(a, blocker)) continue;
     if (!isPairBattleProximity(a, blocker, proximityLimits)) continue;
     if (!shouldBattle(rng, horses, a, blocker, proximityLimits)) continue;
 
@@ -166,7 +185,7 @@ function resolveCornerPositionBattle(
       maneuv: 0.55,
       sustain: 0.05,
       stamina: 0.20,
-    });
+    }, h => getStyleBattleBonus(h, phase), { phase });
     const log = `[バトル:コーナー争い] ${a.name} vs ${blocker.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
     phaseEventLogs.push(log);
     globalLogs.push(log);

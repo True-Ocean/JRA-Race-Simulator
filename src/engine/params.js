@@ -1,6 +1,15 @@
 import { CONFIG } from '../config.js';
 import { calcWeightStaminaMult } from './horse-utils.js';
 
+/** 隊列形成期の脚質ベース巡航（馬群内差を小さく保つ） */
+const STYLE_FORMATION_CRUISE = {
+  '大逃げ': 52,
+  '逃げ': 50,
+  '先行': 48,
+  '差し': 46,
+  '追込': 44,
+};
+
 /**
  * 頭数に応じてJRA式の枠番（1-8）を算出する
  * JRAの公式ルールに基づく馬番→枠番マッピング
@@ -54,8 +63,14 @@ export function calcAllParams(raceData) {
   const entries = raceData.entries;
 
   // 全馬の最速値を取得（小さいほど速い）
-  const minAve3f  = Math.min(...entries.map(e => e.horse.ave_3f));
-  const minLast3f = Math.min(...entries.map(e => e.horse.last_3f));
+  const ave3fValues = entries.map(e => e.horse.ave_3f).filter(Number.isFinite);
+  const last3fValues = entries.map(e => e.horse.last_3f).filter(Number.isFinite);
+  const minAve3f  = Math.min(...ave3fValues);
+  const maxAve3f  = Math.max(...ave3fValues);
+  const minLast3f = Math.min(...last3fValues);
+  const maxLast3f = Math.max(...last3fValues);
+  const ave3fSpan = Math.max(0.001, maxAve3f - minAve3f);
+  const last3fSpan = Math.max(0.001, maxLast3f - minLast3f);
 
   return entries.map((entry, idx) => {
     const id     = idx;
@@ -81,15 +96,19 @@ export function calcAllParams(raceData) {
       ? scaleRate(winWithinTop3Rate, 0.25, 0.55)
       : 50;
 
-    // 生スコア計算
-    const rawCruise  = (minAve3f  / horse.ave_3f)  * 80;
-    const rawManeuv  = jockeyWinRate * 200;
-    const rawSustain = (horseTop3Rate * 50)
-                     + (minLast3f / horse.last_3f)  * 30;
+    // 生スコア: フェーズ別に分離（形成=脚質 / 中盤=Ave-3F / 終盤=上り3F）
+    const aveNorm = (maxAve3f - horse.ave_3f) / ave3fSpan;
+    const lastNorm = (maxLast3f - horse.last_3f) / last3fSpan;
+    const rawPace = (0.35 + aveNorm * 0.65) * 80;
+    const rawKick = (0.35 + lastNorm * 0.65) * 80;
+    const rawManeuv = jockeyWinRate * 200;
+    const rawSustain = (horseTop3Rate * 50) + (0.35 + lastNorm * 0.65) * 30;
 
-    // [0, 100] に正規化
-    const S_cruise  = normalize(rawCruise);
-    const M_maneuv  = normalize(rawManeuv);
+    const S_formation = STYLE_FORMATION_CRUISE[horse.style] ?? 47;
+    const S_pace = normalize(rawPace);
+    const S_kick = normalize(rawKick);
+    const S_cruise = S_pace;
+    const M_maneuv = normalize(rawManeuv);
     const S_sustain = normalize(rawSustain);
 
     // スタミナ初期値
@@ -114,6 +133,9 @@ export function calcAllParams(raceData) {
       weightStaminaMult: calcWeightStaminaMult(horse.weight),
       ave3f:          horse.ave_3f,
       last3f:         horse.last_3f,
+      S_formation,
+      S_pace,
+      S_kick,
       S_cruise,
       M_maneuv,
       S_sustain,

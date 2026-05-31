@@ -10,6 +10,7 @@ import {
 } from './constants.js';
 import { ensureBattleWinnerAheadX, getWeightStaminaMult } from './horse-utils.js';
 import { randFloat } from './rng.js';
+import { calcBattleEfficiency } from './battle-formation.js';
 
 /**
  * バトル発動に使う前後・横方向の許容距離（シミュ x / レーン y）
@@ -89,12 +90,13 @@ export function shouldBattle(rng, horses, a, b, limits = null, options = {}) {
   const sameLaneBonus = CONFIG.BATTLE_SAME_LANE_BONUS ?? 0.18;
   const adjacentLaneBonus = adjacentLane ? sameLaneBonus * 0.45 : 0;
   const rateBonus = Number(options?.rateBonus) || 0;
+  const formationRateMult = Number(options?.formationRateMult) || 1;
   const prob = Math.min(
     0.92,
-    CONFIG.BATTLE_BASE_RATE
+    (CONFIG.BATTLE_BASE_RATE
       + (sameLane ? sameLaneBonus : adjacentLaneBonus)
       + crowdFactor
-      + rateBonus,
+      + rateBonus) * formationRateMult,
   );
   return rng() < prob;
 }
@@ -111,8 +113,9 @@ function jockeyReliabilityNorm(horse) {
  * @returns {{ winner: horse, loser: horse, eA: number, eB: number }}
  */
 export function resolveBattle(rng, a, b, phase, options = {}) {
-  const eA = a.M_maneuv * 0.6 + a.S_cruise * 0.4 + randFloat(rng, -5, 5);
-  const eB = b.M_maneuv * 0.6 + b.S_cruise * 0.4 + randFloat(rng, -5, 5);
+  const phaseCtx = options.phaseCtx ?? phase?._phaseCtx ?? null;
+  const eA = calcBattleEfficiency(a, phase, phaseCtx, randFloat(rng, -5, 5));
+  const eB = calcBattleEfficiency(b, phase, phaseCtx, randFloat(rng, -5, 5));
 
   const winner = eA > eB ? a : b;
   const loser = eA > eB ? b : a;

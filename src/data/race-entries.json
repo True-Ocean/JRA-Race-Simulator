@@ -373,25 +373,26 @@
         "sex_age": "牡3",
         "weight": 57,
         "has_records": true,
-        "records_used": 4,
-        "style": "差し",
-        "ave_3f": 36.6,
-        "last_3f": 34.9,
+        "records_used": 5,
+        "style": "先行",
+        "ave_3f": 37.1,
+        "last_3f": 35.0,
         "results": [
           2,
           3,
           2,
+          1,
           1
         ],
         "ave_3f_range": {
           "min": 35.9,
-          "max": 37.0,
-          "avg": 36.6
+          "max": 39.1,
+          "avg": 37.1
         },
         "last_3f_range": {
           "min": 34.3,
           "max": 35.4,
-          "avg": 34.9
+          "avg": 35.0
         }
       },
       "jockey": {

@@ -78,9 +78,14 @@ export function buildRatingMultipliers(ratings = {}) {
  */
 export function applyRatingMultipliersToHorse(horse, ratings = {}) {
   const { horseMult, jockeyMult, trainingMult } = buildRatingMultipliers(ratings);
-  const S_cruise = clampStat(
-    horse.S_cruise * horseMult * trainingMult ** TRAINING_CRUISE_EXP,
+  const S_pace = clampStat(
+    horse.S_pace * horseMult * trainingMult ** TRAINING_CRUISE_EXP,
   );
+  const S_kick = clampStat(
+    horse.S_kick * horseMult * trainingMult ** TRAINING_CRUISE_EXP,
+  );
+  const S_cruise = S_pace;
+  const S_formation = horse.S_formation;
   const S_sustain = clampStat(
     horse.S_sustain * horseMult ** HORSE_SUSTAIN_EXP * trainingMult,
   );
@@ -88,6 +93,9 @@ export function applyRatingMultipliersToHorse(horse, ratings = {}) {
   const initialStamina = S_sustain * 2.2;
   return {
     ...horse,
+    S_formation,
+    S_pace,
+    S_kick,
     S_cruise,
     S_sustain,
     M_maneuv,

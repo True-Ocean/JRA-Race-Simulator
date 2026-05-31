@@ -8,9 +8,28 @@ import {
 } from './phase.js';
 import {
   initFormationTarget,
-  getFormationPaceMultiplier,
+  getFormationStylePaceMult,
   getFormationOrderBias,
+  calcFormationAdvanceMult,
+  getStyleMovementPriority,
+  getFormationTargetRank,
+  isFrontRunnerStyle,
+  enforceFrontRunnerAheadOfClosers,
 } from './formation.js';
+import {
+  getFormationBattleRateMult,
+  getNigeOuterGateBurstBonus,
+} from './battle-formation.js';
+import {
+  createPhaseContext,
+  getLaunchBlend,
+  getSettleBlend,
+  getStyleBlend,
+  getKickBlend,
+  shouldPreserveForwardX,
+  isFormationPhase,
+} from './phase-context.js';
+import { resolvePhaseSpeed } from './phase-speed.js';
 import {
   buildBattleProximityLimits,
   detectContacts,
@@ -31,8 +50,6 @@ import {
   LEAD_BATTLE_PHASE_MAX,
   EARLY_LEAD_RATIO_MAX,
   FINAL_DUEL_PHASE_MIN,
-  FORMATION_LOCK_PHASE,
-  PRE_CORNER_PACK_PHASE_MAX,
   COLLISION_MIN_Y_GAP,
   COLLISION_ITERATIONS,
   COLLISION_ITERATIONS_EARLY,
@@ -327,25 +344,69 @@ function calcStartDelayRate(horse) {
   return Math.max(0.004, Math.min(0.055, rate));
 }
 
-function calcEarlyPhaseOrderScore(horse, rng, ave3fMax, ave3fSpan, allHorses, phaseRatio) {
-  const ave3fScore = Number.isFinite(horse.ave3f)
-    ? (ave3fMax - horse.ave3f) / Math.max(0.001, ave3fSpan)
-    : 0.5;
-  const launchSkill = (horse.S_cruise * 0.30 + horse.M_maneuv * 0.20) / 100;
+function calcEarlyPhaseOrderScore(horse, rng, allHorses, phase, phaseCtx) {
+  const launchBlend = getLaunchBlend(phase, phaseCtx);
+  const settleBlend = getSettleBlend(phase, phaseCtx);
+  const styleBlend = Math.min(1, launchBlend + settleBlend);
+  const launchSkill = (horse.S_formation * 0.30 + horse.M_maneuv * 0.20) / 100;
   const styleBurst = isOonigeStyle(horse.style) ? 0.28
     : isNigeStyle(horse.style) ? 0.20
       : 0;
   const projectedBurst = horse.startBurstFactor ?? (
-    0.72 + ave3fScore * 0.68 + launchSkill * 0.22 + styleBurst
+    0.78 + launchSkill * 0.28 + styleBurst
   );
   const burstBonus = (projectedBurst - 1.0) * 22;
-  const lane = clampLane(horse.y);
-  const innerLaneBonus = (LANE_WIDTH - lane) * 0.7;
   const troublePenalty = (horse.startTroubleScore ?? 0) * 17;
   const tieNoise = (rng() - 0.5) * EARLY_ORDER_TIE_NOISE;
   const packRank = allHorses?.length ? calcPackRankNorm(horse, allHorses) : 0.5;
-  const formationBias = getFormationOrderBias(horse, packRank, phaseRatio ?? 0);
+
+  if (launchBlend > settleBlend) {
+    const styleLead = getStyleMovementPriority(horse.style) * 9;
+    const frontRunnerBoost = isFrontRunnerStyle(horse.style) ? 14 : 0;
+    const target = Number.isFinite(horse.formationTargetRank)
+      ? horse.formationTargetRank
+      : 0.5;
+    const prior = (1 - target) * 24 * launchBlend;
+    return 34 + burstBonus + styleLead + frontRunnerBoost + prior - troublePenalty + tieNoise;
+  }
+
+  const lane = clampLane(horse.y);
+  const innerLaneBonus = (LANE_WIDTH - lane) * 0.35;
+  const formationBias = getFormationOrderBias(horse, packRank, styleBlend, allHorses);
   return 34 + burstBonus + innerLaneBonus - troublePenalty + tieNoise + formationBias;
+}
+
+function sortEarlyPhaseMovementOrder(horses, rng, phase, phaseCtx) {
+  const launchBlend = getLaunchBlend(phase, phaseCtx);
+  const settleBlend = getSettleBlend(phase, phaseCtx);
+  const styleBlend = Math.min(1, launchBlend + settleBlend);
+  if (styleBlend > 0.01) {
+    if (launchBlend >= settleBlend) {
+      // launch: 目標順位が前の馬から（逃げ→先行→…）
+      return [...horses].sort((a, b) => {
+        const ta = getFormationTargetRank(a);
+        const tb = getFormationTargetRank(b);
+        if (Math.abs(ta - tb) > 0.001) return ta - tb;
+        const pri = getStyleMovementPriority(b.style) - getStyleMovementPriority(a.style);
+        if (pri !== 0) return pri;
+        return b.x - a.x;
+      });
+    }
+    // settle: 前から（リード維持・後方の minXGap ブロック回避）
+    return [...horses].sort((a, b) => {
+      if (Math.abs(a.x - b.x) > 1e-6) return b.x - a.x;
+      const pri = getStyleMovementPriority(b.style) - getStyleMovementPriority(a.style);
+      if (pri !== 0) return pri;
+      return a.y - b.y;
+    });
+  }
+  return [...horses].sort((a, b) => {
+    const scoreA = calcEarlyPhaseOrderScore(a, rng, horses, phase, phaseCtx);
+    const scoreB = calcEarlyPhaseOrderScore(b, rng, horses, phase, phaseCtx);
+    if (Math.abs(scoreA - scoreB) > 1e-6) return scoreB - scoreA;
+    if (Math.abs(a.x - b.x) > 1e-6) return b.x - a.x;
+    return a.y - b.y;
+  });
 }
 
 function calcStumbleRate(horse) {
@@ -364,6 +425,7 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
   const horses    = calcHorsesWithRatingAdjustments(raceData, ratingAdjustments);
   const courseDef = raceData.courseDef ?? null;
   const phases    = buildPhases(raceData.race_info.distance, courseDef);
+  const phaseCtx  = createPhaseContext(raceData.race_info.distance, courseDef, phases);
   const track     = raceData.race_info.track;
   const condition = raceData.race_info.condition;
   const trackMod  = CONFIG.TRACK_MODIFIER[track]?.[condition] ?? 1.0;
@@ -408,10 +470,11 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
     horse.laneCommitDir = 0;
     horse.laneCommitPhases = 0;
     initUniversalKickProfile(horse, rng, last3fMin, last3fMax, last3fSpan);
-    initFormationTarget(horse, rng, ave3fMax, ave3fSpan);
+    initFormationTarget(horse, rng);
   });
 
   for (const phase of phases) {
+    phase._phaseCtx = phaseCtx;
     horses.forEach(horse => {
       horse.pathAtPhaseStart = horse.pathMeters ?? 0;
     });
@@ -437,7 +500,7 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
     const contacts = detectContacts(horses, battleProximityLimits);
     const phaseEventLogs = [];
     const engagedHorseIds = new Set();
-    const isEarlyOrderingPhase = isStartToHomePhase(phase);
+    const isEarlyOrderingPhase = getStyleBlend(phase, phaseCtx) > 0.01;
     if (isEarlyOrderingPhase) {
       horses.forEach(horse => {
         const decay = Math.pow(
@@ -489,8 +552,11 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
 
     for (const { a, b } of contacts) {
       if (engagedHorseIds.has(a.id) || engagedHorseIds.has(b.id)) continue;
-      if (!shouldBattle(rng, horses, a, b, battleProximityLimits)) continue;
-      const result = resolveBattle(rng, a, b, phase);
+      const front = a.x >= b.x ? a : b;
+      const rear = a.x >= b.x ? b : a;
+      const formationRateMult = getFormationBattleRateMult(rear, front, phase, phaseCtx);
+      if (!shouldBattle(rng, horses, a, b, battleProximityLimits, { formationRateMult })) continue;
+      const result = resolveBattle(rng, a, b, phase, { phaseCtx });
       applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
       const log = `[バトル:進路争い] ${result.winner.name} vs ${result.loser.name} → 勝者: ${result.winner.name} (E: ${result.eA} vs ${result.eB})`;
       globalLogs.push(log);
@@ -502,13 +568,7 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
 
     // ② 各馬の移動（衝突回避 + ブロック時バトル）
     const order = isEarlyOrderingPhase
-      ? [...horses].sort((a, b) => {
-        const scoreA = calcEarlyPhaseOrderScore(a, rng, ave3fMax, ave3fSpan, horses, phase.ratio);
-        const scoreB = calcEarlyPhaseOrderScore(b, rng, ave3fMax, ave3fSpan, horses, phase.ratio);
-        if (Math.abs(scoreA - scoreB) > 1e-6) return scoreB - scoreA;
-        if (Math.abs(a.x - b.x) > 1e-6) return b.x - a.x;
-        return a.y - b.y;
-      })
+      ? sortEarlyPhaseMovementOrder(horses, rng, phase, phaseCtx)
       : [...horses].sort((a, b) => b.x - a.x);
     for (const horse of order) {
       const staminaMod = horse.stamina > 0
@@ -516,9 +576,15 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
         : CONFIG.STAMINA_MODIFIER_EMPTY;
 
       const horseLanePre = clampLane(horse.y);
+      const packRankNow = calcPackRankNorm(horse, horses);
 
-      let paceMult = getFormationPaceMultiplier(horse, phase.ratio, ave3fMax, ave3fSpan);
-      const V_eff    = horse.S_cruise * staminaMod * horse.battlePenalty * paceMult;
+      const launchBlend = getLaunchBlend(phase, phaseCtx);
+      const settleBlend = getSettleBlend(phase, phaseCtx);
+      const styleBlend = getStyleBlend(phase, phaseCtx);
+      const kickBlend = getKickBlend(phase, phaseCtx);
+      let paceMult = getFormationStylePaceMult(horse, styleBlend, horse.startBurstFactor);
+      const baseSpeed = resolvePhaseSpeed(horse, phase, phaseCtx);
+      const V_eff    = baseSpeed * staminaMod * horse.battlePenalty * paceMult;
       const desiredAdvance = V_eff * (phase.distance / 80);
       const irregularMult = applyIrregularEvents(
         rng,
@@ -529,7 +595,7 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
       );
       let adjustedAdvance = desiredAdvance * irregularMult;
 
-      if (isAfterFourthCornerPhase(phase)) {
+      if (kickBlend > 0.01) {
         const last3fW = calcLast3fWeight(horse, last3fNorm);
         const staminaR = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
         const localGap = getLocalPackFrontGap(horse, horseLanePre, horses);
@@ -543,9 +609,9 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
             stretchKick *= 1.08 + last3fW * 0.12;
           }
         }
-        adjustedAdvance *= (1 + stretchKick);
+        adjustedAdvance *= (1 + stretchKick * kickBlend);
         if (stretchKick > 0.02) {
-          const kickDrain = (Math.max(0, phase.distance) / 100) * stretchKick * 0.85;
+          const kickDrain = (Math.max(0, phase.distance) / 100) * stretchKick * kickBlend * 0.85;
           subtractStaminaWithReserve(horse, kickDrain, phase, {
             trackField: 'staminaAccelCost',
             fatigueGain: 0.24,
@@ -553,26 +619,25 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
         }
       }
 
-      // スタート直後は能力差 + 反応差で前後にばらつきを作る
-      // （以降フェーズは通常ロジックに戻す）
       if (phase.index === 0) {
         if (horse.startBurstFactor === undefined) {
-          // ave3fが短いほどスタート初速を高める（逃げ適性を強く反映）
-          const ave3fScore = Number.isFinite(horse.ave3f)
-            ? (ave3fMax - horse.ave3f) / ave3fSpan
-            : 0.5;
-          const launchSkill = (horse.S_cruise * 0.30 + horse.M_maneuv * 0.20) / 100;
-          // 大逃げも逃げと同程度にし、スタート直後の過剰ダッシュを抑える（ステップ3）
-          const earlyRunnerBonus = isNigeStyle(horse.style)
-            ? 0.24
+          const launchManeuv = isNigeStyle(horse.style)
+            ? Math.max(horse.M_maneuv, (horse.J_reliability ?? 50) * 0.50, 26)
             : horse.style === '先行'
-              ? 0.10
+              ? Math.max(horse.M_maneuv, (horse.J_reliability ?? 50) * 0.45, 22)
+              : Math.max(horse.M_maneuv, (horse.J_reliability ?? 50) * 0.4);
+          const launchSkill = (horse.S_formation * 0.30 + launchManeuv * 0.20) / 100;
+          const reliability = getJockeyReliabilityNorm(horse);
+          const earlyRunnerBonus = isNigeStyle(horse.style)
+            ? 0.30 + getNigeOuterGateBurstBonus(horse, horses.length)
+            : horse.style === '先行'
+              ? 0.12
               : 0;
-          const baseMult = 0.72
-            + ave3fScore * 0.68   // スタートはave3fを強く反映
-            + launchSkill * 0.22
-            + earlyRunnerBonus;
-          const randomMult = 0.88 + rng() * 0.28; // 中程度のばらつき（0.88〜1.16）
+          const baseMult = 0.76
+            + launchSkill * 0.32
+            + earlyRunnerBonus
+            + (reliability - 0.5) * 0.12;
+          const randomMult = 0.88 + rng() * 0.28;
           horse.startBurstFactor = baseMult * randomMult;
           // スタートイベントは「出遅れ/好スタート」のどちらか1回のみ。
           if (horse.startEventType === 'slow') {
@@ -588,8 +653,17 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
         adjustedAdvance *= horse.startBurstFactor;
       }
 
-      // 序盤で隊列を固めるため、一定フェーズで現レーンを基準化
-      if (horse.settledLane === undefined && phase.ratio >= FORMATION_LOCK_PHASE) {
+      if (styleBlend > 0) {
+        adjustedAdvance *= calcFormationAdvanceMult(
+          packRankNow,
+          horse,
+          launchBlend,
+          settleBlend,
+          horses,
+        );
+      }
+
+      if (horse.settledLane === undefined && styleBlend <= 0.01) {
         horse.settledLane = clampLane(horse.y);
       }
 
@@ -638,9 +712,10 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
         horse.innerCutInCooldownPhases -= 1;
       }
       const isPreCornerPack = isBeforeFirstCornerPhase(phase);
-      horse.targetLane = isStartPhase
+      const useLaunchLanePlan = launchBlend > 0.01 && (isStartPhase || isStartToHomePhase(phase));
+      horse.targetLane = useLaunchLanePlan
         ? calcStartPhaseTargetLane(horse, horses, collisionMetrics, phase)
-        : isPreCornerPack
+        : isPreCornerPack || settleBlend > 0.01
           ? calcPreCornerPackTargetLane(horse, phase, horses, collisionMetrics)
           : calcTargetLane(horse, phase, horses, collisionMetrics, last3fNorm);
       if (isThroughThirdCorner) {
@@ -726,6 +801,7 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
             isLateStraight,
             isStartPhase,
             isEarlyInnerBurst,
+            allowBurstShortCircuit: launchBlend > 0.01,
             collisionMetrics,
             battleProximityLimits,
             seekOutsideLane,
@@ -894,7 +970,11 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
       if (horse.stamina < floor) horse.stamina = floor;
     });
 
-    if (isBeforeFirstCornerPhase(phase) && phase.index > 0) {
+    const xBeforeOverlap = shouldPreserveForwardX(phase, phaseCtx)
+      ? horses.map(h => h.x ?? 0)
+      : null;
+
+    if (phase.index > 0 && getStyleBlend(phase, phaseCtx) > 0.01) {
       compressPreCornerToInnerLanes(horses, phase, collisionMetrics);
     }
 
@@ -958,6 +1038,19 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
         phase,
       });
     }
+    if (xBeforeOverlap) {
+      horses.forEach((horse, i) => {
+        horse.x = Math.max(horse.x ?? 0, xBeforeOverlap[i] ?? 0);
+      });
+    }
+    if (isFormationPhase(phase, phaseCtx)) {
+      enforceFrontRunnerAheadOfClosers(horses, collisionMetrics.minXGap);
+      resolveHorseOverlaps(horses, {
+        ...overlapBase,
+        iterations: 1,
+        phase,
+      });
+    }
 
     if (phase.ratio <= EARLY_LEAD_RATIO_MAX) {
       const leader = [...horses].sort((a, b) => b.x - a.x)[0];
@@ -990,7 +1083,7 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
   const results = horses.map(horse => {
     const staminaBonus = horse.initialStamina > 0
       ? (horse.stamina / horse.initialStamina) * 0.1 : 0;
-    const V_final     = horse.S_cruise * (horse.stamina > 0 ? 1.0 : 0.7);
+    const V_final     = (horse.S_kick ?? horse.S_pace ?? horse.S_cruise) * (horse.stamina > 0 ? 1.0 : 0.7);
     const arrivalTime = (raceData.race_info.distance + horse.distanceLoss)
                       / (V_final * (1 + staminaBonus));
     return { ...horse, arrivalTime };

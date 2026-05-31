@@ -8,27 +8,39 @@
       "surface": "turf",
       "distance": 2400,
       "turnDirection": "left",
+      "simBoundaries": {
+        "launchThroughSegmentIndex": 1,
+        "settleThroughSegmentIndex": 2,
+        "formationEndRule": "beforeFirstCorner",
+        "kickRemainingMeters": 600
+      },
       "segments": [
-        { "id": "start",   "label": "スタート",     "kind": "start",    "ratio": 0.06 },
-        { "id": "home",    "label": "ホーム直線",   "kind": "straight", "ratio": 0.12 },
-        { "id": "corner1", "label": "第1コーナー",  "kind": "corner",   "cornerNo": 1, "ratio": 0.10 },
-        { "id": "corner2", "label": "第2コーナー",  "kind": "corner",   "cornerNo": 2, "ratio": 0.10 },
-        { "id": "back",    "label": "向正面",       "kind": "straight", "ratio": 0.23 },
-        { "id": "corner3", "label": "第3コーナー",  "kind": "corner",   "cornerNo": 3, "ratio": 0.11 },
-        { "id": "corner4", "label": "第4コーナー",  "kind": "corner",   "cornerNo": 4, "ratio": 0.11 },
-        { "id": "final",   "label": "最終直線入口", "kind": "final",    "ratio": 0.17 }
+        { "id": "start",   "label": "スタート",     "kind": "start",    "simRole": "launch", "ratio": 0.06 },
+        { "id": "home",    "label": "ホーム直線",   "kind": "straight", "simRole": "launch", "ratio": 0.12 },
+        { "id": "corner1", "label": "第1コーナー",  "kind": "corner",   "simRole": "settle", "cornerNo": 1, "ratio": 0.10 },
+        { "id": "corner2", "label": "第2コーナー",  "kind": "corner",   "simRole": "pace",   "cornerNo": 2, "ratio": 0.10 },
+        { "id": "back",    "label": "向正面",       "kind": "straight", "simRole": "pace",   "ratio": 0.23 },
+        { "id": "corner3", "label": "第3コーナー",  "kind": "corner",   "simRole": "pace",   "cornerNo": 3, "ratio": 0.11 },
+        { "id": "corner4", "label": "第4コーナー",  "kind": "corner",   "simRole": "kick",   "cornerNo": 4, "ratio": 0.11 },
+        { "id": "final",   "label": "最終直線入口", "kind": "final",    "simRole": "kick",   "ratio": 0.17 }
       ]
     },
     {
       "id": "generic_one_turn",
       "name": "汎用ワンターン（フォールバック・手動 course_id 用）",
       "turnDirection": "right",
+      "simBoundaries": {
+        "launchThroughSegmentIndex": 1,
+        "settleThroughSegmentIndex": 2,
+        "formationEndRule": "beforeFirstCorner",
+        "kickRemainingMeters": 600
+      },
       "segments": [
-        { "id": "start",   "label": "スタート",     "kind": "start",    "ratio": 0.10 },
-        { "id": "back",    "label": "向正面",       "kind": "straight", "ratio": 0.20 },
-        { "id": "corner3", "label": "第3コーナー",  "kind": "corner",   "cornerNo": 3, "ratio": 0.20 },
-        { "id": "corner4", "label": "第4コーナー",  "kind": "corner",   "cornerNo": 4, "ratio": 0.20 },
-        { "id": "final",   "label": "最終直線入口", "kind": "final",    "ratio": 0.30 }
+        { "id": "start",   "label": "スタート",     "kind": "start",    "simRole": "launch", "ratio": 0.10 },
+        { "id": "back",    "label": "向正面",       "kind": "straight", "simRole": "launch", "ratio": 0.20 },
+        { "id": "corner3", "label": "第3コーナー",  "kind": "corner",   "simRole": "settle", "cornerNo": 3, "ratio": 0.20 },
+        { "id": "corner4", "label": "第4コーナー",  "kind": "corner",   "simRole": "pace",   "cornerNo": 4, "ratio": 0.20 },
+        { "id": "final",   "label": "最終直線入口", "kind": "final",    "simRole": "kick",   "ratio": 0.30 }
       ]
     }
   ]

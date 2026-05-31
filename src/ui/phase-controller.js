@@ -44,7 +44,7 @@ import {
   GOAL_STAMINA_DRAIN_MULT,
   GOAL_STAMINA_DRAIN_RESERVE_BASE,
   GOAL_STAMINA_DRAIN_RESERVE_STAMINA_GAIN,
-  GOAL_FRONT_RUNNER_UNLEASH_SCALE,
+  GOAL_LEADING_UNLEASH_SCALE,
   GOAL_AI,
   LANE_WIDTH,
   LATERAL_BLOCK_X_GAP,
@@ -60,7 +60,6 @@ import {
   clampLane,
   applyBattleStaminaImpact,
   isNigeStyle,
-  isOonigeStyle,
   getJockeyReliabilityNorm,
   getJockeyAggressionNorm,
   isLaneInShiftPath,
@@ -72,7 +71,7 @@ import {
   calcGoalPathQuality,
   calcGoalEffortNorm,
   calcGoalReserveBurnDrain,
-  calcGoalFrontRunnerHoldDrain,
+  calcGoalLeadingHoldDrain,
 } from './goal-scene.js';
 import {
   getBattleLogClass,
@@ -629,12 +628,11 @@ class PhaseController {
       const l3w = Number.isFinite(res.last3f)
         ? (maxLast3f - res.last3f) / last3fSpan
         : 0.5;
-      const isCloser = h.style === '差し' || h.style === '追込';
       const startSpeedMult = Math.max(
         0.72,
         Math.min(
-          1.06,
-          0.78 + l3w * 0.14 + (isCloser ? 0.05 : 0),
+          1.04,
+          0.78 + l3w * 0.14,
         ),
       );
       return {
@@ -819,18 +817,9 @@ class PhaseController {
           : 0.5;
         const baseMps =
           horse.goalIntrinsicMps * goalStaminaSpeedMult(staminaRatio);
-        const styleBoost = horse.style === '追込' ? 0.16
-          : horse.style === '差し' ? 0.13
-            : horse.style === '先行' ? 0.04
-              : 0;
-        const styleTop = horse.style === '追込' ? 1.12
-          : horse.style === '差し' ? 1.08
-            : horse.style === '先行' ? 1.02
-              : 0.98;
         const battleFatigue = Math.min(0.38, (horse.battleFatigue ?? 0) * 0.035);
         const distRatio = Math.min(1, (horse.goalMeters || 0) / GOAL_DISTANCE_METERS);
         const remainMeters = Math.max(0, GOAL_DISTANCE_METERS - (horse.goalMeters || 0));
-        const isCloser = horse.style === '追込' || horse.style === '差し';
         const aggression = this._calcGoalAggression(
           horse,
           staminaRatio,
@@ -988,41 +977,22 @@ class PhaseController {
         );
         const packRankNorm = calcPackRankNorm(horse, simHorses);
         const isLeadingPack = packRankNorm <= 0.28;
-        const isFrontRunner = isNigeStyle(horse.style) || isOonigeStyle(horse.style);
         const furlongHint = (horse.goalMeters || 0) / GOAL_FURLONG_METERS;
         const lateBoost = 0.90
           + 0.22 * Math.pow(distRatio, 0.85)
           + 0.14 * Math.pow(distRatio, 0.72)
-          + (isCloser ? 0.10 * Math.pow(Math.min(1, furlongHint), 0.5) : 0);
-        // baseMps にスタミナを織り込み済みのため微調整のみ
+          + 0.06 * last3fWeight * Math.pow(Math.min(1, furlongHint), 0.5);
         const staminaFineTuning = 0.97 + staminaRatio * 0.05;
-        // 段階(α): 旧 surge は `0.90 + fastWeight * 0.16 + styleBoost` で
-        // 事前確定着順 (arrivalTime) を直接バイアスに使っていた。これを撤廃し、
-        // 残スタミナという「現在進行中のシミュ状態」だけで surge を組み立てる。
-        // 値域は概ね従来と同等（0.92〜1.06 + styleBoost）に揃えてある。
-        const surge = 0.92 + staminaRatio * 0.14 + styleBoost;
+        const surge = 0.92 + staminaRatio * 0.14 + last3fWeight * 0.06;
         const closingKick = 1
-          + Math.pow(distRatio, 0.58) * (
-            (isCloser ? 0.20 : 0.06) * (0.45 + last3fWeight * 0.28)
-            + last3fWeight * 0.06
-          )
-          + Math.pow(distRatio, 1.05) * (
-            (horse.style === '追込' ? 0.12 : 0) +
-            (horse.style === '差し' ? 0.10 : 0) +
-            last3fWeight * 0.04
-          );
-        // 段階(α) 追加: 残スタミナを「ゴール直前の末脚」として開放する係数。
-        //   - distRatio が大きい（ゴール接近）ほど効きが強くなる（=上がり3Fの加速）
-        //   - staminaRatio が低ければ開放できる余力がないためゼロに近づく
-        //   - last3fWeight が高い末脚タイプは開放上限を高めにする
-        // closingKick はスタミナ非依存（潜在能力）だったため、ここで「実際に
-        // 余力を残せた馬だけが末脚を爆発させられる」という物理が成立する。
+          + Math.pow(distRatio, 0.58) * (0.08 + last3fWeight * 0.18)
+          + Math.pow(distRatio, 1.05) * last3fWeight * 0.06;
         let staminaUnleash =
           staminaRatio *
           (0.06 + 0.20 * Math.pow(distRatio, 0.55)) *
           (0.85 + last3fWeight * 0.30);
-        if (isFrontRunner && isLeadingPack && frontGapAfterLane > GOAL_BLOCK_X_GAP * 0.92) {
-          staminaUnleash *= GOAL_FRONT_RUNNER_UNLEASH_SCALE;
+        if (isLeadingPack && frontGapAfterLane > GOAL_BLOCK_X_GAP * 0.92) {
+          staminaUnleash *= GOAL_LEADING_UNLEASH_SCALE;
         } else if (pathQuality > 0.22) {
           staminaUnleash *= 0.82 + pathQuality * 0.22;
         }
@@ -1047,7 +1017,6 @@ class PhaseController {
           lateBoost *
           staminaFineTuning *
           surge *
-          styleTop *
           closingKick *
           staminaKick *
           finalReadinessMult *
@@ -1061,9 +1030,8 @@ class PhaseController {
         horse.goalDesiredMps = targetMps;
         const accelBase = 2.3
           + last3fWeight * 1.9
-          + (isCloser ? 1.1 : 0.2)
-          + (isCloser ? 0.35 * last3fWeight * Math.sqrt(distRatio) : 0);
-        const inBurstWindow = isCloser &&
+          + 0.35 * last3fWeight * Math.sqrt(distRatio);
+        const inBurstWindow =
           remainMeters >= GOAL_AI.burstWindowMetersToGoMin &&
           remainMeters <= GOAL_AI.burstWindowMetersToGoMax &&
           last3fWeight > 0.48 &&
@@ -1091,11 +1059,11 @@ class PhaseController {
         horse.goalCurrentMps = Math.max(minMps, Math.min(maxMps, horse.goalCurrentMps + deltaV));
         const effortNorm = calcGoalEffortNorm(horse.goalDesiredMps, horse.goalCurrentMps, Math.max(0, deltaV));
 
-        const accelDrain = Math.max(0, deltaV) * (1.2 + (isCloser ? 0.45 : 0.15));
+        const accelDrain = Math.max(0, deltaV) * (1.2 + 0.25 * last3fWeight);
         const speedDrain = horse.goalCurrentMps * 0.0115;
         const trafficDrain = (1 - trafficPenalty) * 0.85;
-        const closersSprint = isCloser && distRatio > 0.28;
-        const sprintStaminaMultRaw = closersSprint
+        const sprintPhase = distRatio > 0.28 && last3fWeight > 0.35;
+        const sprintStaminaMultRaw = sprintPhase
           ? 1
             + 0.55 * last3fWeight * (0.35 + 0.65 * distRatio)
             + (deltaV > 0.015 ? 0.24 * last3fWeight * distRatio : 0)
@@ -1121,8 +1089,8 @@ class PhaseController {
           effortNorm,
           dt,
         });
-        const holdDrain = isFrontRunner
-          ? calcGoalFrontRunnerHoldDrain({
+        const holdDrain = isLeadingPack
+          ? calcGoalLeadingHoldDrain({
             initialStamina: horse.initialStamina,
             staminaRatio,
             pathQuality,

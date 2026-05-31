@@ -9,7 +9,7 @@ import {
   GOAL_STAMINA_BURN_RESERVE_MULT,
   GOAL_STAMINA_BURN_DIST_START,
   GOAL_STAMINA_BURN_MAX_FRAME_FRAC,
-  GOAL_FRONT_RUNNER_HOLD_DRAIN_PER_SEC,
+  GOAL_LEADING_HOLD_DRAIN_PER_SEC,
   GOAL_EFFORT_BURN_WEIGHT,
   GOAL_TIGHT_LEAD_HOLD_MULT,
 } from '../engine/constants.js';
@@ -97,8 +97,8 @@ function calcGoalReserveBurnDrain({
   return Math.min(raw, burnable * GOAL_STAMINA_BURN_MAX_FRAME_FRAC);
 }
 
-/** 先頭逃げ・大逃げが前を空けて粘るときの追加ドレイン */
-function calcGoalFrontRunnerHoldDrain({
+/** 先頭グループが前を空けて粘るときの追加ドレイン（脚質非依存） */
+function calcGoalLeadingHoldDrain({
   initialStamina,
   staminaRatio,
   pathQuality,
@@ -117,7 +117,7 @@ function calcGoalFrontRunnerHoldDrain({
   const tightMult = tightLead ? GOAL_TIGHT_LEAD_HOLD_MULT : 1;
   return (
     initial *
-    GOAL_FRONT_RUNNER_HOLD_DRAIN_PER_SEC *
+    GOAL_LEADING_HOLD_DRAIN_PER_SEC *
     pathQuality *
     approachRamp *
     tightMult *
@@ -175,7 +175,7 @@ export {
   calcGoalPathQuality,
   calcGoalEffortNorm,
   calcGoalReserveBurnDrain,
-  calcGoalFrontRunnerHoldDrain,
+  calcGoalLeadingHoldDrain,
   mapIdEntriesToMap,
   lastGoalRecordingFrame,
   drawGoalCourseFrame,

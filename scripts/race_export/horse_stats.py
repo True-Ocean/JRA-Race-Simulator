@@ -22,15 +22,49 @@ def kesshi_to_style(kesshi) -> str:
     return KESSHI_TO_STYLE.get(text, DEFAULT_STYLE)
 
 
-def _select_runs(records: pd.DataFrame) -> pd.DataFrame:
+def _distance_sort_key(distance, target_distance: int) -> tuple:
+    if distance is None or (isinstance(distance, float) and pd.isna(distance)):
+        return (10**9, 0)
+    try:
+        d = int(distance)
+    except (TypeError, ValueError):
+        return (10**9, 0)
+    return (abs(d - target_distance), -d)
+
+
+def _rank_records_by_distance(records: pd.DataFrame, target_distance: int) -> pd.DataFrame:
+    if records.empty or target_distance <= 0:
+        return records.sort_values("日付", ascending=False)
+
+    work = records.copy()
+    if "距離" not in work.columns:
+        return work.sort_values("日付", ascending=False)
+
+    work["_dist_key"] = work["距離"].apply(
+        lambda d: _distance_sort_key(d, target_distance)[0]
+    )
+    work["_dist_tie"] = work["距離"].apply(
+        lambda d: _distance_sort_key(d, target_distance)[1]
+    )
+    ranked = work.sort_values(
+        ["_dist_key", "日付"],
+        ascending=[True, False],
+    ).drop(columns=["_dist_key", "_dist_tie"])
+    return ranked
+
+
+def _select_runs(records: pd.DataFrame, target_distance: int = 0) -> pd.DataFrame:
     if records.empty:
         return records
 
-    recent = records.sort_values("日付", ascending=False).head(MAX_RECENT_RUNS)
-    good = recent[recent["着順"].notna() & (recent["着順"] <= 3)]
+    ranked = _rank_records_by_distance(records, target_distance)
+    pool = ranked.head(max(MAX_RECENT_RUNS * 2, MAX_RECENT_RUNS))
+    good = pool[pool["着順"].notna() & (pool["着順"] <= 3)]
     if len(good) >= MIN_GOOD_RUNS:
-        return good
-    return recent
+        selected = good.head(MAX_RECENT_RUNS)
+    else:
+        selected = pool.head(MAX_RECENT_RUNS)
+    return selected
 
 
 def _stat_range(series: pd.Series) -> dict | None:
@@ -42,6 +76,29 @@ def _stat_range(series: pd.Series) -> dict | None:
         "max": round(float(values.max()), 1),
         "avg": round(float(values.mean()), 1),
     }
+
+
+def _pair_aggregate(selected: pd.DataFrame) -> tuple[dict | None, dict | None, float | None]:
+    """同一走集合から Ave / 上りをペアとして平均。距離乖離の参考値も返す。"""
+    if selected.empty:
+        return None, None, None
+
+    pairs = selected[["Ave-3F", "上り3F"]].dropna(how="all")
+    if pairs.empty:
+        return None, None, None
+
+    ave_range = _stat_range(selected["Ave-3F"])
+    last_range = _stat_range(selected["上り3F"])
+    dist_bias = None
+    if "距離" in selected.columns:
+        dists = selected["距離"].dropna()
+        if not dists.empty and "距離" in selected.columns:
+            try:
+                dist_bias = round(float(dists.astype(float).mean()), 0)
+            except (TypeError, ValueError):
+                dist_bias = None
+
+    return ave_range, last_range, dist_bias
 
 
 def _resolve_style(records: pd.DataFrame) -> str:
@@ -70,15 +127,32 @@ def _build_results(records: pd.DataFrame) -> list[int]:
     return results
 
 
-def aggregate_horse_stats(horse_records_df: pd.DataFrame) -> dict[str, dict]:
+def aggregate_horse_stats(
+    horse_records_df: pd.DataFrame,
+    target_distance: int = 0,
+    warnings: list[str] | None = None,
+) -> dict[str, dict]:
     if horse_records_df.empty:
         return {}
 
+    warn = warnings if warnings is not None else []
     grouped: dict[str, dict] = {}
+
     for horse_name, group in horse_records_df.groupby("馬名", sort=False):
-        selected = _select_runs(group)
-        ave_range = _stat_range(selected["Ave-3F"])
-        last_range = _stat_range(selected["上り3F"])
+        selected = _select_runs(group, target_distance)
+        ave_range, last_range, dist_bias = _pair_aggregate(selected)
+
+        if (
+            ave_range
+            and last_range
+            and ave_range["min"] <= ave_range["avg"] <= ave_range["min"] + 0.35
+            and last_range["min"] <= last_range["avg"] <= last_range["min"] + 0.35
+            and len(selected) >= 2
+        ):
+            warn.append(
+                f"{horse_name}: ave/last both near best-of-selected "
+                f"(check distance pairing)"
+            )
 
         grouped[str(horse_name)] = {
             "has_records": True,
@@ -89,6 +163,7 @@ def aggregate_horse_stats(horse_records_df: pd.DataFrame) -> dict[str, dict]:
             "ave_3f_range": ave_range,
             "last_3f_range": last_range,
             "results": _build_results(selected),
+            "distance_bias_m": dist_bias,
         }
 
     return grouped

@@ -1,6 +1,7 @@
 import { POST_C3_STAMINA_SPREAD_FLOOR } from './constants.js';
 import { clampLane } from './horse-utils.js';
 import { getFormationPreferredLane } from './formation.js';
+import { getStyleBlend } from './phase-context.js';
 import { isThroughThirdCornerPhase } from './phase-helpers.js';
 function getPostC3StaminaSpreadBudget(horse) {
   const initial = horse.initialStamina > 0 ? horse.initialStamina : 1;
@@ -12,11 +13,13 @@ function getPostC3StaminaSpreadBudget(horse) {
 }
 
 function getPreferredLaneByStyle(horse, phase) {
-  const r = phase.ratio ?? 0;
-  const formationLane = getFormationPreferredLane(horse, r);
+  const ctx = phase?._phaseCtx;
+  const styleBlend = ctx ? getStyleBlend(phase, ctx) : 0;
+  const formationLane = getFormationPreferredLane(horse, styleBlend);
   if (formationLane != null) {
     return formationLane;
   }
+  const r = phase.ratio ?? 0;
   if (isThroughThirdCornerPhase(phase) && r < 0.80 && horse.settledLane !== undefined) {
     return clampLane(horse.settledLane);
   }

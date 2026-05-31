@@ -21,8 +21,23 @@ export const INNER_HALF_LANE_MAX = Math.max(1, Math.floor(LANE_WIDTH * 0.5));
 export const LEAD_BATTLE_PHASE_MAX = 0.35;
 export const EARLY_LEAD_RATIO_MAX = 0.35;
 export const FINAL_DUEL_PHASE_MIN = 0.80;
+/** @deprecated phase-context.getFormationBlend を使用 */
 export const FORMATION_LOCK_PHASE = 0.40;
+/** @deprecated phase-context を使用 */
 export const PRE_CORNER_PACK_PHASE_MAX = 0.28;
+
+/** 隊列形成終了（走行距離比フォールバック） */
+export const FORMATION_END_PROGRESS = 0.30;
+export const FORMATION_FADE_PROGRESS = 0.04;
+export const FORMATION_MIN_METERS = 350;
+export const FORMATION_MAX_METERS = 800;
+/** 上り3F開始（残り距離 m） */
+export const KICK_REMAINING_METERS = 600;
+export const KICK_FADE_METERS = 120;
+/** Ave-3F 導入フェード（走行距離比） */
+export const PACE_FADE_PROGRESS = 0.06;
+/** simRole 未設定時の launch フェーズ数フォールバック */
+export const LAUNCH_PHASE_COUNT_FALLBACK = 2;
 export const COLLISION_MIN_Y_GAP = 0.9;
 export const COLLISION_ITERATIONS = 3;
 export const COLLISION_ITERATIONS_EARLY = 7;
@@ -194,10 +209,10 @@ export const GOAL_STAMINA_BURN_DIST_START = 0.18;
 /** 既存 goalDrain に掛けるベース＋高残量補正（穏やか） */
 export const GOAL_STAMINA_DRAIN_RESERVE_BASE = 0.94;
 export const GOAL_STAMINA_DRAIN_RESERVE_STAMINA_GAIN = 0.28;
-/** 先頭逃げ・大逃げの末脚開放（staminaUnleash）抑制 */
-export const GOAL_FRONT_RUNNER_UNLEASH_SCALE = 0.22;
-/** 先頭逃げ・大逃げの粘りドレイン（initial 比・秒） */
-export const GOAL_FRONT_RUNNER_HOLD_DRAIN_PER_SEC = 0.011;
+/** 先頭グループの末脚開放（staminaUnleash）抑制 — 前が空いているとき */
+export const GOAL_LEADING_UNLEASH_SCALE = 0.28;
+/** 先頭グループの粘りドレイン（initial 比・秒） */
+export const GOAL_LEADING_HOLD_DRAIN_PER_SEC = 0.009;
 /** 1フレームで燃やせる burnable の上限比率（瞬間枯れ防止） */
 export const GOAL_STAMINA_BURN_MAX_FRAME_FRAC = 0.045;
 /** 実行圧: goalDesired と現速度の差・加速から燃焼へ反映する重み */

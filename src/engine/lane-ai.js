@@ -1,6 +1,5 @@
 import {
   MIN_FORWARD_GAP,
-  FORMATION_LOCK_PHASE,
   FINAL_STRAIGHT_RATIO,
   FINAL_FRONT_BLOCK_EXTRA_GAP,
   INNER_HALF_LANE_MAX,
@@ -25,6 +24,7 @@ import {
   isStartToHomePhase,
   getPhaseLaneBand,
 } from './phase-helpers.js';
+import { getStyleBlend, getPaceIntroBlend, getKickBlend } from './phase-context.js';
 import {
   getFrontGap,
   isLaneOpenForShift,
@@ -45,7 +45,10 @@ function getOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan) {
 }
 
 function getEffectiveOuterSpreadIntent(horse, phase, last3fMin, last3fMax, last3fSpan) {
-  if (!isAfterFourthCornerPhase(phase)) {
+  const kickBlend = phase?._phaseCtx
+    ? getKickBlend(phase, phase._phaseCtx)
+    : (isAfterFourthCornerPhase(phase) ? 1 : 0);
+  if (kickBlend <= 0.01) {
     return getOuterSpreadIntent(horse, last3fMin, last3fMax, last3fSpan) * 0.45;
   }
   const staminaRatio = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
@@ -90,8 +93,9 @@ function calcTargetLane(horse, phase, allHorses, collisionMetrics = null, last3f
   if (
     !isThroughThirdCornerPhase(phase) &&
     !phase.isFinal &&
-    phase.ratio >= FORMATION_LOCK_PHASE &&
-    phase.ratio < 0.80 &&
+    phase._phaseCtx &&
+    getPaceIntroBlend(phase, phase._phaseCtx) > 0.5 &&
+    getKickBlend(phase, phase._phaseCtx) <= 0.01 &&
     horse.settledLane !== undefined
   ) {
     // 序盤で決まった隊列を道中は維持し、極端な横移動を抑える（第3コーナーまでは内寄せ優先のため無効化）
@@ -274,7 +278,7 @@ function calcPostFourthWideTargetLane(horse, baseTargetLane, phase, allHorses, l
 function getLaneChangeRate(phase, horse = null, last3fNorm = null, allHorses = null) {
   // スタート〜ホーム直線は一気に内へ寄せて隊列を作る
   if (isStartToHomePhase(phase)) return 0.98;
-  if (phase.ratio < FORMATION_LOCK_PHASE) return 0.55;
+  if (phase?._phaseCtx && getStyleBlend(phase, phase._phaseCtx) > 0) return 0.55;
   if (isThroughThirdCornerPhase(phase) && phase.ratio < 0.80) return 0.55;
   if (horse && isFinalStraightPhase(phase) && allHorses) {
     const stretchRate = getLaneChangeRateForStretch(

@@ -3,7 +3,7 @@ import { getStaminaBarClassName } from '../src/ui/entry-stamina.js';
 import {
   calcGoalPathQuality,
   calcGoalReserveBurnDrain,
-  calcGoalFrontRunnerHoldDrain,
+  calcGoalLeadingHoldDrain,
 } from '../src/ui/goal-scene.js';
 
 describe('スタミナバー色分け（表示%の3等分）', () => {
@@ -53,8 +53,8 @@ describe('ゴールシーンスタミナ燃焼', () => {
     expect(burn).toBe(0);
   });
 
-  it('先頭逃げの粘りドレインは先頭時のみ発生する', () => {
-    const drain = calcGoalFrontRunnerHoldDrain({
+  it('先頭グループの粘りドレインは先頭時のみ発生する', () => {
+    const drain = calcGoalLeadingHoldDrain({
       initialStamina: 150,
       staminaRatio: 0.7,
       pathQuality: 0.8,
@@ -62,7 +62,7 @@ describe('ゴールシーンスタミナ燃焼', () => {
       dt: 0.05,
       isLeadingPack: true,
     });
-    const none = calcGoalFrontRunnerHoldDrain({
+    const none = calcGoalLeadingHoldDrain({
       initialStamina: 150,
       staminaRatio: 0.7,
       pathQuality: 0.8,

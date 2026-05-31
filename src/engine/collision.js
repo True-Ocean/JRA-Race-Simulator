@@ -38,6 +38,7 @@ import {
 import {
   clampLane,
   isNigeStyle,
+  isOonigeStyle,
   isLaneInShiftPath,
   applyBattleStaminaImpact,
 } from './horse-utils.js';
@@ -48,6 +49,13 @@ import {
   isFinalStraightPhase,
   getPhaseBufferMultiplier,
 } from './phase-helpers.js';
+import { isRearPelotonForwardExempt, isFormationPhase } from './phase-context.js';
+import { getFormationForwardRelief, calcFormationRangeOffset, isFrontRunnerStyle, getFormationTargetRank, getEffectiveFormationRange } from './formation.js';
+import { calcPackRankNorm } from './lane-decision.js';
+import {
+  getFormationBattleRateMult,
+  getStyleBattleBonus,
+} from './battle-formation.js';
 import {
   resolveWeightedBattle,
   isInnerCutInContestScenario,
@@ -111,8 +119,7 @@ function resolveLaneMovement(
   const isStartPhase = Boolean(context?.isStartPhase);
   const isEarlyInnerBurst = Boolean(context?.isEarlyInnerBurst);
   const isThroughC3 = isThroughThirdCornerPhase(phase);
-  // 序盤でも接触回避の判定を緩めない。
-  const allowBurstShortCircuit = false;
+  const allowBurstShortCircuit = Boolean(context?.allowBurstShortCircuit);
   const collisionMetrics = context?.collisionMetrics ?? null;
   const battleProximityLimits =
     context?.battleProximityLimits ?? buildBattleProximityLimits(collisionMetrics);
@@ -276,7 +283,8 @@ function resolveLaneMovement(
         maneuv: 0.42,
         sustain: 0.20,
         stamina: 0.16,
-      }, h => (isNigeStyle(h.style) || h.style === '先行') ? 2 : 0, {
+      }, h => getStyleBattleBonus(h, phase), {
+        phase,
         impactOptions: {
           loserAlreadyPenalized: true,
           winnerMult: INNER_CUTIN_WINNER_STAMINA_MULT,
@@ -336,6 +344,15 @@ function getRequiredXGap(frontHorse, backHorse, baseMinXGap, phase, options = {}
   const backBuf = getHorseBufferX(backHorse, phase);
   let required = baseMinXGap + frontBuf.rear + backBuf.front;
   if (options?.isInnerCutIn) required *= INNER_CUTIN_BUFFER_MULT;
+  const ctx = phase?._phaseCtx;
+  if (ctx && isFormationPhase(phase, ctx) && options?.allHorses && backHorse) {
+    const relief = getFormationForwardRelief(
+      backHorse,
+      calcPackRankNorm(backHorse, options.allHorses),
+      options.allHorses,
+    );
+    required *= relief.gapMult;
+  }
   return required;
 }
 
@@ -413,6 +430,30 @@ function resolveForwardMovement(
 ) {
   const battleProximityLimits =
     proximityLimits ?? buildBattleProximityLimits(null);
+  if (isRearPelotonForwardExempt(horse, allHorses, phase, phase?._phaseCtx)) {
+    return { advance: desiredAdvance };
+  }
+  const packRank = calcPackRankNorm(horse, allHorses);
+  const relief = getFormationForwardRelief(horse, packRank, allHorses);
+  const { rankNorm } = calcFormationRangeOffset(packRank, horse, allHorses);
+  const target = getFormationTargetRank(horse);
+  const behindTarget = Math.max(0, rankNorm - target - 0.03);
+  const { max: styleMax } = getEffectiveFormationRange(horse);
+  const leader = [...allHorses].sort((a, b) => b.x - a.x)[0];
+  const leaderGap = leader && leader.id !== horse.id
+    ? (leader.x ?? 0) - (horse.x ?? 0)
+    : 0;
+  const isFrontGroupMaintain =
+    isFrontRunnerStyle(horse.style) &&
+    relief.advanceFloor > 0 &&
+    relief.gapMult < 1 &&
+    (
+      (horse.style === '先行' && rankNorm <= styleMax + 0.10 && behindTarget <= 0.05)
+      || (horse.style !== '先行' && rankNorm <= 0.28)
+    );
+  const needsStyleCatchUp = isFrontRunnerStyle(horse.style) && behindTarget > 0.06;
+  const canUseChaseRelief = relief.advanceFloor > 0 && leaderGap > 1.5 && leaderGap <= 120;
+  const canApplyReliefFloor = isFrontGroupMaintain || canUseChaseRelief || needsStyleCatchUp;
   const nextX = horse.x + desiredAdvance;
   const spurLaneIntent = isFinalStraightPhase(phase)
     && Number.isFinite(horse.spurEntryTargetLane);
@@ -435,7 +476,7 @@ function resolveForwardMovement(
     return { advance: desiredAdvance };
   }
 
-  const requiredGap = getRequiredXGap(front, horse, minForwardGap, phase);
+  const requiredGap = getRequiredXGap(front, horse, minForwardGap, phase, { allHorses });
   const currentGap = front.x - horse.x;
   const maxAdvanceWithoutContact = Math.max(0, currentGap - requiredGap);
   if (desiredAdvance <= maxAdvanceWithoutContact) {
@@ -448,8 +489,10 @@ function resolveForwardMovement(
       inBattleRange &&
       isPairBattleProximity(horse, front, battleProximityLimits) &&
       !engagedHorseIds.has(horse.id) && !engagedHorseIds.has(front.id) &&
-      shouldBattle(rng, allHorses, horse, front, battleProximityLimits)) {
-    const result = resolveBattle(rng, horse, front, phase);
+      shouldBattle(rng, allHorses, horse, front, battleProximityLimits, {
+        formationRateMult: getFormationBattleRateMult(horse, front, phase, phase?._phaseCtx),
+      })) {
+    const result = resolveBattle(rng, horse, front, phase, { phaseCtx: phase?._phaseCtx });
     applyBattleStaminaImpact(result.winner, result.loser, { loserAlreadyPenalized: true });
     const laneGap = Math.abs(front.y - horse.y).toFixed(2);
     const frontGap = Math.max(0, front.x - horse.x).toFixed(1);
@@ -464,6 +507,16 @@ function resolveForwardMovement(
   }
 
   let advance = maxAdvanceWithoutContact;
+  if (canApplyReliefFloor) {
+    const floorMult = needsStyleCatchUp && horse.style === '先行'
+      ? Math.max(relief.advanceFloor, 0.38)
+      : needsStyleCatchUp && isFrontRunnerStyle(horse.style)
+        ? Math.max(relief.advanceFloor, 0.44)
+        : relief.advanceFloor;
+    if (advance < desiredAdvance * floorMult) {
+      advance = Math.max(advance, desiredAdvance * floorMult);
+    }
+  }
   if (isThroughThirdCornerPhase(phase) && desiredAdvance > maxAdvanceWithoutContact + 0.01) {
     advance *= 0.94;
   }
