@@ -5,6 +5,7 @@ import {
   calcPathStaminaDrain,
   calcPathInterpT,
   interpolateStaminaForDisplay,
+  applyPathBudget,
 } from '../src/engine/path-stamina.js';
 import { runSimulation } from '../src/engine/simulation.js';
 import { loadDefaultRaceFixture } from './helpers/load-race-fixture.js';
@@ -19,6 +20,26 @@ describe('path-stamina', () => {
   it('calcPathSegmentMeters: 横移動のみ', () => {
     const m = calcPathSegmentMeters(0, 1, 0, 4, 300);
     expect(m).toBeCloseTo(9, 1);
+  });
+
+  it('applyPathBudget: 直進は前進100%', () => {
+    const r = applyPathBudget(40, 0, 200);
+    expect(r.advance).toBeCloseTo(40, 5);
+    expect(r.lateralScale).toBe(1);
+  });
+
+  it('applyPathBudget: 斜め進路は前進・横移を同率で抑える', () => {
+    const r = applyPathBudget(40, 2, 200);
+    expect(r.advance).toBeLessThan(40);
+    expect(r.lateralScale).toBeCloseTo(r.advance / 40, 5);
+    expect(r.lateralScale).toBeLessThan(1);
+  });
+
+  it('applyPathBudget: 馬番非依存（同じ laneDelta なら同じ比率）', () => {
+    const a = applyPathBudget(30, 1.5, 160);
+    const b = applyPathBudget(30, 1.5, 160);
+    expect(a.advance).toBeCloseTo(b.advance, 8);
+    expect(a.lateralScale).toBeCloseTo(b.lateralScale, 8);
   });
 
   it('calcLanePathFactor: コーナー外ほど大きい', () => {

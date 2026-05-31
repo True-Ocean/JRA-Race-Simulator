@@ -28,6 +28,31 @@ export function calcPathSegmentMeters(prevX, prevY, nextX, nextY, phaseDistanceM
 }
 
 /**
+ * 形成期: まっすぐ走れる距離をバジェットとし、斜め進路では前進・横移を同率で抑える。
+ * 馬番非依存 — 意図した laneDelta と desiredAdvance のみで判定する。
+ * @returns {{ advance: number, lateralScale: number }}
+ */
+export function applyPathBudget(desiredAdvance, laneDelta, phaseDistanceM) {
+  const advance = Math.max(0, Number(desiredAdvance) || 0);
+  const absLaneDelta = Math.abs(Number(laneDelta) || 0);
+  if (absLaneDelta < 1e-9 || advance < 1e-9) {
+    return { advance, lateralScale: 1 };
+  }
+  const scale = simXToMetersScale(phaseDistanceM);
+  const forwardM = advance * scale;
+  const lateralM = absLaneDelta * LANE_TO_METERS;
+  const pathM = Math.hypot(forwardM, lateralM);
+  if (pathM <= forwardM + 1e-9) {
+    return { advance, lateralScale: 1 };
+  }
+  const ratio = forwardM / pathM;
+  return {
+    advance: advance * ratio,
+    lateralScale: ratio,
+  };
+}
+
+/**
  * コーナー外回りなど: 1m あたりのスタミナ倍率（LANE_COEFF を流用）。
  */
 export function calcLanePathFactor(laneY, phase) {

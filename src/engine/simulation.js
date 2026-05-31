@@ -16,10 +16,7 @@ import {
   isFrontRunnerStyle,
   enforceFrontRunnerAheadOfClosers,
 } from './formation.js';
-import {
-  getFormationBattleRateMult,
-  getNigeOuterGateBurstBonus,
-} from './battle-formation.js';
+import { getFormationBattleRateMult } from './battle-formation.js';
 import {
   createPhaseContext,
   getLaunchBlend,
@@ -142,6 +139,7 @@ import {
   CORNER4_STRETCH_KICK_SCALE,
 } from './constants.js';
 import {
+  applyPathBudget,
   calcPathSegmentMeters,
   calcPathStaminaDrain,
 } from './path-stamina.js';
@@ -628,14 +626,8 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
               : Math.max(horse.M_maneuv, (horse.J_reliability ?? 50) * 0.4);
           const launchSkill = (horse.S_formation * 0.30 + launchManeuv * 0.20) / 100;
           const reliability = getJockeyReliabilityNorm(horse);
-          const earlyRunnerBonus = isNigeStyle(horse.style)
-            ? 0.30 + getNigeOuterGateBurstBonus(horse, horses.length)
-            : horse.style === '先行'
-              ? 0.12
-              : 0;
           const baseMult = 0.76
             + launchSkill * 0.32
-            + earlyRunnerBonus
             + (reliability - 0.5) * 0.12;
           const randomMult = 0.88 + rng() * 0.28;
           horse.startBurstFactor = baseMult * randomMult;
@@ -789,6 +781,7 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
         }
         const laneChangeRate = getLaneChangeRate(phase, horse, last3fNorm, horses);
         const desiredY = horse.y + (horse.targetLane - horse.y) * laneChangeRate;
+        const yBeforeLane = horse.y;
         const laneCheck = resolveLaneMovement(
           rng,
           horse,
@@ -811,7 +804,17 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
           globalLogs,
           engagedHorseIds,
         );
-        horse.y = laneCheck.nextY;
+        let nextY = laneCheck.nextY;
+        let laneDelta = nextY - yBeforeLane;
+        if (styleBlend > 0.01 && Math.abs(laneDelta) > 1e-6) {
+          const pathBudget = applyPathBudget(adjustedAdvance, laneDelta, phase.distance);
+          laneDelta *= pathBudget.lateralScale;
+          nextY = clampLane(yBeforeLane + laneDelta);
+          adjustedAdvance = pathBudget.advance;
+        } else if (laneCheck.advanceMult != null && stretchStep === 0) {
+          adjustedAdvance *= laneCheck.advanceMult;
+        }
+        horse.y = nextY;
         if (isThroughThirdCorner) {
           horse.y = Math.min(horse.y, INNER_HALF_LANE_MAX);
         }
@@ -822,9 +825,6 @@ export function runSimulation(raceData, options = {}, ratingAdjustments = {}, re
             horse.y = clampLane(horse.y + drift);
             driftShift += Math.abs(horse.y - yBeforeDrift);
           }
-        }
-        if (laneCheck.advanceMult != null && stretchStep === 0) {
-          adjustedAdvance *= laneCheck.advanceMult;
         }
         if (Number.isFinite(laneCheck.xNudge) && laneCheck.xNudge > 0 && stretchStep === 0) {
           horse.x += laneCheck.xNudge;

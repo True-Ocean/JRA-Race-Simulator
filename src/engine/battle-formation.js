@@ -56,8 +56,3 @@ export function getFormationBattleRateMult(attacker, defender, phase, phaseCtx =
   return Math.max(0.2, 1 - dx / 24);
 }
 
-/** 逃げの外枠スタート補正（0〜1、外ほど大） */
-export function getNigeOuterGateBurstBonus(horse, totalEntries) {
-  if (!isNigeStyle(horse?.style) || !Number.isFinite(horse?.gate) || totalEntries <= 1) return 0;
-  return ((horse.gate - 1) / (totalEntries - 1)) * 0.20;
-}
