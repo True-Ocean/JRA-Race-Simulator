@@ -26,6 +26,27 @@
       ]
     },
     {
+      "id": "tokyo_turf_1600",
+      "name": "東京・芝・1600m",
+      "venueKey": "tokyo",
+      "surface": "turf",
+      "distance": 1600,
+      "turnDirection": "left",
+      "simBoundaries": {
+        "launchThroughSegmentIndex": 1,
+        "settleThroughSegmentIndex": 2,
+        "formationEndRule": "beforeFirstCorner",
+        "kickRemainingMeters": 600
+      },
+      "segments": [
+        { "id": "start",   "label": "スタート", "kind": "start",    "simRole": "launch", "ratio": 0.08 },
+        { "id": "back",    "label": "向正面",         "kind": "straight", "simRole": "launch", "ratio": 0.27 },
+        { "id": "corner3", "label": "第3コーナー",    "kind": "corner",   "simRole": "settle", "cornerNo": 3, "ratio": 0.18 },
+        { "id": "corner4", "label": "第4コーナー",    "kind": "corner",   "simRole": "pace",   "cornerNo": 4, "ratio": 0.16 },
+        { "id": "final",   "label": "最終直線入口",   "kind": "final",    "simRole": "kick",   "ratio": 0.31 }
+      ]
+    },
+    {
       "id": "generic_one_turn",
       "name": "汎用ワンターン（フォールバック・手動 course_id 用）",
       "turnDirection": "right",

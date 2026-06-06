@@ -55,12 +55,12 @@ function buildPhasesFromCourse(distance, courseDef) {
     const progressStart = cumulative;
     cumulative += normRatio;
     const progressEnd = cumulative;
-    const phaseRatio = segments.length > 1 ? index / (segments.length - 1) : 1;
     const cornerNo = segment.cornerNo ?? null;
     return {
       index,
       distance: distance * normRatio,
-      ratio: phaseRatio,
+      /** 走行距離比（非 course ビルドと同義。旧 index/(n-1) ではない） */
+      ratio: progressStart,
       progressStart,
       progressEnd,
       metersStart: distance * progressStart,

@@ -1,13 +1,13 @@
 {
-  "race_id": 20260531,
+  "race_id": 20260607,
   "race_info": {
-    "date": "2026-05-31",
+    "date": "2026-06-07",
     "venue": "東京競馬場",
     "grade": "G1",
-    "age_condition": "３歳",
-    "race_name": "東京優駿",
+    "age_condition": "３上",
+    "race_name": "安田記念",
     "track": "芝",
-    "distance": 2400,
+    "distance": 1600,
     "condition": "良"
   }
 }

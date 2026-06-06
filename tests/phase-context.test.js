@@ -63,6 +63,27 @@ describe('phase-context', () => {
     expect(getPaceIntroBlend(corner4, ctx)).toBeGreaterThan(0);
   });
 
+  it('東京芝1600: launch=スタート+向正面、settle=corner3', () => {
+    const course = courses.courses.find(c => c.id === 'tokyo_turf_1600');
+    const phases = buildPhases(1600, course);
+    const ctx = createPhaseContext(1600, course, phases);
+    const start = phases.find(p => p.segmentId === 'start');
+    const back = phases.find(p => p.segmentId === 'back');
+    const corner3 = phases.find(p => p.segmentId === 'corner3');
+    const corner4 = phases.find(p => p.segmentId === 'corner4');
+    const final = phases.find(p => p.segmentId === 'final');
+
+    expect(getLaunchBlend(start, ctx)).toBe(1);
+    expect(getLaunchBlend(back, ctx)).toBe(1);
+    expect(getLaunchBlend(corner3, ctx)).toBe(0);
+    expect(getSettleBlend(corner3, ctx)).toBe(1);
+    expect(getSettleBlend(corner4, ctx)).toBe(0);
+    expect(getKickBlend(final, ctx)).toBe(1);
+    expect(phases).toHaveLength(5);
+    expect(start.ratio).toBe(0);
+    expect(back.ratio).toBeCloseTo(0.08, 3);
+  });
+
   it('コース未定義フェーズは距離・構造から境界を推定する', () => {
     const phases = buildPhases(1600, null);
     const ctx = createPhaseContext(1600, null, phases);

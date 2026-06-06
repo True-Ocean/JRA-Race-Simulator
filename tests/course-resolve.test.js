@@ -34,12 +34,12 @@ describe('resolveCourseDef', () => {
     expect(def?.id).toBe('tokyo_turf_2400');
   });
 
-  it('未定義の競馬場・距離は defaultCourseId にフォールバックする', () => {
+  it('未定義の競馬場・距離は generic_one_turn にフォールバックする', () => {
     const def = resolveCourseDef(
       { race_info: { venue: '中山競馬場', track: '芝', distance: 2500 } },
       courseCatalog,
     );
-    expect(def?.id).toBe('tokyo_turf_2400');
+    expect(def?.id).toBe('generic_one_turn');
   });
 
   it('course_id 明示時はルックアップより優先されない（一致キーが先）', () => {
@@ -68,6 +68,16 @@ describe('resolveCourseDef', () => {
   it('load-race-fixture と同構成で本番 JSON から解決できる', () => {
     const raceInfo = readJson('src/data/race-info.json');
     const def = resolveCourseDef(raceInfo, courseCatalog);
-    expect(def?.id).toBe('tokyo_turf_2400');
+    expect(def?.id).toBe('tokyo_turf_1600');
+  });
+
+  it('race-info の venue / track / distance で東京芝1600を解決する', () => {
+    const def = resolveCourseDef(
+      { race_info: { venue: '東京競馬場', track: '芝', distance: 1600 } },
+      courseCatalog,
+    );
+    expect(def?.id).toBe('tokyo_turf_1600');
+    expect(def?.segments?.find(s => s.id === 'start')?.label).toBe('スタート');
+    expect(def?.segments?.find(s => s.id === 'back')?.label).toBe('向正面');
   });
 });

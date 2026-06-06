@@ -422,6 +422,12 @@ Promise.all([
       entries: cloneRaceEntries(raceEntriesData.entries),
     };
     const courseDef = resolveCourseDef(raceData, courseCatalog);
+    if (!courseDef) {
+      console.warn(
+        '[jra-race-simulator] courses.json に一致するコースがありません。距離ベースの汎用フェーズで実行します。',
+        raceData.race_info,
+      );
+    }
     const runtimeRaceData = { ...raceData, courseDef };
     /** 脚質リセット用（JSON 初期値） */
     const baselineEntryStyles = raceData.entries.map(e => e.horse?.style ?? '');

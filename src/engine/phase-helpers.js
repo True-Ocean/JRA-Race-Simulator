@@ -37,21 +37,28 @@ function getPhaseLaneBand(phase) {
   return [1, LANE_WIDTH];
 }
 
-function isBeforeFirstCornerPhase(phase) {
-  if (!phase || phase.isCorner || phase.isFinal) return false;
+function isLaunchStraightSegment(phase) {
+  if (!phase) return false;
   const segmentId = String(phase.segmentId ?? '').toLowerCase();
   const segmentLabel = String(phase.segmentLabel ?? '');
   if (segmentId === 'start' || segmentId === 'home') return true;
   if (segmentLabel.includes('スタート') || segmentLabel.includes('ホーム直線')) return true;
+  // ワンターン（向正面ポケット等）: 向正面が launch。ツーターンの向正面（pace）は除外
+  if (segmentId === 'back' || segmentLabel.includes('向正面')) {
+    return phase.simRole === 'launch';
+  }
+  return false;
+}
+
+function isBeforeFirstCornerPhase(phase) {
+  if (!phase || phase.isCorner || phase.isFinal) return false;
+  if (isLaunchStraightSegment(phase)) return true;
   return phase.ratio < PRE_CORNER_PACK_PHASE_MAX;
 }
 
 function isStartToHomePhase(phase) {
   if (!phase || phase.isFinal) return false;
-  const segmentId = String(phase.segmentId ?? '').toLowerCase();
-  const segmentLabel = String(phase.segmentLabel ?? '');
-  if (segmentId === 'start' || segmentId === 'home') return true;
-  if (segmentLabel.includes('スタート') || segmentLabel.includes('ホーム直線')) return true;
+  if (isLaunchStraightSegment(phase)) return true;
   return !phase.isCorner && phase.ratio < PRE_CORNER_PACK_PHASE_MAX;
 }
 

@@ -30,6 +30,21 @@ export function resolveCourseDef(raceData, courseCatalog) {
     if (byId) return byId;
   }
 
+  // venueKey なしの距離専用コースが1件だけなら採用（競馬場非依存の汎用レイアウト向け）
+  if (Number.isFinite(distance)) {
+    const byDistance = courses.filter(
+      c =>
+        !c.venueKey &&
+        c.distance === distance &&
+        (c.surface ?? 'turf') === surface,
+    );
+    if (byDistance.length === 1) return byDistance[0];
+  }
+
+  // セグメント定義付きの汎用コース（距離非依存・ratio でスケール）
+  const generic = courses.find(c => c.id === 'generic_one_turn');
+  if (generic) return generic;
+
   const defId = courseCatalog?.defaultCourseId;
   if (defId) {
     return courses.find(c => c.id === defId) ?? null;

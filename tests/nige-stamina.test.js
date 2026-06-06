@@ -2,8 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { runSimulation } from '../src/engine/simulation.js';
 import { loadDefaultRaceFixture } from './helpers/load-race-fixture.js';
 
+function withNigeLeadHorse(raceData) {
+  const entries = raceData.entries.map((entry, index) => {
+    if (index !== 0) return entry;
+    return {
+      ...entry,
+      horse: { ...entry.horse, style: '逃げ' },
+    };
+  });
+  return { ...raceData, entries };
+}
+
 describe('逃げ馬のスタミナ（能力・隊列由来）', () => {
-  const raceData = loadDefaultRaceFixture();
+  const raceData = withNigeLeadHorse(loadDefaultRaceFixture());
   const options = { seed: 20260523 };
 
   it('逃げ馬はレース後にスタミナが減っている', () => {
