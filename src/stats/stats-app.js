@@ -1,6 +1,8 @@
 import { resolveCourseDef, formatRaceInfo } from './race-display.js';
-import { calcWaku } from '../engine/params.js';
-import { loadMarksByHorseFromBundle } from '../engine/rating-adjustments.js';
+import {
+  loadCarrotsByHorseFromBundle,
+  loadMarksByHorseFromBundle,
+} from '../engine/rating-adjustments.js';
 import {
   loadRaceBundleFromSession,
   persistRaceBundleToSession,
@@ -11,10 +13,10 @@ import {
   SESSION_KEY_OPEN_SCREEN,
   SESSION_KEY_STATS_RETURN_SCREEN,
 } from './aggregate-store.js';
-import { JRA_WAKU_COLORS } from '../ui/colors.js';
+import { horseBlockCellsHtml } from '../ui/horse-block.js';
 
 let runtimeRaceData = null;
-let ratingAdjustments = {};
+let carrotsByHorse = {};
 /** @type {Record<number, string>} */
 let marksByHorse = {};
 const AUTO_MARKS = ['◎', '◯', '▲', '△', '★', '☆'];
@@ -106,16 +108,17 @@ function sortRowsCopy(rows) {
   return out;
 }
 
-function sortThHtml(key, label, className = 'stats-col-metric') {
+function sortThHtml(key, label, className = 'stats-col-metric', titleLabel = label) {
   const entry = getSortEntry(key);
   const active = Boolean(entry);
   const arrow = active ? (entry.dir === 'asc' ? ' ▲' : ' ▼') : '';
   const aria = active
     ? ` aria-sort="${entry.dir === 'asc' ? 'ascending' : 'descending'}"`
     : '';
+  const tip = escapeHtml(titleLabel);
   return (
     `<th class="${escapeHtml(className)} stats-sortable" scope="col" data-sort="${key}"${aria} ` +
-    `title="クリックで並べ替え">${escapeHtml(label)}${arrow}</th>`
+    `title="${tip}（クリックで並べ替え）">${escapeHtml(label)}${arrow}</th>`
   );
 }
 
@@ -173,46 +176,6 @@ function escapeHtml(s) {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
-}
-
-function gateBadgeHtml(gate, fieldSize) {
-  const waku = calcWaku(gate, fieldSize);
-  const c = JRA_WAKU_COLORS[waku] ?? { bg: '#888888', text: '#ffffff' };
-  const g = escapeHtml(String(gate));
-  return `<span class="entry-gate" style="background:${c.bg};color:${c.text};border:1px solid rgba(255,255,255,0.3);">${g}</span>`;
-}
-
-/** 性齢の先頭字で牡／牝を判定（index 出馬表と同様） */
-function sexAgeDemographicClass(sexAgeStr) {
-  const s = String(sexAgeStr ?? '');
-  if (s.startsWith('牝')) return 'is-female';
-  if (s.startsWith('牡')) return 'is-male';
-  return '';
-}
-
-/**
- * 馬番・馬名／性齢／騎手を3つの td に分けるが、枠線で一体のブロックに見せる
- */
-function horseBlockCellsHtml(entry, gate, fieldSize) {
-  const horse = entry?.horse ?? {};
-  const jockey = entry?.jockey ?? {};
-  const nameRaw = horse.name != null && horse.name !== '' ? String(horse.name) : '—';
-  const sexRaw = horse.sex_age != null && horse.sex_age !== '' ? String(horse.sex_age) : '';
-  const sexDisplay = sexRaw !== '' ? escapeHtml(sexRaw) : '—';
-  const jockeyDisplay =
-    jockey.name != null && jockey.name !== '' ? escapeHtml(String(jockey.name)) : '—';
-  const sexClass = sexAgeDemographicClass(sexRaw);
-  const title = escapeHtml([nameRaw, sexRaw, jockey.name].filter(Boolean).join(' '));
-
-  return (
-    `<td class="stats-horse-block stats-horse-block-start" title="${title}">` +
-    `<div class="stats-horse-main-inner">` +
-    `${gateBadgeHtml(gate, fieldSize)}` +
-    `<span class="stats-horse-name-inline">${escapeHtml(nameRaw)}</span>` +
-    `</div></td>` +
-    `<td class="stats-horse-block stats-horse-block-mid stats-sex ${sexClass}" title="${title}">${sexDisplay}</td>` +
-    `<td class="stats-horse-block stats-horse-block-end stats-jockey" title="${title}">${jockeyDisplay}</td>`
-  );
 }
 
 function normalize01(value, min, max) {
@@ -352,7 +315,7 @@ function renderTable() {
   }
   const { rows, trials } = computeAggregateRows({
     runtimeRaceData,
-    ratingAdjustments,
+    carrotsByHorse,
   });
 
   const summary = document.getElementById('stats-trial-summary');
@@ -386,16 +349,16 @@ function renderTable() {
     userMarkCol +
     '</colgroup>' +
     '<thead><tr>' +
-    sortThHtml('mark', '推奨印', 'stats-col-mark') +
+    sortThHtml('mark', '推奨', 'stats-col-mark', '推奨印') +
     horseGateSortThHtml() +
-    sortThHtml('compositeScore', '総合スコア') +
-    sortThHtml('avgRank', '平均着順') +
-    sortThHtml('winRate', '勝率') +
-    sortThHtml('top2Rate', '連対率') +
-    sortThHtml('top3Rate', '複勝率') +
-    sortThHtml('bestRank', 'ベスト着順') +
-    sortThHtml('worstRank', 'ワースト着順') +
-    sortThHtml('userMark', '予想印', 'stats-col-user-mark') +
+    sortThHtml('compositeScore', '総合', 'stats-col-metric', '総合スコア') +
+    sortThHtml('avgRank', '平均', 'stats-col-metric', '平均着順') +
+    sortThHtml('winRate', '勝率', 'stats-col-metric', '勝率') +
+    sortThHtml('top2Rate', '連対', 'stats-col-metric', '連対率') +
+    sortThHtml('top3Rate', '複勝', 'stats-col-metric', '複勝率') +
+    sortThHtml('bestRank', 'ベスト', 'stats-col-metric', 'ベスト着順') +
+    sortThHtml('worstRank', 'ワースト', 'stats-col-metric', 'ワースト着順') +
+    sortThHtml('userMark', '予想', 'stats-col-user-mark', '予想印') +
     '</tr></thead>';
   const displayRows = sortRowsCopy(rows);
   const body =
@@ -407,7 +370,7 @@ function renderTable() {
         const markCell = `<td class="stats-col-mark" title="推奨印">${escapeHtml(symbol)}</td>`;
         const userSymbol = latestMarksByHorse[r.id] ?? '';
         const userMarkCell =
-          `<td class="stats-col-user-mark" title="お好み設定の印">${escapeHtml(userSymbol)}</td>`;
+          `<td class="stats-col-user-mark" title="オリジナル設定の印">${escapeHtml(userSymbol)}</td>`;
         const statCells =
           trials === 0
             ? `${markCell}${horseBlockCellsHtml(entry, r.gate, fieldSize)}${emptyMetricCells}${userMarkCell}`
@@ -459,7 +422,6 @@ async function init() {
     return;
   }
 
-  ratingAdjustments = bundle.ratingAdjustments ?? bundle.userTweaks ?? {};
   try {
     const courseCatalog = await fetch('./src/data/courses.json').then(r => r.json());
     const raceData = {
@@ -470,6 +432,11 @@ async function init() {
     const courseDef = resolveCourseDef(raceData, courseCatalog);
     runtimeRaceData = { ...raceData, courseDef };
     marksByHorse = loadMarksByHorseFromBundle(bundle, runtimeRaceData.entries.length);
+    carrotsByHorse = loadCarrotsByHorseFromBundle(
+      bundle,
+      runtimeRaceData.entries.length,
+      marksByHorse,
+    );
   } catch (e) {
     console.error(e);
     if (errEl) errEl.textContent = 'コースデータの読み込みに失敗しました。';
@@ -481,9 +448,9 @@ async function init() {
     infoEl.innerHTML = formatRaceInfo(runtimeRaceData);
   }
 
-  persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, marksByHorse);
+  persistRaceBundleToSession(runtimeRaceData, carrotsByHorse, marksByHorse);
 
-  const key = computeBucketKey(runtimeRaceData, ratingAdjustments);
+  const key = computeBucketKey(runtimeRaceData, carrotsByHorse);
   const st = loadAggregateState();
   if (st.runs?.length && st.bucketKey && st.bucketKey !== key) {
     clearAggregateState();

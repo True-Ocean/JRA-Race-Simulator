@@ -1,8 +1,11 @@
 import {
-  calcHorsesWithRatingAdjustments,
+  calcHorsesWithCarrots,
+  clonePreferencesSnapshot,
+  createDefaultCarrotsByHorse,
   createDefaultMarksByHorse,
-  createDefaultRatingAdjustments,
+  loadCarrotsByHorseFromBundle,
   loadMarksByHorseFromBundle,
+  preferencesSnapshotsEqual,
 } from './src/engine/rating-adjustments.js';
 import { buildPhases } from './src/engine/phase.js';
 import { Renderer }       from './src/ui/renderer.js';
@@ -55,7 +58,9 @@ import {
   closeActiveInfoPopover,
   getEntryStyleBadgeClass,
   mountPreRaceEditor,
+  renderPreRaceEditor,
   schedulePreRaceTableFit,
+  showPreRaceConfirm,
 } from './src/ui/pre-race-editor.js';
 
 
@@ -429,39 +434,89 @@ Promise.all([
       );
     }
     const runtimeRaceData = { ...raceData, courseDef };
-    /** 脚質リセット用（JSON 初期値） */
-    const baselineEntryStyles = raceData.entries.map(e => e.horse?.style ?? '');
+    /** オリジナル設定リセット用（JSON 初期の脚質など） */
+    const baselineRaceEntries = cloneRaceEntries(raceData.entries);
     const phases        = buildPhases(runtimeRaceData.race_info.distance, courseDef);
     const track         = raceData.race_info.track;
     const condition     = raceData.race_info.condition;
     const renderer      = new Renderer('field-canvas', phases.length, track, condition, courseDef);
 
-    /** プレレース評価スライダー（馬・騎手・調教） */
-    const ratingAdjustments = createDefaultRatingAdjustments(runtimeRaceData.entries.length);
-    /** ユーザー予想印（シミュレーション非連動） */
+    /** ユーザー🥕評価（シミュレーション補正） */
+    const carrotsByHorse = createDefaultCarrotsByHorse(runtimeRaceData.entries.length);
+    /** ユーザー予想印 */
     const marksByHorse = createDefaultMarksByHorse(runtimeRaceData.entries.length);
 
     const savedBundle = loadRaceBundleFromSession();
     if (savedBundle?.race_id === runtimeRaceData.race_id) {
-      if (savedBundle.ratingAdjustments && typeof savedBundle.ratingAdjustments === 'object') {
-        for (const [idStr, adj] of Object.entries(savedBundle.ratingAdjustments)) {
-          const id = Number(idStr);
-          if (!Number.isFinite(id) || !adj) continue;
-          ratingAdjustments[id] = {
-            horse: Number(adj.horse) || 0,
-            jockey: Number(adj.jockey) || 0,
-            training: Number(adj.training) || 0,
-          };
-        }
-      }
       Object.assign(
         marksByHorse,
         loadMarksByHorseFromBundle(savedBundle, runtimeRaceData.entries.length),
       );
+      Object.assign(
+        carrotsByHorse,
+        loadCarrotsByHorseFromBundle(
+          savedBundle,
+          runtimeRaceData.entries.length,
+          marksByHorse,
+        ),
+      );
     }
 
     const persistRaceBundle = () =>
-      persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, marksByHorse);
+      persistRaceBundleToSession(runtimeRaceData, carrotsByHorse, marksByHorse);
+
+    /** オリジナル設定の編集ドラフト（確定前） */
+    let preRaceDraft = null;
+    /** オリジナル設定を開いた時点のスナップショット */
+    let preRaceOpenSnapshot = null;
+
+    function snapshotCommittedPreferences() {
+      return clonePreferencesSnapshot(
+        runtimeRaceData,
+        carrotsByHorse,
+        marksByHorse,
+        cloneRaceEntries,
+      );
+    }
+
+    function applyPreferencesSnapshot(snapshot) {
+      runtimeRaceData.entries = cloneRaceEntries(snapshot.entries);
+      Object.keys(carrotsByHorse).forEach(k => delete carrotsByHorse[k]);
+      Object.assign(carrotsByHorse, snapshot.carrotsByHorse);
+      Object.keys(marksByHorse).forEach(k => delete marksByHorse[k]);
+      Object.assign(marksByHorse, snapshot.marksByHorse);
+    }
+
+    function bucketKeyForSnapshot(snapshot) {
+      return computeBucketKey(
+        { ...runtimeRaceData, entries: snapshot.entries },
+        snapshot.carrotsByHorse,
+      );
+    }
+
+    function beginPreRaceDraft() {
+      preRaceOpenSnapshot = snapshotCommittedPreferences();
+      preRaceDraft = clonePreferencesSnapshot(
+        runtimeRaceData,
+        carrotsByHorse,
+        marksByHorse,
+        cloneRaceEntries,
+      );
+      renderPreRaceEditor({ runtimeRaceData, draft: preRaceDraft });
+    }
+
+    function resetPreRaceDraftToBaseline() {
+      if (!preRaceDraft) return;
+      const fieldSize = baselineRaceEntries.length;
+      preRaceDraft.entries = cloneRaceEntries(baselineRaceEntries);
+      const defaultCarrots = createDefaultCarrotsByHorse(fieldSize);
+      const defaultMarks = createDefaultMarksByHorse(fieldSize);
+      for (let id = 0; id < fieldSize; id++) {
+        preRaceDraft.carrotsByHorse[id] = defaultCarrots[id];
+        preRaceDraft.marksByHorse[id] = defaultMarks[id];
+      }
+      renderPreRaceEditor({ runtimeRaceData, draft: preRaceDraft });
+    }
 
     let initialHorses = [];
     let horseMetaByName = new Map();
@@ -685,7 +740,7 @@ Promise.all([
           const orderIds = buildSummaryPlacingOrderIds(lastFinishOrderIds, simResults);
           addAggregateRun({
             runtimeRaceData,
-            ratingAdjustments,
+            carrotsByHorse,
             source: currentRaceUsedAutoAdvance ? 'auto' : 'manual',
             orderIds,
           });
@@ -736,7 +791,7 @@ Promise.all([
     }
 
     function applyComputedHorsesToUi() {
-      initialHorses = calcHorsesWithRatingAdjustments(runtimeRaceData, ratingAdjustments);
+      initialHorses = calcHorsesWithCarrots(runtimeRaceData, carrotsByHorse);
       rebuildHorseMetaByName(initialHorses);
       renderEntryList(initialHorses);
       updateEntryStaminaBars(initialHorses);
@@ -766,7 +821,7 @@ Promise.all([
       if (Array.isArray(replayBundle?.initialHorses) && replayBundle.initialHorses.length > 0) {
         initialHorses = replayBundle.initialHorses.map(h => ({ ...h }));
       } else {
-        initialHorses = calcHorsesWithRatingAdjustments(runtimeRaceData, ratingAdjustments);
+        initialHorses = calcHorsesWithCarrots(runtimeRaceData, carrotsByHorse);
       }
       rebuildHorseMetaByName(finalHorses);
       finalHorses.forEach(horse => {
@@ -1024,7 +1079,7 @@ Promise.all([
       syncPlacingPanelsHtml('');
 
       refreshRaceInfo();
-      const sim = runSimulation(runtimeRaceData, currentOptions(), ratingAdjustments, renderer);
+      const sim = runSimulation(runtimeRaceData, currentOptions(), carrotsByHorse, renderer);
       simResults = sim.results;
       simLogs = sim.logs;
       simSnapshots = sim.snapshots;
@@ -1248,18 +1303,40 @@ Promise.all([
       });
     }
 
-    function preRaceBeforeSettingsChange() {
-      const nextKey = computeBucketKey(runtimeRaceData, ratingAdjustments);
-      const agg = loadAggregateState();
-      if (agg.runs.length > 0 && agg.bucketKey && agg.bucketKey !== nextKey) {
-        clearAggregateState();
+    async function handlePreRaceCloseAttempt() {
+      if (!preRaceDraft || !preRaceOpenSnapshot) return true;
+      if (preferencesSnapshotsEqual(preRaceOpenSnapshot, preRaceDraft)) {
+        preRaceDraft = null;
+        preRaceOpenSnapshot = null;
+        return true;
       }
-      return true;
-    }
 
-    function applyPreferencesToSimulator() {
-      if (!preRaceBeforeSettingsChange()) return false;
-      applyComputedHorsesToUi();
+      const agg = loadAggregateState();
+      const newKey = bucketKeyForSnapshot(preRaceDraft);
+      const wouldResetAggregate =
+        agg.runs.length > 0 && Boolean(agg.bucketKey) && agg.bucketKey !== newKey;
+
+      const message = wouldResetAggregate
+        ? 'オリジナル設定が変更されました。これまでの集計がリセットされますがよろしいですか？'
+        : 'オリジナル設定を反映しますか？';
+      const labels = wouldResetAggregate
+        ? { okLabel: 'はい', cancelLabel: 'いいえ' }
+        : { okLabel: '反映する', cancelLabel: '変更を破棄' };
+
+      const choice = await showPreRaceConfirm(message, labels);
+      if (choice === 'stay') return false;
+      if (choice === 'discard') {
+        preRaceDraft = null;
+        preRaceOpenSnapshot = null;
+        return true;
+      }
+
+      applyPreferencesSnapshot(preRaceDraft);
+      if (wouldResetAggregate) clearAggregateState();
+      persistRaceBundle();
+      if (simulatorInitialized) applyComputedHorsesToUi();
+      preRaceDraft = null;
+      preRaceOpenSnapshot = null;
       return true;
     }
 
@@ -1286,6 +1363,7 @@ Promise.all([
       const preRaceEl = document.getElementById('pre-race-editor');
       if (preRaceEl) preRaceEl.hidden = false;
       if (btnBackToPreRace) btnBackToPreRace.hidden = true;
+      beginPreRaceDraft();
       schedulePreRaceTableFit();
     };
 
@@ -1416,20 +1494,13 @@ Promise.all([
 
     mountPreRaceEditor({
       runtimeRaceData,
-      ratingAdjustments,
-      marksByHorse,
-      baselineEntryStyles,
-      onClose: closePreferencesScreen,
-      onMarksChange: () => persistRaceBundle(),
-      onApply: () => applyPreferencesToSimulator(),
-      onReset: () => {
-        preRaceBeforeSettingsChange();
-        persistRaceBundle();
-        if (simulatorInitialized) {
-          applyComputedHorsesToUi();
-        }
-        return true;
+      getDraft: () => preRaceDraft,
+      onCloseAttempt: handlePreRaceCloseAttempt,
+      onClose: () => {
+        closePreferencesScreen();
+        ensureSimulatorInitialized();
       },
+      onReset: resetPreRaceDraftToBaseline,
     });
 
     // iOS の bfcache 復帰時も完了画面の描画を維持

@@ -1,12 +1,13 @@
-import { calcWaku } from '../engine/params.js';
 import {
+  CARROT_MAX,
+  CARROT_MIN,
   PRE_RACE_MARK_OPTIONS,
-  RATING_SLIDER_MAX,
-  RATING_SLIDER_MIN,
+  carrotsForMark,
+  clampCarrots,
   formatEntryDetailLines,
 } from '../engine/rating-adjustments.js';
 import { formatRaceInfo } from '../stats/race-display.js';
-import { JRA_WAKU_COLORS } from './colors.js';
+import { appendHorseBlockCells } from './horse-block.js';
 
 /** プレレース編集で選べる脚質（シミュレーションが参照するラベルと一致） */
 export const PRE_RACE_STYLE_OPTIONS = ['大逃げ', '逃げ', '先行', '差し', '追込'];
@@ -21,10 +22,10 @@ const ENTRY_STYLE_BADGE_CLASS = {
 };
 
 const TOAST_MS = 2600;
-const AGGREGATE_RESET_CONFIRM_MSG =
-  'これまでのシミュレーション集計がリセットされます。よろしいですか？';
 
-/** @type {((value: boolean) => void) | null} */
+/** @typedef {'apply' | 'discard' | 'stay'} PreRaceConfirmResult */
+
+/** @type {((value: PreRaceConfirmResult) => void) | null} */
 let preRaceConfirmResolve = null;
 
 function bindPreRaceConfirmDialog() {
@@ -36,6 +37,7 @@ function bindPreRaceConfirmDialog() {
   const btnCancel = document.getElementById('pre-race-confirm-cancel');
   if (!overlay || !btnOk || !btnCancel) return;
 
+  /** @param {PreRaceConfirmResult} result */
   const finish = result => {
     overlay.hidden = true;
     if (preRaceConfirmResolve) {
@@ -44,30 +46,42 @@ function bindPreRaceConfirmDialog() {
     }
   };
 
-  btnOk.addEventListener('click', () => finish(true));
-  btnCancel.addEventListener('click', () => finish(false));
+  btnOk.addEventListener('click', () => finish('apply'));
+  btnCancel.addEventListener('click', () => finish('discard'));
   overlay.addEventListener('click', ev => {
-    if (ev.target === overlay) finish(false);
+    if (ev.target === overlay) finish('stay');
   });
   document.addEventListener('keydown', ev => {
     if (overlay.hidden) return;
-    if (ev.key === 'Escape') finish(false);
+    if (ev.key === 'Escape') finish('stay');
   });
 }
 
-function showPreRaceConfirm(message = AGGREGATE_RESET_CONFIRM_MSG) {
+/**
+ * @param {string} message
+ * @param {{ okLabel?: string, cancelLabel?: string }} [labels]
+ * @returns {Promise<PreRaceConfirmResult>}
+ */
+export function showPreRaceConfirm(
+  message,
+  { okLabel = 'はい', cancelLabel = 'いいえ' } = {},
+) {
   bindPreRaceConfirmDialog();
   const overlay = document.getElementById('pre-race-confirm');
   const msgEl = document.getElementById('pre-race-confirm-message');
+  const btnOk = document.getElementById('pre-race-confirm-ok');
+  const btnCancel = document.getElementById('pre-race-confirm-cancel');
   if (!overlay || !msgEl) {
-    return Promise.resolve(window.confirm(message));
+    return Promise.resolve(window.confirm(message) ? 'apply' : 'discard');
   }
 
   return new Promise(resolve => {
     preRaceConfirmResolve = resolve;
     msgEl.textContent = message;
+    if (btnOk) btnOk.textContent = okLabel;
+    if (btnCancel) btnCancel.textContent = cancelLabel;
     overlay.hidden = false;
-    document.getElementById('pre-race-confirm-ok')?.focus();
+    btnOk?.focus();
   });
 }
 
@@ -76,7 +90,7 @@ function closePreRaceConfirm() {
   if (!overlay || overlay.hidden) return;
   overlay.hidden = true;
   if (preRaceConfirmResolve) {
-    preRaceConfirmResolve(false);
+    preRaceConfirmResolve('stay');
     preRaceConfirmResolve = null;
   }
 }
@@ -86,10 +100,6 @@ let activeInfoPopoverAnchor = null;
 
 function getEntryStyleBadgeClass(style) {
   return ENTRY_STYLE_BADGE_CLASS[style] ?? 'entry-style--default';
-}
-
-function clampRating(n) {
-  return Math.max(RATING_SLIDER_MIN, Math.min(RATING_SLIDER_MAX, Math.round(n)));
 }
 
 export function showPreRaceToast(message) {
@@ -187,47 +197,8 @@ export function schedulePreRaceTableFit() {
   });
 }
 
-/** @param {'horse' | 'jockey' | 'training'} kind */
-function makeRatingSliderCell(get, set, kind) {
-  const td = document.createElement('td');
-  td.className = 'pre-race-rating-cell';
-
-  const wrap = document.createElement('div');
-  wrap.className = 'pre-race-rating-wrap';
-
-  const val = document.createElement('span');
-  val.className = 'pre-race-rating-val';
-  val.setAttribute('aria-hidden', 'true');
-
-  const input = document.createElement('input');
-  input.type = 'range';
-  input.className = `pre-race-rating-slider pre-race-rating-slider--${kind}`;
-  input.min = String(RATING_SLIDER_MIN);
-  input.max = String(RATING_SLIDER_MAX);
-  input.step = '1';
-
-  const ticks = document.createElement('div');
-  ticks.className = 'pre-race-rating-ticks';
-  ticks.setAttribute('aria-hidden', 'true');
-  ticks.innerHTML = '<span>−5</span><span>0</span><span>+5</span>';
-
-  const paint = () => {
-    const v = get();
-    input.value = String(v);
-    val.textContent = v > 0 ? `+${v}` : String(v);
-    val.dataset.zero = v === 0 ? '1' : '0';
-    input.dataset.zero = v === 0 ? '1' : '0';
-  };
-
-  input.addEventListener('input', () => {
-    set(clampRating(Number(input.value)));
-    paint();
-  });
-
-  paint();
-  wrap.append(val, input, ticks);
-  td.appendChild(wrap);
-  return td;
+function formatCarrotLabel(count) {
+  return count > 0 ? `🥕×${count}` : '—';
 }
 
 function makeDetailCell(entry) {
@@ -251,7 +222,14 @@ function makeDetailCell(entry) {
   return td;
 }
 
-function makeMarkCell(horseId, marksByHorse, allMarkButtons, onMarksChange) {
+/**
+ * @param {number} horseId
+ * @param {Record<number, string>} marksByHorse
+ * @param {Record<number, number>} carrotsByHorse
+ * @param {Array<{ id: number, button: HTMLButtonElement, paintFn: Function }>} allMarkButtons
+ * @param {Map<number, { paint: () => void, setCount: (n: number) => void }>} carrotControlsByRow
+ */
+function makeMarkCell(horseId, marksByHorse, carrotsByHorse, allMarkButtons, carrotControlsByRow) {
   const td = document.createElement('td');
   td.className = 'pre-race-mark-cell';
 
@@ -272,8 +250,11 @@ function makeMarkCell(horseId, marksByHorse, allMarkButtons, onMarksChange) {
     const idx = PRE_RACE_MARK_OPTIONS.indexOf(current);
     const next = PRE_RACE_MARK_OPTIONS[(idx + 1) % PRE_RACE_MARK_OPTIONS.length];
     marksByHorse[horseId] = next;
+    const nextCarrots = carrotsForMark(next);
+    carrotsByHorse[horseId] = nextCarrots;
     allMarkButtons.forEach(({ paintFn, button, id }) => paintFn(id, button));
-    onMarksChange?.();
+    const carrotCtrl = carrotControlsByRow.get(horseId);
+    carrotCtrl?.setCount(nextCarrots);
   });
 
   paint();
@@ -291,131 +272,103 @@ function makeMarkCell(horseId, marksByHorse, allMarkButtons, onMarksChange) {
 }
 
 /**
- * @param {HTMLElement} tbody
- * @param {object} p
+ * @param {number} horseId
+ * @param {Record<number, number>} carrotsByHorse
+ * @param {Map<number, { paint: () => void, setCount: (n: number) => void }>} carrotControlsByRow
  */
-function resetPreRaceEditorValues(tbody, p) {
-  const {
-    ratingAdjustments,
-    totalEntries,
-    runtimeRaceData,
-    baselineEntryStyles,
-    styleSyncByRow,
-  } = p;
+function makeCarrotCell(horseId, carrotsByHorse, carrotControlsByRow) {
+  const td = document.createElement('td');
+  td.className = 'pre-race-carrot-cell';
 
-  for (let id = 0; id < totalEntries; id++) {
-    ratingAdjustments[id] = { horse: 0, jockey: 0, training: 0 };
-    const baselineStyle = baselineEntryStyles[id];
-    if (baselineStyle != null && runtimeRaceData.entries[id]?.horse) {
-      runtimeRaceData.entries[id].horse.style = baselineStyle;
-    }
-  }
+  const stepper = document.createElement('div');
+  stepper.className = 'pre-race-stepper pre-race-carrot-stepper';
 
-  tbody.querySelectorAll('tr').forEach(tr => {
-    const id = Number(tr.dataset.horseId);
-    tr.querySelectorAll('.pre-race-rating-slider').forEach(slider => {
-      slider.value = '0';
-      slider.dataset.zero = '1';
-      const val = slider.parentElement?.querySelector('.pre-race-rating-val');
-      if (val) {
-        val.textContent = '0';
-        val.dataset.zero = '1';
-      }
-    });
-    const syncStyle = styleSyncByRow.get(id);
-    if (syncStyle) syncStyle();
+  const btnMinus = document.createElement('button');
+  btnMinus.type = 'button';
+  btnMinus.className = 'pre-race-carrot-btn pre-race-carrot-btn--minus';
+  btnMinus.textContent = '−';
+  btnMinus.setAttribute('aria-label', '評価を減らす');
+
+  const label = document.createElement('span');
+  label.className = 'pre-race-carrot-label';
+  label.setAttribute('aria-live', 'polite');
+
+  const btnPlus = document.createElement('button');
+  btnPlus.type = 'button';
+  btnPlus.className = 'pre-race-carrot-btn pre-race-carrot-btn--plus';
+  btnPlus.textContent = '+';
+  btnPlus.setAttribute('aria-label', '評価を増やす');
+
+  const paint = () => {
+    const count = clampCarrots(carrotsByHorse[horseId] ?? 0);
+    carrotsByHorse[horseId] = count;
+    label.textContent = formatCarrotLabel(count);
+    label.dataset.zero = count === 0 ? '1' : '0';
+    btnMinus.disabled = count <= CARROT_MIN;
+    btnPlus.disabled = count >= CARROT_MAX;
+  };
+
+  const setCount = count => {
+    carrotsByHorse[horseId] = clampCarrots(count);
+    paint();
+  };
+
+  btnMinus.addEventListener('click', () => {
+    setCount((carrotsByHorse[horseId] ?? 0) - 1);
   });
+  btnPlus.addEventListener('click', () => {
+    setCount((carrotsByHorse[horseId] ?? 0) + 1);
+  });
+
+  paint();
+  carrotControlsByRow.set(horseId, { paint, setCount });
+
+  stepper.append(btnMinus, label, btnPlus);
+  td.appendChild(stepper);
+  return td;
 }
 
 /**
  * @param {object} p
- * @param {object} p.runtimeRaceData
- * @param {Record<number, { horse: number, jockey: number, training: number }>} p.ratingAdjustments
- * @param {Record<number, string>} p.marksByHorse
- * @param {string[]} p.baselineEntryStyles
- * @param {() => void} p.onClose
- * @param {() => void} [p.onMarksChange]
- * @param {() => boolean | void} p.onApply
- * @param {() => void} p.onReset
+ * @param {object} p.runtimeRaceData - race_info 表示用（entries は draft.entries を渡す）
+ * @param {{ entries: object[], carrotsByHorse: Record<number, number>, marksByHorse: Record<number, string> }} p.draft
  */
-export function mountPreRaceEditor(p) {
-  const {
-    runtimeRaceData,
-    ratingAdjustments,
-    marksByHorse,
-    baselineEntryStyles,
-    onClose,
-    onMarksChange,
-    onApply,
-    onReset,
-  } = p;
+export function renderPreRaceEditor(p) {
+  const { runtimeRaceData, draft } = p;
+  const { entries, carrotsByHorse, marksByHorse } = draft;
 
   const tbody = document.getElementById('pre-race-tbody');
   const infoEl = document.getElementById('pre-race-race-info');
-  const btnClose = document.getElementById('btn-pre-race-close');
-  const btnApply = document.getElementById('btn-pre-race-apply');
-  const btnReset = document.getElementById('btn-pre-race-reset');
-  if (!tbody || !btnClose || !btnApply || !btnReset) return;
+  if (!tbody) return;
 
   bindInfoPopoverDismiss();
 
   if (infoEl) {
-    infoEl.innerHTML = formatRaceInfo(runtimeRaceData);
+    infoEl.innerHTML = formatRaceInfo({ ...runtimeRaceData, entries });
   }
 
   tbody.innerHTML = '';
   closeActiveInfoPopover();
 
-  const totalEntries = runtimeRaceData.entries.length;
+  const totalEntries = entries.length;
   const allMarkButtons = [];
+  const carrotControlsByRow = new Map();
   const styleSyncByRow = new Map();
 
-  runtimeRaceData.entries.forEach((entry, idx) => {
+  entries.forEach((entry, idx) => {
     if (!entry.jockey) entry.jockey = {};
     const horse = entry.horse;
-    const jockey = entry.jockey;
-    if (!ratingAdjustments[idx]) {
-      ratingAdjustments[idx] = { horse: 0, jockey: 0, training: 0 };
-    }
+    if (carrotsByHorse[idx] === undefined) carrotsByHorse[idx] = 0;
     if (marksByHorse[idx] === undefined) marksByHorse[idx] = '';
 
     const tr = document.createElement('tr');
     tr.dataset.horseId = String(idx);
 
-    tr.appendChild(makeMarkCell(idx, marksByHorse, allMarkButtons, onMarksChange));
+    tr.appendChild(
+      makeMarkCell(idx, marksByHorse, carrotsByHorse, allMarkButtons, carrotControlsByRow),
+    );
 
-    const waku = calcWaku(entry.gate, totalEntries);
-    const wakuColors = JRA_WAKU_COLORS[waku] ?? { bg: '#888888', text: '#ffffff' };
-
-    const tdGate = document.createElement('td');
-    tdGate.className = 'pre-race-gate-cell';
-    const gateBadge = document.createElement('span');
-    gateBadge.className = 'entry-gate';
-    gateBadge.textContent = String(entry.gate);
-    gateBadge.style.background = wakuColors.bg;
-    gateBadge.style.color = wakuColors.text;
-    gateBadge.style.border = '1px solid rgba(255,255,255,0.3)';
-    tdGate.appendChild(gateBadge);
-    tr.appendChild(tdGate);
-
-    const tdName = document.createElement('td');
-    tdName.className = 'pre-race-name';
-    const nameLine = document.createElement('div');
-    nameLine.className = 'pre-race-name-line';
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 'pre-race-name-text';
-    nameSpan.textContent = horse.name ?? '';
-    nameLine.appendChild(nameSpan);
-    tdName.appendChild(nameLine);
-    tr.appendChild(tdName);
-
-    const tdJockey = document.createElement('td');
-    tdJockey.className = 'pre-race-jockey';
-    const jockeySpan = document.createElement('span');
-    jockeySpan.className = 'pre-race-jockey-name';
-    jockeySpan.textContent = jockey.name ?? '';
-    tdJockey.appendChild(jockeySpan);
-    tr.appendChild(tdJockey);
+    appendHorseBlockCells(tr, entry, entry.gate, totalEntries);
 
     const tdStyle = document.createElement('td');
     const styleWrap = document.createElement('span');
@@ -450,39 +403,28 @@ export function mountPreRaceEditor(p) {
     tdStyle.appendChild(styleWrap);
     tr.appendChild(tdStyle);
 
-    const ratings = ratingAdjustments[idx];
-    tr.appendChild(
-      makeRatingSliderCell(
-        () => ratings.horse,
-        v => {
-          ratings.horse = v;
-        },
-        'horse',
-      ),
-    );
-    tr.appendChild(
-      makeRatingSliderCell(
-        () => ratings.jockey,
-        v => {
-          ratings.jockey = v;
-        },
-        'jockey',
-      ),
-    );
-    tr.appendChild(
-      makeRatingSliderCell(
-        () => ratings.training,
-        v => {
-          ratings.training = v;
-        },
-        'training',
-      ),
-    );
-
+    tr.appendChild(makeCarrotCell(idx, carrotsByHorse, carrotControlsByRow));
     tr.appendChild(makeDetailCell(entry));
 
     tbody.appendChild(tr);
   });
+
+  schedulePreRaceTableFit();
+}
+
+/**
+ * @param {object} p
+ * @param {object} p.runtimeRaceData
+ * @param {() => { entries: object[], carrotsByHorse: Record<number, number>, marksByHorse: Record<number, string> } | null} p.getDraft
+ * @param {() => Promise<boolean>} p.onCloseAttempt
+ * @param {() => void} p.onClose
+ * @param {() => void} [p.onReset]
+ */
+export function mountPreRaceEditor(p) {
+  const { runtimeRaceData, getDraft, onCloseAttempt, onClose, onReset } = p;
+
+  const btnClose = document.getElementById('btn-pre-race-close');
+  if (!btnClose) return;
 
   const wireButton = (id, handler) => {
     const el = document.getElementById(id);
@@ -491,36 +433,24 @@ export function mountPreRaceEditor(p) {
     document.getElementById(id)?.addEventListener('click', handler);
   };
 
-  wireButton('btn-pre-race-close', () => {
+  wireButton('btn-pre-race-close', async () => {
     closePreRaceConfirm();
     closeActiveInfoPopover();
+    const proceed = await onCloseAttempt();
+    if (!proceed) return;
     onClose?.();
-  });
-
-  wireButton('btn-pre-race-apply', async () => {
-    closeActiveInfoPopover();
-    if (!(await showPreRaceConfirm())) return;
-    if (onApply?.() !== false) {
-      showPreRaceToast('評価が反映されました');
-    }
   });
 
   wireButton('btn-pre-race-reset', async () => {
     closeActiveInfoPopover();
-    if (!(await showPreRaceConfirm())) return;
-    resetPreRaceEditorValues(tbody, {
-      ratingAdjustments,
-      totalEntries,
-      runtimeRaceData,
-      baselineEntryStyles,
-      styleSyncByRow,
+    const choice = await showPreRaceConfirm('オリジナル設定を初期状態に戻しますか？', {
+      okLabel: 'はい',
+      cancelLabel: 'いいえ',
     });
-    if (onReset?.() !== false) {
-      showPreRaceToast('評価をリセットしました');
-    }
+    if (choice !== 'apply') return;
+    onReset?.();
   });
 
-  schedulePreRaceTableFit();
   const wrapEl = document.querySelector('.pre-race-table-wrap');
   if (wrapEl && typeof ResizeObserver !== 'undefined') {
     const ro = new ResizeObserver(() => schedulePreRaceTableFit());

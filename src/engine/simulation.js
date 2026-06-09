@@ -421,10 +421,10 @@ function calcStumbleRate(horse) {
   return Math.max(0.002, Math.min(0.03, rate));
 }
 
-export function runSimulation(raceData, options = {}, ratingAdjustments = {}, renderer = null) {
+export function runSimulation(raceData, options = {}, carrotsByHorse = {}, renderer = null) {
   const seedBase = options.seed ?? raceData.race_id;
   const rng      = createRng(seedBase);
-  const horses    = calcHorsesWithRatingAdjustments(raceData, ratingAdjustments);
+  const horses    = calcHorsesWithRatingAdjustments(raceData, carrotsByHorse);
   const courseDef = raceData.courseDef ?? null;
   const phases    = buildPhases(raceData.race_info.distance, courseDef);
   const phaseCtx  = createPhaseContext(raceData.race_info.distance, courseDef, phases);

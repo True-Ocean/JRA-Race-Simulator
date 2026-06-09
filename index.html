@@ -904,19 +904,81 @@
       font-size: 0.68rem;
     }
     .pre-race-table col.col-mark { width: 2.4rem; }
-    .pre-race-table col.col-gate { width: 2.6rem; }
-    .pre-race-table col.col-name { width: 15%; min-width: 6.5rem; }
-    .pre-race-table col.col-jockey { width: 8.5%; min-width: 4.5rem; }
+    .pre-race-table col.col-horse-start { width: 18%; min-width: 7rem; }
+    .pre-race-table col.col-horse-mid { width: 3.2rem; }
+    .pre-race-table col.col-horse-end { width: 10%; min-width: 4.5rem; }
     .pre-race-table col.col-style { width: 4.85rem; }
-    .pre-race-table col.col-rating { width: 5.5rem; }
+    .pre-race-table col.col-carrot { width: 6.5rem; }
     .pre-race-table col.col-detail { width: 3.4rem; }
-    .pre-race-gate-cell {
+    .pre-race-table th.stats-horse-th-merged {
       text-align: center;
-      vertical-align: middle;
     }
-    .pre-race-gate-cell .entry-gate {
-      margin: 0 auto;
-      display: inline-block;
+    .pre-race-table .stats-horse-block {
+      vertical-align: middle;
+      background-clip: padding-box;
+    }
+    .pre-race-table td.stats-horse-block-start {
+      text-align: left;
+      border-right: none;
+      padding-left: 8px;
+      padding-right: 4px;
+    }
+    .pre-race-table td.stats-horse-block-mid {
+      text-align: center;
+      border-left: none;
+      border-right: none;
+      padding-left: 4px;
+      padding-right: 4px;
+      white-space: nowrap;
+    }
+    .pre-race-table td.stats-horse-block-end {
+      text-align: left;
+      border-left: none;
+      padding-left: 4px;
+      padding-right: 4px;
+    }
+    .pre-race-table .stats-horse-main-inner {
+      display: inline-flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      max-width: 100%;
+    }
+    .pre-race-table .stats-horse-name-inline {
+      font-weight: bold;
+      color: #f0f4f8;
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 100%;
+      white-space: normal;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+      font-size: 0.72rem;
+    }
+    .pre-race-table .stats-sex {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .pre-race-table .stats-sex.is-male {
+      color: #93c5fd;
+      text-shadow: 0 0 5px rgba(147, 197, 253, 0.28);
+    }
+    .pre-race-table .stats-sex.is-female {
+      color: #f9a8d4;
+      text-shadow: 0 0 5px rgba(249, 168, 212, 0.28);
+    }
+    .pre-race-table .stats-sex:not(.is-male):not(.is-female) {
+      color: #c8d4e0;
+    }
+    .pre-race-table .stats-jockey {
+      font-size: 0.72rem;
+      color: #aabccc;
+      white-space: normal;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
     }
     .pre-race-readonly {
       font-size: 0.66rem;
@@ -1064,50 +1126,63 @@
       border-color: #854d0e;
       background: #1c1910;
     }
-    .pre-race-rating-cell {
+    .pre-race-carrot-cell {
       padding: 4px 3px;
     }
-    .pre-race-rating-wrap {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
+    .pre-race-carrot-stepper {
+      gap: 6px;
     }
-    .pre-race-rating-val {
-      font-size: 0.62rem;
-      font-variant-numeric: tabular-nums;
-      color: #7eb8d4;
-      min-height: 0.85rem;
-      line-height: 1;
-    }
-    .pre-race-rating-val[data-zero="1"] {
-      color: #475569;
-    }
-    .pre-race-rating-slider {
-      width: 100%;
-      max-width: 4.8rem;
-      height: 5px;
-      margin: 0;
-      cursor: pointer;
-    }
-    .pre-race-rating-slider--horse { accent-color: #38bdf8; }
-    .pre-race-rating-slider--jockey { accent-color: #c084fc; }
-    .pre-race-rating-slider--training { accent-color: #4ade80; }
-    .pre-race-rating-ticks {
-      display: flex;
-      justify-content: space-between;
-      width: 100%;
-      max-width: 4.8rem;
-      font-size: 0.62rem;
-      font-variant-numeric: tabular-nums;
-      font-weight: 600;
-      color: #64748b;
-      line-height: 1;
-      letter-spacing: -0.02em;
-    }
-    .pre-race-rating-ticks span:nth-child(2) {
-      color: #cbd5e1;
+    .pre-race-carrot-stepper .pre-race-carrot-btn {
+      flex: 0 0 auto;
+      width: 1.6rem;
+      height: 1.6rem;
+      min-width: 1.6rem;
+      min-height: 1.6rem;
+      max-width: 1.6rem;
+      padding: 0;
+      font-size: 1rem;
       font-weight: 700;
+      line-height: 1;
+      font-family: inherit;
+      cursor: pointer;
+      border-radius: 4px;
+      box-sizing: border-box;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(240, 192, 64, 0.3);
+      transition: filter 0.15s;
+    }
+    .pre-race-carrot-stepper .pre-race-carrot-btn:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+    .pre-race-carrot-stepper .pre-race-carrot-btn--minus {
+      background: #152536;
+      border: 1px solid #445566;
+      color: #c8d4e0;
+    }
+    .pre-race-carrot-stepper .pre-race-carrot-btn--plus {
+      background: #1e3a52;
+      border: 1px solid #445566;
+      color: #e7f3fb;
+    }
+    .pre-race-carrot-stepper .pre-race-carrot-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .pre-race-carrot-label {
+      display: inline-block;
+      min-width: 3.4rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #fde68a;
+      text-align: center;
+      white-space: nowrap;
+      line-height: 1.2;
+    }
+    .pre-race-carrot-label[data-zero="1"] {
+      color: #475569;
+      font-size: 0.9rem;
+      font-weight: 600;
     }
     /* 脚質：出馬表と同じバッジ色（ラッパーに entry-style--* を付与） */
     .pre-race-style-wrap.entry-style-inline {
@@ -1830,44 +1905,95 @@
         letter-spacing: 0.03em;
         box-sizing: border-box;
       }
-      .pre-race-table col.col-name {
-        width: 14%;
-        min-width: 4.6rem;
+      .pre-race-table {
+        min-width: 0;
+        width: 100%;
+        font-size: 0.66rem;
       }
-      .pre-race-table col.col-jockey {
-        width: 11%;
-        min-width: 4.2rem;
+      .pre-race-table col.col-mark { width: 1.85rem; }
+      .pre-race-table col.col-horse-start { width: 36%; min-width: 0; }
+      .pre-race-table col.col-horse-mid { width: 2rem; }
+      .pre-race-table col.col-horse-end { width: 17%; min-width: 0; }
+      .pre-race-table col.col-style { width: 2.85rem; }
+      .pre-race-table col.col-carrot { width: 4.85rem; }
+      .pre-race-table col.col-detail { width: 1.75rem; }
+      .pre-race-table th,
+      .pre-race-table td {
+        padding: 5px 2px;
       }
-      .pre-race-table td.pre-race-name,
-      .pre-race-name-text {
-        font-size: 0.72rem;
+      .pre-race-table thead th {
+        font-size: 0.56rem;
+        letter-spacing: 0;
+        padding: 5px 2px;
+        line-height: 1.25;
       }
-      .pre-race-table td.pre-race-jockey,
-      .pre-race-jockey-name {
-        font-size: 0.68rem;
+      .pre-race-table .stats-horse-main-inner {
+        gap: 4px;
+      }
+      .pre-race-table td.stats-horse-block-start {
+        padding-left: 4px;
+        padding-right: 2px;
+      }
+      .pre-race-table td.stats-horse-block-mid,
+      .pre-race-table td.stats-horse-block-end {
+        padding-left: 2px;
+        padding-right: 2px;
+      }
+      .pre-race-table .entry-gate {
+        width: 20px;
+        height: 20px;
+        line-height: 20px;
+        font-size: 0.64rem;
+      }
+      .pre-race-table .stats-horse-name-inline {
+        font-size: 0.66rem;
         line-height: 1.3;
       }
-      .pre-race-jockey-name {
-        white-space: normal;
-        word-break: keep-all;
-        overflow: visible;
-        text-overflow: clip;
+      .pre-race-table .stats-sex,
+      .pre-race-table .stats-jockey {
+        font-size: 0.62rem;
+        line-height: 1.3;
       }
-      .pre-race-rating-slider {
-        max-width: none;
-        min-height: 28px;
+      .pre-race-style-wrap.entry-style-inline {
+        padding: 1px 3px;
+        min-height: 0;
+      }
+      .pre-race-style-wrap select.pre-race-select {
+        max-width: 2.7rem;
+        font-size: 0.52rem;
+        padding: 1px 1px;
+        line-height: 1.25;
+      }
+      .pre-race-mark-btn {
+        min-width: 1.55rem;
+        min-height: 1.55rem;
+        font-size: 0.66rem;
+        padding: 1px 2px;
+      }
+      .pre-race-info-btn {
+        width: 1.2rem;
+        height: 1.2rem;
+        font-size: 0.56rem;
+      }
+      .pre-race-carrot-stepper {
+        gap: 3px;
+      }
+      .pre-race-carrot-label {
+        min-width: 2.55rem;
+        font-size: 0.88rem;
+      }
+      .pre-race-carrot-stepper .pre-race-carrot-btn {
+        width: 1.5rem;
+        height: 1.5rem;
+        min-width: 1.5rem;
+        min-height: 1.5rem;
+        max-width: 1.5rem;
+        font-size: 0.9rem;
       }
       .pre-race-table-inner {
         width: 100%;
         margin: 0;
         justify-content: flex-start;
-      }
-      .pre-race-table {
-        font-size: 0.72rem;
-      }
-      .pre-race-table th,
-      .pre-race-table td {
-        padding: 8px 6px;
       }
 
       /* レースサマリー：オーバーレイ全体を縦スクロール */
@@ -1983,13 +2109,29 @@
         line-height: 22px;
         font-size: 0.68rem;
       }
+      .pre-race-table col.col-horse-start { width: 34%; }
+      .pre-race-table col.col-horse-end { width: 16%; }
+      .pre-race-table col.col-style { width: 2.65rem; }
+      .pre-race-table col.col-carrot { width: 4.55rem; }
+      .pre-race-style-wrap select.pre-race-select {
+        max-width: 2.45rem;
+        font-size: 0.5rem;
+      }
+      .pre-race-carrot-label {
+        min-width: 2.35rem;
+        font-size: 0.82rem;
+      }
+      #pre-race-race-info {
+        font-size: 0.72rem;
+        padding: 7px 8px;
+      }
     }
 
   </style>
 </head>
 <body>
-  <!-- お好み設定（全画面オーバーレイ） -->
-  <div id="pre-race-editor" hidden aria-label="お好み設定">
+  <!-- オリジナル設定（全画面オーバーレイ） -->
+  <div id="pre-race-editor" hidden aria-label="オリジナル設定">
     <div id="pre-race-toast" class="pre-race-message-overlay" hidden role="status" aria-live="polite">
       <div class="pre-race-message-dialog">
         <p id="pre-race-toast-message" class="pre-race-message-text"></p>
@@ -2008,15 +2150,14 @@
       <div class="pre-race-toolbar">
         <button type="button" id="btn-pre-race-close" class="app-nav-btn">シミュレーター画面</button>
         <div class="pre-race-toolbar-right">
-          <button type="button" id="btn-pre-race-apply" class="app-nav-btn">評価反映</button>
-          <button type="button" id="btn-pre-race-reset" class="app-nav-btn app-nav-btn--secondary">評価リセット</button>
+          <button type="button" id="btn-pre-race-reset" class="app-nav-btn app-nav-btn--secondary">設定リセット</button>
         </div>
       </div>
       <h1 class="app-main-title">
         <span class="title-brand-icon" aria-hidden="true">🏇</span>
         <span class="title-text">Horse Race Simulator</span>
       </h1>
-      <p class="app-subtitle app-subtitle--pre-race">お好み設定</p>
+      <p class="app-subtitle app-subtitle--pre-race">オリジナル設定</p>
       <div id="pre-race-race-info"></div>
     </div>
     <div class="pre-race-table-wrap">
@@ -2024,25 +2165,19 @@
       <table class="pre-race-table" id="pre-race-entry-table">
         <colgroup>
           <col class="col-mark">
-          <col class="col-gate">
-          <col class="col-name">
-          <col class="col-jockey">
+          <col class="col-horse-start">
+          <col class="col-horse-mid">
+          <col class="col-horse-end">
           <col class="col-style">
-          <col class="col-rating">
-          <col class="col-rating">
-          <col class="col-rating">
+          <col class="col-carrot">
           <col class="col-detail">
         </colgroup>
         <thead>
           <tr>
             <th>予想印</th>
-            <th>馬番</th>
-            <th>馬名</th>
-            <th>騎手</th>
+            <th colspan="3" class="stats-horse-th-merged">出馬情報</th>
             <th>脚質</th>
-            <th title="能力・スピードの読み（±5 = ±5%）">馬評価</th>
-            <th title="乗り・勝負所の読み（±5 = ±5%）">騎手評価</th>
-            <th title="当日コンディション（±5 = ±5%）">調教評価</th>
+            <th>あなたの評価</th>
             <th>詳細データ</th>
           </tr>
         </thead>
@@ -2084,7 +2219,7 @@
 
   <header class="simulator-page-header">
     <div class="simulator-toolbar">
-      <button type="button" id="btn-back-to-pre-race" class="app-nav-btn" hidden aria-label="お好み設定">お好み設定</button>
+      <button type="button" id="btn-back-to-pre-race" class="app-nav-btn" hidden aria-label="オリジナル設定">オリジナル設定</button>
       <div class="simulator-toolbar-right">
         <button type="button" id="btn-show-summary" class="app-nav-btn" disabled>📊 レースサマリー</button>
         <button type="button" id="btn-open-stats" class="app-nav-btn">📈 集計画面</button>

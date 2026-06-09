@@ -2,7 +2,7 @@
  * モンテカルロ／手動シミュレーションの集計（sessionStorage、タブを閉じると消える）
  */
 
-import { serializeMarksByHorse } from '../engine/rating-adjustments.js';
+import { serializeCarrotsByHorse, serializeMarksByHorse } from '../engine/rating-adjustments.js';
 
 export const STORAGE_KEY_AGGREGATE = 'jra-sim-aggregate-v1';
 export const STORAGE_KEY_BUNDLE = 'jra-sim-bundle-v1';
@@ -30,14 +30,14 @@ export function hashString(str) {
 }
 
 /**
- * race_id + レースJSON相当（出馬・条件・評価スライダー）のバケットキー（予想印は含めない）
+ * race_id + レースJSON相当（出馬・条件・🥕）のバケットキー（予想印は含めない）
  */
-export function computeBucketKey(raceData, ratingAdjustments) {
+export function computeBucketKey(raceData, carrotsByHorse) {
   const payload = {
     race_id: raceData.race_id,
     race_info: raceData.race_info,
     entries: raceData.entries,
-    ratingAdjustments: ratingAdjustments ?? {},
+    carrotsByHorse: carrotsByHorse ?? {},
   };
   return `${raceData.race_id}:${hashString(JSON.stringify(payload))}`;
 }
@@ -45,19 +45,19 @@ export function computeBucketKey(raceData, ratingAdjustments) {
 /**
  * @param {Record<number, string>|Record<string, string>} marksByHorse
  */
-export function buildRaceBundlePayload(runtimeRaceData, ratingAdjustments, marksByHorse = {}) {
+export function buildRaceBundlePayload(runtimeRaceData, carrotsByHorse, marksByHorse = {}) {
   const fieldSize = runtimeRaceData.entries?.length ?? 0;
   return {
     race_id: runtimeRaceData.race_id,
     race_info: runtimeRaceData.race_info,
     entries: runtimeRaceData.entries,
-    ratingAdjustments: ratingAdjustments ?? {},
+    carrotsByHorse: serializeCarrotsByHorse(carrotsByHorse, fieldSize),
     marksByHorse: serializeMarksByHorse(marksByHorse, fieldSize),
   };
 }
 
-export function persistRaceBundleToSession(runtimeRaceData, ratingAdjustments, marksByHorse = {}) {
-  const payload = buildRaceBundlePayload(runtimeRaceData, ratingAdjustments, marksByHorse);
+export function persistRaceBundleToSession(runtimeRaceData, carrotsByHorse, marksByHorse = {}) {
+  const payload = buildRaceBundlePayload(runtimeRaceData, carrotsByHorse, marksByHorse);
   sessionStorage.setItem(STORAGE_KEY_BUNDLE, JSON.stringify(payload));
 }
 
@@ -99,11 +99,11 @@ export function clearAggregateState() {
 }
 
 /**
- * @param {{ runtimeRaceData: object, ratingAdjustments: object, source: 'batch'|'manual'|'auto', orderIds: number[] }} p
+ * @param {{ runtimeRaceData: object, carrotsByHorse: object, source: 'batch'|'manual'|'auto', orderIds: number[] }} p
  */
 export function addAggregateRun(p) {
-  const { runtimeRaceData, ratingAdjustments, source, orderIds } = p;
-  const bucketKey = computeBucketKey(runtimeRaceData, ratingAdjustments);
+  const { runtimeRaceData, carrotsByHorse, source, orderIds } = p;
+  const bucketKey = computeBucketKey(runtimeRaceData, carrotsByHorse);
   let state = loadAggregateState();
   if (!state.runs) state.runs = [];
   if (!state.bucketKey || state.bucketKey !== bucketKey) {
@@ -131,11 +131,11 @@ function manualRunsOnly(runs) {
 }
 
 /**
- * @param {{ runtimeRaceData: object, ratingAdjustments: object }} p
+ * @param {{ runtimeRaceData: object, carrotsByHorse: object }} p
  */
 export function computeAggregateRows(p) {
-  const { runtimeRaceData, ratingAdjustments } = p;
-  const bucketKey = computeBucketKey(runtimeRaceData, ratingAdjustments);
+  const { runtimeRaceData, carrotsByHorse } = p;
+  const bucketKey = computeBucketKey(runtimeRaceData, carrotsByHorse);
   const state = loadAggregateState();
   const keyOk = Boolean(state.bucketKey) && state.bucketKey === bucketKey;
   const runs = keyOk ? manualRunsOnly(state.runs) : [];

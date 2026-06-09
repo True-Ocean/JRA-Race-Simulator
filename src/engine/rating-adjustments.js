@@ -1,16 +1,22 @@
 import { calcAllParams } from './params.js';
 
-/** スライダー1段階あたりの％（±5 → ±5%） */
-export const RATING_PCT_PER_POINT = 0.01;
+/** 🥕の最小・最大 */
+export const CARROT_MIN = 0;
+export const CARROT_MAX = 10;
 
-/** 調教 mult を巡航へ効かせる指数（S_cruise *= trainingMult^TRAINING_CRUISE_EXP） */
-export const TRAINING_CRUISE_EXP = 0.25;
+/** 1🥕あたりの能力補正（10個で +8%） */
+export const CARROT_PCT_PER_UNIT = 0.008;
 
-/** 馬 mult を持久へ効かせる指数（S_sustain *= horseMult^HORSE_SUSTAIN_EXP） */
-export const HORSE_SUSTAIN_EXP = 0.5;
-
-export const RATING_SLIDER_MIN = -5;
-export const RATING_SLIDER_MAX = 5;
+/** 印ごとのデフォルト🥕数 */
+export const MARK_DEFAULT_CARROTS = {
+  '◎': 7,
+  '◯': 6,
+  '▲': 5,
+  '△': 4,
+  '★': 3,
+  '☆': 2,
+  '×': 1,
+};
 
 /** プレレースで選べる印（空文字 = なし） */
 export const PRE_RACE_MARK_OPTIONS = ['', '◎', '◯', '▲', '△', '★', '☆', '×', '消'];
@@ -19,18 +25,29 @@ export const PRE_RACE_MARK_OPTIONS = ['', '◎', '◯', '▲', '△', '★', '�
 export const UNIQUE_MARK_SYMBOLS = new Set(['◎', '◯', '▲', '△', '★', '☆']);
 
 /**
- * @typedef {{ horse: number, jockey: number, training: number }} HorseRatingAdjustments
+ * @param {string} symbol
+ * @returns {number}
  */
+export function carrotsForMark(symbol) {
+  return MARK_DEFAULT_CARROTS[symbol] ?? 0;
+}
+
+/**
+ * @param {number} carrots
+ * @returns {number}
+ */
+export function clampCarrots(carrots) {
+  const n = Number.isFinite(carrots) ? Math.round(carrots) : 0;
+  return Math.max(CARROT_MIN, Math.min(CARROT_MAX, n));
+}
 
 /**
  * @param {number} fieldSize
- * @returns {Record<number, HorseRatingAdjustments>}
+ * @returns {Record<number, number>}
  */
-export function createDefaultRatingAdjustments(fieldSize) {
+export function createDefaultCarrotsByHorse(fieldSize) {
   const out = {};
-  for (let id = 0; id < fieldSize; id++) {
-    out[id] = { horse: 0, jockey: 0, training: 0 };
-  }
+  for (let id = 0; id < fieldSize; id++) out[id] = 0;
   return out;
 }
 
@@ -45,13 +62,11 @@ export function createDefaultMarksByHorse(fieldSize) {
 }
 
 /**
- * @param {number} rating -5..+5
+ * @param {number} carrots
  * @returns {number}
  */
-export function ratingToMultiplier(rating) {
-  const n = Number.isFinite(rating) ? rating : 0;
-  const clamped = Math.max(RATING_SLIDER_MIN, Math.min(RATING_SLIDER_MAX, Math.round(n)));
-  return 1 + clamped * RATING_PCT_PER_POINT;
+export function carrotsToMultiplier(carrots) {
+  return 1 + clampCarrots(carrots) * CARROT_PCT_PER_UNIT;
 }
 
 function clampStat(value) {
@@ -59,37 +74,18 @@ function clampStat(value) {
 }
 
 /**
- * @param {HorseRatingAdjustments} ratings
- * @returns {{ horseMult: number, jockeyMult: number, trainingMult: number }}
- */
-export function buildRatingMultipliers(ratings = {}) {
-  return {
-    horseMult: ratingToMultiplier(ratings.horse),
-    jockeyMult: ratingToMultiplier(ratings.jockey),
-    trainingMult: ratingToMultiplier(ratings.training),
-  };
-}
-
-/**
- * ベース能力値に％補正を適用する（v1.5 役割分担）
  * @param {object} horse - calcAllParams の1頭（ベース）
- * @param {HorseRatingAdjustments} ratings
+ * @param {number} carrots
  * @returns {object}
  */
-export function applyRatingMultipliersToHorse(horse, ratings = {}) {
-  const { horseMult, jockeyMult, trainingMult } = buildRatingMultipliers(ratings);
-  const S_pace = clampStat(
-    horse.S_pace * horseMult * trainingMult ** TRAINING_CRUISE_EXP,
-  );
-  const S_kick = clampStat(
-    horse.S_kick * horseMult * trainingMult ** TRAINING_CRUISE_EXP,
-  );
+export function applyCarrotBonusToHorse(horse, carrots = 0) {
+  const mult = carrotsToMultiplier(carrots);
+  const S_pace = clampStat(horse.S_pace * mult);
+  const S_kick = clampStat(horse.S_kick * mult);
   const S_cruise = S_pace;
   const S_formation = horse.S_formation;
-  const S_sustain = clampStat(
-    horse.S_sustain * horseMult ** HORSE_SUSTAIN_EXP * trainingMult,
-  );
-  const M_maneuv = clampStat(horse.M_maneuv * jockeyMult);
+  const S_sustain = clampStat(horse.S_sustain * mult);
+  const M_maneuv = clampStat(horse.M_maneuv * mult);
   const initialStamina = S_sustain * 2.2;
   return {
     ...horse,
@@ -106,19 +102,108 @@ export function applyRatingMultipliersToHorse(horse, ratings = {}) {
 
 /**
  * @param {object} raceData
- * @param {Record<number, HorseRatingAdjustments>} ratingAdjustments
+ * @param {Record<number, number>} carrotsByHorse
  * @returns {object[]}
  */
-export function calcHorsesWithRatingAdjustments(raceData, ratingAdjustments = {}) {
+export function calcHorsesWithCarrots(raceData, carrotsByHorse = {}) {
   const baseHorses = calcAllParams(raceData);
   return baseHorses.map(horse => {
-    const ratings = ratingAdjustments[horse.id] ?? { horse: 0, jockey: 0, training: 0 };
-    return applyRatingMultipliersToHorse(horse, ratings);
+    const carrots = carrotsByHorse[horse.id] ?? 0;
+    return applyCarrotBonusToHorse(horse, carrots);
   });
 }
 
+/** @deprecated carrotsByHorse を渡す（後方互換のエイリアス） */
+export function calcHorsesWithRatingAdjustments(raceData, carrotsByHorse = {}) {
+  return calcHorsesWithCarrots(raceData, carrotsByHorse);
+}
+
+/**
+ * @param {Record<number, number>|Record<string, number>} raw
+ * @param {number} fieldSize
+ * @returns {Record<number, number>}
+ */
+export function normalizeCarrotsByHorse(raw = {}, fieldSize = 0) {
+  const out = createDefaultCarrotsByHorse(fieldSize);
+  for (const [idStr, val] of Object.entries(raw)) {
+    const id = Number(idStr);
+    if (!Number.isFinite(id) || id < 0 || id >= fieldSize) continue;
+    out[id] = clampCarrots(val);
+  }
+  return out;
+}
+
+/**
+ * @param {Record<number, number>} carrotsByHorse
+ * @param {number} fieldSize
+ * @returns {Record<string, number>}
+ */
+export function serializeCarrotsByHorse(carrotsByHorse = {}, fieldSize = 0) {
+  const out = {};
+  for (let id = 0; id < fieldSize; id++) {
+    const c = clampCarrots(carrotsByHorse[id] ?? 0);
+    if (c > 0) out[String(id)] = c;
+  }
+  return out;
+}
+
+/**
+ * @param {object|null|undefined} bundle
+ * @param {number} fieldSize
+ * @param {Record<number, string>} [marksByHorse]
+ * @returns {Record<number, number>}
+ */
+export function loadCarrotsByHorseFromBundle(bundle, fieldSize, marksByHorse = {}) {
+  if (bundle?.carrotsByHorse && typeof bundle.carrotsByHorse === 'object') {
+    return normalizeCarrotsByHorse(bundle.carrotsByHorse, fieldSize);
+  }
+  const marks =
+    marksByHorse && Object.keys(marksByHorse).length > 0
+      ? marksByHorse
+      : loadMarksByHorseFromBundle(bundle, fieldSize);
+  const out = createDefaultCarrotsByHorse(fieldSize);
+  for (let id = 0; id < fieldSize; id++) {
+    out[id] = carrotsForMark(marks[id] ?? '');
+  }
+  return out;
+}
+
+/**
+ * @param {object} runtimeRaceData
+ * @param {Record<number, number>} carrotsByHorse
+ * @param {Record<number, string>} marksByHorse
+ * @param {(entries: object[]) => object[]} cloneEntriesFn
+ */
+export function clonePreferencesSnapshot(
+  runtimeRaceData,
+  carrotsByHorse,
+  marksByHorse,
+  cloneEntriesFn,
+) {
+  const fieldSize = runtimeRaceData.entries?.length ?? 0;
+  return {
+    entries: cloneEntriesFn(runtimeRaceData.entries),
+    carrotsByHorse: normalizeCarrotsByHorse(carrotsByHorse, fieldSize),
+    marksByHorse: normalizeMarksByHorse(marksByHorse, fieldSize),
+  };
+}
+
+/**
+ * @param {object|null|undefined} a
+ * @param {object|null|undefined} b
+ * @returns {boolean}
+ */
+export function preferencesSnapshotsEqual(a, b) {
+  if (!a || !b) return false;
+  return (
+    JSON.stringify(a.entries) === JSON.stringify(b.entries) &&
+    JSON.stringify(a.carrotsByHorse) === JSON.stringify(b.carrotsByHorse) &&
+    JSON.stringify(a.marksByHorse) === JSON.stringify(b.marksByHorse)
+  );
+}
+
 function rankWithin(values, id, higherIsBetter = true) {
-  const sorted = [...values].sort((a, b) => (higherIsBetter ? b.v - a.v : a.v - b.v));
+  const sorted = [...values].sort((x, y) => (higherIsBetter ? y.v - x.v : x.v - y.v));
   const idx = sorted.findIndex(x => x.id === id);
   return idx >= 0 ? idx + 1 : null;
 }
