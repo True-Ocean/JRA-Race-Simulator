@@ -20,6 +20,15 @@
   <meta name="twitter:image" content="https://true-ocean.github.io/JRA-Race-Simulator/og-image.png">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --app-screen-max-width: 1320px;
+      --app-toolbar-title-gap: 10px;
+      --app-toolbar-btn-gap: 8px;
+      --app-screen-padding-top: max(12px, env(safe-area-inset-top, 0px));
+      --app-screen-padding-right: max(12px, env(safe-area-inset-right, 0px));
+      --app-screen-padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+      --app-screen-padding-left: max(12px, env(safe-area-inset-left, 0px));
+    }
     html {
       overflow-x: hidden;
       -webkit-overflow-scrolling: touch;
@@ -31,49 +40,57 @@
       min-height: 100dvh;
       overflow-x: hidden;
       overflow-y: auto;
-      padding:
-        max(16px, env(safe-area-inset-top, 0px))
-        max(14px, env(safe-area-inset-right, 0px))
+      padding: var(--app-screen-padding-top)
+        var(--app-screen-padding-right)
         max(32px, env(safe-area-inset-bottom, 0px))
-        max(14px, env(safe-area-inset-left, 0px));
+        var(--app-screen-padding-left);
     }
     a { color: #7eb8d4; }
-    .stats-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px 16px;
-      margin-bottom: 16px;
-      width: min(100%, 1040px);
-      margin-left: auto;
-      margin-right: auto;
-    }
     button {
       touch-action: manipulation;
     }
-    #btn-stats-back {
+    .app-nav-btn {
       padding: 6px 14px;
       font-size: 0.78rem;
       font-family: inherit;
+      letter-spacing: 0.04em;
       cursor: pointer;
       background: #1e3a52;
       border: 1px solid #445566;
       color: #e7f3fb;
       width: 9.4rem;
+      border-radius: 0;
+      box-sizing: border-box;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(240, 192, 64, 0.3);
+      transition: filter 0.15s;
     }
-    #btn-stats-back:hover { filter: brightness(1.08); }
-    #btn-stats-reset {
-      padding: 6px 14px;
-      font-size: 0.78rem;
-      font-family: inherit;
-      cursor: pointer;
+    .app-nav-btn:hover:not(:disabled) { filter: brightness(1.08); }
+    .app-nav-btn--danger {
       background: #3a2020;
-      border: 1px solid #664444;
+      border-color: #664444;
       color: #f0d0d0;
-      width: 9.4rem;
     }
-    #btn-stats-reset:hover { filter: brightness(1.08); }
+    .stats-toolbar {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--app-toolbar-btn-gap);
+      margin-bottom: var(--app-toolbar-title-gap);
+      width: 100%;
+      max-width: var(--app-screen-max-width);
+      margin-left: auto;
+      margin-right: auto;
+      box-sizing: border-box;
+    }
+    .stats-toolbar .app-nav-btn {
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+      min-height: 34px;
+      padding: 5px 8px;
+      font-size: 0.7rem;
+      letter-spacing: 0.03em;
+    }
     .stats-page-center {
       max-width: 1040px;
       margin: 0 auto;
@@ -135,6 +152,11 @@
       min-height: 1.2em;
       text-align: center;
       max-width: 1040px;
+    }
+    #stats-error:empty {
+      display: none;
+      min-height: 0;
+      margin: 0;
     }
     #stats-race-info {
       font-size: 0.84rem;
@@ -356,27 +378,6 @@
     }
 
     @media (max-width: 1024px) {
-      .stats-toolbar {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 6px 8px;
-        flex-direction: unset;
-        flex-wrap: unset;
-        align-items: stretch;
-        justify-content: stretch;
-        width: 100%;
-        max-width: none;
-        margin-bottom: 12px;
-      }
-      #btn-stats-back,
-      #btn-stats-reset {
-        width: 100%;
-        max-width: none;
-        min-height: 34px;
-        padding: 5px 10px;
-        font-size: 0.72rem;
-        box-sizing: border-box;
-      }
       .stats-page-center {
         max-width: none;
         align-items: stretch;
@@ -498,8 +499,8 @@
 </head>
 <body>
   <div class="stats-toolbar">
-    <button type="button" id="btn-stats-back">前画面に戻る</button>
-    <button type="button" id="btn-stats-reset">集計リセット</button>
+    <button type="button" id="btn-stats-back" class="app-nav-btn">前画面に戻る</button>
+    <button type="button" id="btn-stats-reset" class="app-nav-btn app-nav-btn--danger">集計リセット</button>
   </div>
   <p id="stats-error" aria-live="polite"></p>
   <div class="stats-page-center">

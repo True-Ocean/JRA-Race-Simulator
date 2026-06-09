@@ -30,15 +30,25 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --app-screen-max-width: 1320px;
+      --app-toolbar-title-gap: 10px;
+      --app-toolbar-btn-gap: 8px;
+      --app-screen-padding-top: max(12px, env(safe-area-inset-top, 0px));
+      --app-screen-padding-right: max(12px, env(safe-area-inset-right, 0px));
+      --app-screen-padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+      --app-screen-padding-left: max(12px, env(safe-area-inset-left, 0px));
+    }
+
     body {
       background: #0d1b2a;
       color: #e0e0e0;
       font-family: 'Courier New', monospace;
       height: 100dvh;
-      padding: max(14px, env(safe-area-inset-top, 0px))
-        max(12px, env(safe-area-inset-right, 0px))
-        max(14px, env(safe-area-inset-bottom, 0px))
-        max(12px, env(safe-area-inset-left, 0px));
+      padding: var(--app-screen-padding-top)
+        var(--app-screen-padding-right)
+        var(--app-screen-padding-bottom)
+        var(--app-screen-padding-left);
       display: grid;
       grid-template-rows: auto 1fr auto;
       gap: 0;
@@ -133,25 +143,52 @@
       opacity: 0.4;
       cursor: not-allowed;
     }
+    .app-nav-btn--danger {
+      background: #3a2020;
+      border-color: #664444;
+      color: #f0d0d0;
+    }
+    .app-nav-btn--danger:hover:not(:disabled) {
+      filter: brightness(1.08);
+    }
+
+    /* 全画面共通：上段ナビは 2 列グリッドで左右位置を揃える */
+    .simulator-toolbar,
+    .pre-race-toolbar,
+    .summary-toolbar {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--app-toolbar-btn-gap);
+      width: 100%;
+      max-width: var(--app-screen-max-width);
+      margin-left: auto;
+      margin-right: auto;
+      margin-bottom: var(--app-toolbar-title-gap);
+      box-sizing: border-box;
+    }
+    .simulator-toolbar-right,
+    .pre-race-toolbar-right,
+    .summary-header-row {
+      display: contents;
+    }
+    .simulator-toolbar .app-nav-btn,
+    .pre-race-toolbar .app-nav-btn,
+    .summary-toolbar .app-nav-btn {
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+      min-height: 34px;
+      padding: 5px 8px;
+      font-size: 0.7rem;
+      letter-spacing: 0.03em;
+    }
+    #btn-back-to-pre-race:not([hidden]) {
+      grid-column: 1 / -1;
+    }
 
     .simulator-page-header {
       width: min(100%, 1660px);
       margin: 0 auto 8px;
-    }
-    .simulator-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px 16px;
-      width: 100%;
-      margin-bottom: 10px;
-    }
-    .simulator-toolbar-right {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 10px;
     }
 
     button {
@@ -769,7 +806,10 @@
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 18px 16px 22px;
+      padding: var(--app-screen-padding-top)
+        var(--app-screen-padding-right)
+        max(16px, env(safe-area-inset-bottom, 0px))
+        var(--app-screen-padding-left);
       gap: 10px;
       min-height: 0;
       height: 100dvh;
@@ -790,24 +830,9 @@
     .pre-race-header {
       flex: 0 0 auto;
       text-align: center;
-      width: min(100%, 1320px);
-      margin: 0 auto;
-    }
-    .pre-race-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 10px;
       width: 100%;
-    }
-    .pre-race-toolbar-right {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-left: auto;
+      max-width: var(--app-screen-max-width);
+      margin: 0 auto;
     }
     .pre-race-message-overlay {
       position: fixed;
@@ -1250,7 +1275,10 @@
       background: #0d1b2a;
       display: flex;
       flex-direction: column;
-      padding: 14px 18px 16px;
+      padding: var(--app-screen-padding-top)
+        var(--app-screen-padding-right)
+        var(--app-screen-padding-bottom)
+        var(--app-screen-padding-left);
       gap: 10px;
       min-height: 0;
       height: 100dvh;
@@ -1259,53 +1287,19 @@
       max-width: 100%;
       box-sizing: border-box;
       overflow: hidden;
-      align-items: center;
+      align-items: stretch;
     }
     .summary-header {
       flex: 0 0 auto;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      width: min(100%, 1320px);
-    }
-    .summary-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px 16px;
+      gap: 0;
       width: 100%;
-      margin-bottom: 2px;
+      max-width: var(--app-screen-max-width);
+      margin: 0 auto;
     }
     .summary-title-block {
       text-align: center;
-    }
-    .summary-header-row {
-      display: contents;
-    }
-    .summary-header-row #btn-back-to-simulator {
-      justify-self: auto;
-      padding: 6px 14px;
-      font-size: 0.78rem;
-      letter-spacing: 0.04em;
-      background: #1e3a52;
-      border: 1px solid #445566;
-      color: #e7f3fb;
-      width: 9.4rem;
-      border-radius: 0;
-    }
-    .summary-header-row #btn-open-stats-summary {
-      justify-self: auto;
-      padding: 6px 14px;
-      font-size: 0.78rem;
-      letter-spacing: 0.04em;
-      background: #1e3a52;
-      border: 1px solid #445566;
-      color: #e7f3fb;
-      cursor: pointer;
-      font-family: inherit;
-      width: 9.4rem;
-      border-radius: 0;
     }
     #summary-race-info {
       font-size: 0.84rem;
@@ -1610,32 +1604,10 @@
       .simulator-page-header {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 0;
         width: 100%;
         min-width: 0;
         grid-area: header;
-      }
-      .simulator-toolbar {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-        margin-bottom: 0;
-        width: 100%;
-        min-width: 0;
-      }
-      .simulator-toolbar-right {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        width: 100%;
-      }
-      .simulator-toolbar .app-nav-btn {
-        width: 100%;
-        max-width: none;
-        min-height: 34px;
-        padding: 5px 8px;
-        font-size: 0.7rem;
-        letter-spacing: 0.03em;
       }
       .simulator-page-header > h1 {
         margin-bottom: 0;
@@ -1866,33 +1838,7 @@
       }
 
       #pre-race-editor {
-        padding:
-          max(12px, env(safe-area-inset-top, 0px))
-          max(12px, env(safe-area-inset-right, 0px))
-          max(16px, env(safe-area-inset-bottom, 0px))
-          max(12px, env(safe-area-inset-left, 0px));
-      }
-      .pre-race-toolbar {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        align-items: stretch;
-        margin-bottom: 0;
-      }
-      .pre-race-toolbar > .app-nav-btn,
-      .pre-race-toolbar-right .app-nav-btn {
-        width: 100%;
-        max-width: none;
-        min-height: 34px;
-        min-width: 0;
-        padding: 5px 8px;
-        font-size: 0.7rem;
-        letter-spacing: 0.03em;
-        box-sizing: border-box;
-      }
-      .pre-race-toolbar-right {
-        display: contents;
-        margin-left: 0;
+        padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
       }
       .pre-race-table-wrap {
         overflow-x: auto;
@@ -1998,11 +1944,7 @@
 
       /* レースサマリー：オーバーレイ全体を縦スクロール */
       #race-summary-screen {
-        padding:
-          max(10px, env(safe-area-inset-top, 0px))
-          max(12px, env(safe-area-inset-right, 0px))
-          max(16px, env(safe-area-inset-bottom, 0px))
-          max(12px, env(safe-area-inset-left, 0px));
+        padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
         height: auto;
         min-height: 100dvh;
         max-height: none;
@@ -2011,35 +1953,6 @@
         -webkit-overflow-scrolling: touch;
         align-items: stretch;
       }
-      .summary-header {
-        width: 100%;
-        max-width: 1320px;
-        margin: 0 auto;
-      }
-      .summary-toolbar {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-      }
-      .summary-header-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        width: 100%;
-        align-items: stretch;
-      }
-      .summary-header-row #btn-back-to-simulator,
-      .summary-header-row #btn-open-stats-summary {
-        width: 100%;
-        max-width: none;
-        min-height: 34px;
-        min-width: 0;
-        padding: 5px 8px;
-        font-size: 0.7rem;
-        letter-spacing: 0.03em;
-        box-sizing: border-box;
-      }
-
       .summary-body {
         grid-template-columns: 1fr;
         width: 100%;
