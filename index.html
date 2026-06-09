@@ -1873,28 +1873,13 @@
           max(12px, env(safe-area-inset-left, 0px));
       }
       .pre-race-toolbar {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-        margin-bottom: 0;
-      }
-      .pre-race-toolbar > .app-nav-btn {
-        width: 100%;
-        max-width: none;
-        min-height: 34px;
-        min-width: 0;
-        padding: 5px 8px;
-        font-size: 0.7rem;
-        letter-spacing: 0.03em;
-        box-sizing: border-box;
-      }
-      .pre-race-toolbar-right {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 8px;
-        width: 100%;
-        margin-left: 0;
+        align-items: stretch;
+        margin-bottom: 0;
       }
+      .pre-race-toolbar > .app-nav-btn,
       .pre-race-toolbar-right .app-nav-btn {
         width: 100%;
         max-width: none;
@@ -1905,27 +1890,37 @@
         letter-spacing: 0.03em;
         box-sizing: border-box;
       }
-      .pre-race-table {
-        min-width: 0;
-        width: 100%;
-        font-size: 0.66rem;
+      .pre-race-toolbar-right {
+        display: contents;
+        margin-left: 0;
       }
-      .pre-race-table col.col-mark { width: 1.85rem; }
-      .pre-race-table col.col-horse-start { width: 36%; min-width: 0; }
-      .pre-race-table col.col-horse-mid { width: 2rem; }
-      .pre-race-table col.col-horse-end { width: 17%; min-width: 0; }
-      .pre-race-table col.col-style { width: 2.85rem; }
-      .pre-race-table col.col-carrot { width: 4.85rem; }
-      .pre-race-table col.col-detail { width: 1.75rem; }
+      .pre-race-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .pre-race-table {
+        width: max(100%, 31rem);
+        min-width: 31rem;
+        table-layout: fixed;
+        font-size: 0.68rem;
+      }
+      .pre-race-table col.col-mark { width: 2.2rem; }
+      .pre-race-table col.col-horse-start { width: 7.5rem; }
+      .pre-race-table col.col-horse-mid { width: 2.5rem; }
+      .pre-race-table col.col-horse-end { width: 4.5rem; }
+      .pre-race-table col.col-style { width: 3.5rem; }
+      .pre-race-table col.col-carrot { width: 7rem; }
+      .pre-race-table col.col-detail { width: 3.2rem; }
       .pre-race-table th,
       .pre-race-table td {
-        padding: 5px 2px;
+        padding: 5px 4px;
       }
       .pre-race-table thead th {
-        font-size: 0.56rem;
-        letter-spacing: 0;
-        padding: 5px 2px;
-        line-height: 1.25;
+        font-size: 0.6rem;
+        letter-spacing: 0.02em;
+        padding: 5px 4px;
+        line-height: 1.3;
+        white-space: nowrap;
       }
       .pre-race-table .stats-horse-main-inner {
         gap: 4px;
@@ -1948,20 +1943,24 @@
       .pre-race-table .stats-horse-name-inline {
         font-size: 0.66rem;
         line-height: 1.3;
+        white-space: nowrap;
+        overflow-wrap: normal;
       }
       .pre-race-table .stats-sex,
       .pre-race-table .stats-jockey {
         font-size: 0.62rem;
         line-height: 1.3;
+        white-space: nowrap;
+        overflow-wrap: normal;
       }
       .pre-race-style-wrap.entry-style-inline {
         padding: 1px 3px;
         min-height: 0;
       }
       .pre-race-style-wrap select.pre-race-select {
-        max-width: 2.7rem;
-        font-size: 0.52rem;
-        padding: 1px 1px;
+        max-width: none;
+        font-size: 0.58rem;
+        padding: 2px 3px;
         line-height: 1.25;
       }
       .pre-race-mark-btn {
@@ -1976,22 +1975,23 @@
         font-size: 0.56rem;
       }
       .pre-race-carrot-stepper {
-        gap: 3px;
+        gap: 4px;
       }
       .pre-race-carrot-label {
-        min-width: 2.55rem;
-        font-size: 0.88rem;
+        min-width: 3rem;
+        font-size: 0.95rem;
       }
       .pre-race-carrot-stepper .pre-race-carrot-btn {
-        width: 1.5rem;
-        height: 1.5rem;
-        min-width: 1.5rem;
-        min-height: 1.5rem;
-        max-width: 1.5rem;
-        font-size: 0.9rem;
+        width: 1.55rem;
+        height: 1.55rem;
+        min-width: 1.55rem;
+        min-height: 1.55rem;
+        max-width: 1.55rem;
+        font-size: 0.95rem;
       }
       .pre-race-table-inner {
-        width: 100%;
+        width: auto;
+        min-width: 100%;
         margin: 0;
         justify-content: flex-start;
       }
@@ -2067,13 +2067,13 @@
     @media (max-width: 600px) {
       h1,
       .app-main-title {
-        flex-wrap: wrap;
-        white-space: normal;
+        flex-wrap: nowrap;
+        white-space: nowrap;
         justify-content: center;
         text-align: center;
         line-height: 1.2;
-        font-size: clamp(0.95rem, 4.2vw + 0.55rem, 2.1rem);
-        letter-spacing: 0.06em;
+        font-size: clamp(0.72rem, 2.6vw + 0.48rem, 2.1rem);
+        letter-spacing: clamp(0.02em, 0.12vw, 0.06em);
       }
       .app-subtitle {
         font-size: clamp(0.82rem, 2.5vw + 0.55rem, 1.05rem);
@@ -2108,18 +2108,6 @@
         height: 22px;
         line-height: 22px;
         font-size: 0.68rem;
-      }
-      .pre-race-table col.col-horse-start { width: 34%; }
-      .pre-race-table col.col-horse-end { width: 16%; }
-      .pre-race-table col.col-style { width: 2.65rem; }
-      .pre-race-table col.col-carrot { width: 4.55rem; }
-      .pre-race-style-wrap select.pre-race-select {
-        max-width: 2.45rem;
-        font-size: 0.5rem;
-      }
-      .pre-race-carrot-label {
-        min-width: 2.35rem;
-        font-size: 0.82rem;
       }
       #pre-race-race-info {
         font-size: 0.72rem;

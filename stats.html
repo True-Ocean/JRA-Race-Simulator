@@ -389,40 +389,41 @@
       }
       .stats-table {
         table-layout: fixed;
-        width: 100%;
-        min-width: 0;
-        font-size: 0.7rem;
+        width: max(100%, 46rem);
+        min-width: 46rem;
+        font-size: 0.72rem;
       }
-      .stats-table col.stats-col-mark { width: 1.7rem; }
-      .stats-table col.stats-col-horse-main { width: 26%; }
-      .stats-table col.stats-col-horse-sex { width: 1.85rem; }
-      .stats-table col.stats-col-horse-jockey { width: 12%; }
-      .stats-table col.stats-col-metric { width: 6.2%; }
-      .stats-table col.stats-col-user-mark { width: 1.7rem; }
+      .stats-table col.stats-col-mark { width: 2rem; }
+      .stats-table col.stats-col-horse-main { width: 8rem; }
+      .stats-table col.stats-col-horse-sex { width: 2.2rem; }
+      .stats-table col.stats-col-horse-jockey { width: 4.5rem; }
+      .stats-table col.stats-col-metric { width: 4.1rem; }
+      .stats-table col.stats-col-user-mark { width: 2rem; }
       .stats-table th,
       .stats-table td {
-        padding: 4px 2px;
+        padding: 4px 4px;
       }
       .stats-table th.stats-col-metric,
       .stats-table th.stats-horse-sort-th {
-        font-size: 0.54rem;
-        line-height: 1.15;
-        padding: 4px 1px;
-        letter-spacing: -0.03em;
-        white-space: normal;
-        word-break: keep-all;
+        font-size: 0.62rem;
+        line-height: 1.25;
+        padding: 4px 3px;
+        letter-spacing: 0;
+        white-space: nowrap;
       }
       .stats-table th.stats-col-mark,
       .stats-table th.stats-col-user-mark {
-        font-size: 0.54rem;
-        line-height: 1.15;
-        padding: 4px 1px;
-        letter-spacing: -0.02em;
+        font-size: 0.62rem;
+        line-height: 1.25;
+        padding: 4px 3px;
+        letter-spacing: 0;
+        white-space: nowrap;
       }
       .stats-table td.stats-col-metric {
-        font-size: 0.64rem;
-        padding-left: 1px;
-        padding-right: 1px;
+        font-size: 0.68rem;
+        padding-left: 3px;
+        padding-right: 3px;
+        white-space: nowrap;
       }
       .stats-table td.stats-col-mark,
       .stats-table td.stats-col-user-mark {
@@ -443,11 +444,15 @@
       .stats-horse-name-inline {
         font-size: 0.64rem;
         line-height: 1.3;
+        white-space: nowrap;
+        overflow-wrap: normal;
       }
       .stats-sex,
       .stats-jockey {
         font-size: 0.6rem;
         line-height: 1.3;
+        white-space: nowrap;
+        overflow-wrap: normal;
       }
       .entry-gate {
         width: 20px;
@@ -471,51 +476,11 @@
 
     @media (max-width: 600px) {
       .app-main-title {
-        flex-wrap: wrap;
-        white-space: normal;
+        flex-wrap: nowrap;
+        white-space: nowrap;
         line-height: 1.2;
-        font-size: clamp(0.95rem, 4.2vw + 0.55rem, 2.1rem);
-      }
-      #stats-race-info {
-        font-size: 0.78rem;
-        padding: 8px 10px;
-      }
-      .stats-table {
-        font-size: 0.64rem;
-      }
-      .stats-table col.stats-col-mark { width: 1.55rem; }
-      .stats-table col.stats-col-horse-main { width: 24%; }
-      .stats-table col.stats-col-horse-sex { width: 1.7rem; }
-      .stats-table col.stats-col-horse-jockey { width: 11%; }
-      .stats-table col.stats-col-metric { width: 6%; }
-      .stats-table col.stats-col-user-mark { width: 1.55rem; }
-      .stats-table th.stats-col-metric,
-      .stats-table th.stats-horse-sort-th,
-      .stats-table th.stats-col-mark,
-      .stats-table th.stats-col-user-mark {
-        font-size: 0.5rem;
-        padding: 3px 1px;
-        letter-spacing: -0.04em;
-      }
-      .stats-table td.stats-col-metric {
-        font-size: 0.58rem;
-      }
-      .stats-table td.stats-col-mark,
-      .stats-table td.stats-col-user-mark {
-        font-size: 0.66rem;
-      }
-      .stats-horse-name-inline {
-        font-size: 0.6rem;
-      }
-      .stats-sex,
-      .stats-jockey {
-        font-size: 0.56rem;
-      }
-      .entry-gate {
-        width: 18px;
-        height: 18px;
-        line-height: 18px;
-        font-size: 0.58rem;
+        font-size: clamp(0.72rem, 2.6vw + 0.48rem, 2.1rem);
+        letter-spacing: clamp(0.02em, 0.12vw, 0.06em);
       }
       #stats-race-info {
         font-size: 0.72rem;
