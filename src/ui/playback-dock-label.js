@@ -1,6 +1,7 @@
 /** コース再生ボタン用アイコン（ブラウザ・スマホ共通の絵文字） */
 export const PLAYBACK_EMOJI = {
   play: '\u25B6\uFE0F',
+  auto: '\u25B6\uFE0F\u25B6\uFE0F',
   next: '\u23ED\uFE0F',
   pause: '\u23F8\uFE0F',
   replay: '\u21AA\uFE0F',
@@ -9,7 +10,7 @@ export const PLAYBACK_EMOJI = {
 /**
  * コース再生ドックのボタン文言とアイコンを更新する。
  * @param {HTMLButtonElement | null} button
- * @param {'play' | 'next' | 'pause' | 'replay' | null} iconKey
+ * @param {'play' | 'auto' | 'next' | 'pause' | 'replay' | null} iconKey
  * @param {string} label
  */
 export function setPlaybackButton(button, iconKey, label) {

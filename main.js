@@ -13,6 +13,7 @@ import {
   addAggregateRun,
   clearAggregateState,
   computeBucketKey,
+  getAggregateTrialCount,
   loadAggregateState,
   loadRaceBundleFromSession,
   persistRaceBundleToSession,
@@ -588,7 +589,7 @@ Promise.all([
         btnPlayAuto.classList.add('is-auto-active');
         btnPlayAuto.setAttribute('aria-label', 'オート再生を停止');
       } else {
-        setPlaybackButton(btnPlayAuto, 'play', 'オート');
+        setPlaybackButton(btnPlayAuto, 'auto', 'オート');
         btnPlayAuto.classList.remove('is-auto-active');
         btnPlayAuto.setAttribute('aria-label', 'オート再生');
       }
@@ -637,7 +638,15 @@ Promise.all([
       }
     }
 
+    function syncSimulatorTrialSubtitle() {
+      const el = document.getElementById('simulator-subtitle');
+      if (!el) return;
+      const trials = getAggregateTrialCount({ runtimeRaceData, carrotsByHorse });
+      el.textContent = trials > 0 ? `シミュレーター（${trials}回実施済）` : 'シミュレーター';
+    }
+
     function syncSimulatorChromeForAutoMode() {
+      syncSimulatorTrialSubtitle();
       const btnOpenStats = document.getElementById('btn-open-stats');
       const inGoalScene = Boolean(controller?.goalSceneActive);
       const driving = isAutoDrivingRace();

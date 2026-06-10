@@ -131,6 +131,18 @@ function manualRunsOnly(runs) {
 }
 
 /**
+ * 現在のレース条件・🥕に対する集計済み試行回数（手動・自動のみ）
+ * @param {{ runtimeRaceData: object, carrotsByHorse: object }} p
+ */
+export function getAggregateTrialCount(p) {
+  const { runtimeRaceData, carrotsByHorse } = p;
+  const bucketKey = computeBucketKey(runtimeRaceData, carrotsByHorse);
+  const state = loadAggregateState();
+  if (!state.bucketKey || state.bucketKey !== bucketKey) return 0;
+  return manualRunsOnly(state.runs).length;
+}
+
+/**
  * @param {{ runtimeRaceData: object, carrotsByHorse: object }} p
  */
 export function computeAggregateRows(p) {
