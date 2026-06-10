@@ -1,3 +1,4 @@
+import { carrotBadgeHtml } from './carrot-display.js';
 import { JRA_WAKU_COLORS } from './colors.js';
 import { escapeHtml } from './race-log.js';
 
@@ -6,8 +7,15 @@ import { escapeHtml } from './race-log.js';
  * @param {object} horse
  * @param {Map<string, object> | undefined} horseMetaByName
  * @param {{ timeLabel?: string, marginLabel?: string } | null | undefined} finishDisplay
+ * @param {Record<number, number>} [carrotsByHorse]
  */
-function formatHomePlacingRowInnerHtml(rank, horse, horseMetaByName, finishDisplay = null) {
+function formatHomePlacingRowInnerHtml(
+  rank,
+  horse,
+  horseMetaByName,
+  finishDisplay = null,
+  carrotsByHorse = {},
+) {
   const meta = horseMetaByName?.get(horse.name);
   const waku = meta ? (JRA_WAKU_COLORS[meta.waku] ?? { bg: '#888', text: '#fff' }) : null;
   const badgeHtml =
@@ -25,7 +33,10 @@ function formatHomePlacingRowInnerHtml(rank, horse, horseMetaByName, finishDispl
   return `
       <span class="summary-placing-rank">${rank}着</span>
       ${badgeHtml}
-      <span class="summary-placing-name">${escapeHtml(horse.name)}</span>
+      <span class="summary-placing-name-line">
+        <span class="summary-placing-name">${escapeHtml(horse.name)}</span>
+        ${carrotBadgeHtml(carrotsByHorse[horse.id] ?? 0)}
+      </span>
       ${timeHtml}
       ${marginHtml}
     `;
@@ -44,8 +55,15 @@ function syncPlacingPanelsHtml(html) {
  * @param {object} horse
  * @param {Map<string, object> | undefined} horseMetaByName
  * @param {{ timeLabel?: string, marginLabel?: string } | null | undefined} finishDisplay
+ * @param {Record<number, number>} [carrotsByHorse]
  */
-function appendPlacingRowToPanels(rank, horse, horseMetaByName, finishDisplay = null) {
+function appendPlacingRowToPanels(
+  rank,
+  horse,
+  horseMetaByName,
+  finishDisplay = null,
+  carrotsByHorse = {},
+) {
   const rankClass =
     rank === 1 ? ' is-top1' : rank === 2 ? ' is-top2' : rank === 3 ? ' is-top3' : '';
   const makeDiv = () => {
@@ -56,6 +74,7 @@ function appendPlacingRowToPanels(rank, horse, horseMetaByName, finishDisplay = 
       horse,
       horseMetaByName,
       finishDisplay,
+      carrotsByHorse,
     );
     return div;
   };
@@ -79,6 +98,7 @@ function appendPlacingRowToPanels(rank, horse, horseMetaByName, finishDisplay = 
  *   simResults: object[],
  *   horseMetaByName: Map<string, object>,
  *   finishRows?: Array<{ id: number, timeLabel: string, marginLabel: string }>,
+ *   carrotsByHorse?: Record<number, number>,
  * }} params
  */
 function renderPlacingPanelsWithFinishTimes({
@@ -86,6 +106,7 @@ function renderPlacingPanelsWithFinishTimes({
   simResults,
   horseMetaByName,
   finishRows = [],
+  carrotsByHorse = {},
 }) {
   const resultsById = new Map(
     (simResults ?? []).map(h => [h.id, h]),
@@ -108,6 +129,7 @@ function renderPlacingPanelsWithFinishTimes({
         horse,
         horseMetaByName,
         finishDisplay,
+        carrotsByHorse,
       );
       return `<div class="summary-placing-entry${rankClass}">${inner}</div>`;
     })

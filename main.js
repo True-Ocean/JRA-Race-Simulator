@@ -53,6 +53,7 @@ import {
   getStaminaBarClassName,
   updateEntryStaminaBars,
 } from './src/ui/entry-stamina.js';
+import { carrotBadgeHtml } from './src/ui/carrot-display.js';
 import { setPlaybackButton } from './src/ui/playback-dock-label.js';
 import {
   closeActiveInfoPopover,
@@ -160,6 +161,7 @@ function refreshPlacingBoardWithFinishTimes({
   horseMetaByName,
   goalFinishedAtById = null,
   goalRecording = null,
+  carrotsByHorse = {},
 }) {
   if (!Array.isArray(simResults) || simResults.length === 0) return;
   const orderIds = buildSummaryPlacingOrderIds(finishOrderIds, simResults);
@@ -178,6 +180,7 @@ function refreshPlacingBoardWithFinishTimes({
     simResults,
     horseMetaByName,
     finishRows: rows,
+    carrotsByHorse,
   });
 }
 
@@ -190,6 +193,7 @@ function renderRaceSummaryScreen({
   snapshots,
   phases,
   getPhaseLabel,
+  carrotsByHorse = {},
 }) {
   const screenEl = document.getElementById('race-summary-screen');
   if (!screenEl) return;
@@ -250,6 +254,7 @@ function renderRaceSummaryScreen({
       ${badgeHtml}
       <div class="summary-placing-line">
         <span class="summary-placing-name">${escapeHtml(horse.name)}</span>
+        ${carrotBadgeHtml(carrotsByHorse[id] ?? 0)}
         <span class="summary-placing-meta">
           <span class="summary-placing-sex-age${sexAgeClass}">${escapeHtml(sexAgeLabel || '—')}</span>
           <span class="summary-placing-jockey">${escapeHtml(jockeyName)}</span>
@@ -285,6 +290,7 @@ function renderRaceSummaryScreen({
       <span class="summary-horse-rank">${rank}着</span>
       ${badgeHtml}
       <span class="summary-horse-name">${escapeHtml(horse.name)}</span>
+      ${carrotBadgeHtml(carrotsByHorse[horse.id] ?? 0)}
     `;
     block.appendChild(head);
 
@@ -331,7 +337,7 @@ function cloneRaceEntries(entries) {
   }
 }
 
-function renderEntryList(horses) {
+function renderEntryList(horses, carrotsByHorse = {}) {
   const listEl = document.getElementById('entry-list');
   if (!listEl) return;
   listEl.innerHTML = '';
@@ -357,6 +363,7 @@ function renderEntryList(horses) {
       <div class="entry-gate" style="background:${waku.bg};color:${waku.text};border:1px solid rgba(255,255,255,0.3);">${horse.gate}</div>
       <div class="entry-meta-line">
         <span class="entry-name">${escapeHtml(horse.name)}</span>
+        ${carrotBadgeHtml(carrotsByHorse[horse.id] ?? 0)}
         ${profileLabel ? `<span class="entry-demographics ${sexClass}">${escapeHtml(profileLabel)}</span>` : ''}
         <span class="entry-jockey-inline">🏇 ${escapeHtml(horse.jockeyName ?? '')}</span>
         <span class="entry-style-inline ${getEntryStyleBadgeClass(horse.style)}">${escapeHtml(horse.style)}</span>
@@ -729,6 +736,7 @@ Promise.all([
         horseMetaByName,
         goalFinishedAtById: lastGoalFinishedAtById,
         goalRecording: recordedGoalPlayback,
+        carrotsByHorse,
       });
       setTimeout(() => {
         const shouldAggregate =
@@ -793,7 +801,7 @@ Promise.all([
     function applyComputedHorsesToUi() {
       initialHorses = calcHorsesWithCarrots(runtimeRaceData, carrotsByHorse);
       rebuildHorseMetaByName(initialHorses);
-      renderEntryList(initialHorses);
+      renderEntryList(initialHorses, carrotsByHorse);
       updateEntryStaminaBars(initialHorses);
       renderer.resetHorseRenderState();
       renderer.draw(initialHorses, phases[0], 0);
@@ -828,7 +836,7 @@ Promise.all([
         const entry = runtimeRaceData.entries.find((_, i) => i === horse.id);
         if (entry) horse.jockeyName = entry.jockey.name;
       });
-      renderEntryList(finalHorses);
+      renderEntryList(finalHorses, carrotsByHorse);
       updateEntryStaminaBars(finalHorses);
       renderer.resetHorseRenderState();
 
@@ -1060,6 +1068,7 @@ Promise.all([
           goalRecording: replayOpts.goalRecording ?? null,
           raceId: runtimeRaceData.race_id,
           raceInfo: runtimeRaceData.race_info,
+          carrotsByHorse,
         },
       );
     }
@@ -1244,6 +1253,7 @@ Promise.all([
           snapshots: simSnapshots,
           phases,
           getPhaseLabel: (phase) => renderer.getPhaseName(phase),
+          carrotsByHorse,
         });
       });
 
@@ -1400,6 +1410,7 @@ Promise.all([
         snapshots: simSnapshots,
         phases,
         getPhaseLabel: (phase) => renderer.getPhaseName(phase),
+        carrotsByHorse,
       });
       return true;
     };
@@ -1434,6 +1445,7 @@ Promise.all([
             horseMetaByName,
             goalFinishedAtById: lastGoalFinishedAtById,
             goalRecording: replayBundle?.goalRecording ?? loadGoalRecordingFromSession(),
+            carrotsByHorse,
           });
         } else if (typeof ui.placingHtml === 'string') {
           syncPlacingPanelsHtml(ui.placingHtml);

@@ -125,6 +125,7 @@ class PhaseController {
     this.simResults  = simResults;
     this.initialHorses = initialHorses.map(h => ({ ...h }));
     this.horseMetaByName = horseMetaByName;
+    this.carrotsByHorse = playbackHooks.carrotsByHorse ?? {};
     this.currentIdx  = 0;
     this.lastRenderedHorses = null;
     this._logQueue   = [];
@@ -364,7 +365,13 @@ class PhaseController {
   }
 
   _appendPlacingRow(rank, horse, finishDisplay = null) {
-    appendPlacingRowToPanels(rank, horse, this.horseMetaByName, finishDisplay);
+    appendPlacingRowToPanels(
+      rank,
+      horse,
+      this.horseMetaByName,
+      finishDisplay,
+      this.carrotsByHorse,
+    );
     this._scrollRaceLogToBottom();
   }
 

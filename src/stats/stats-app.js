@@ -373,8 +373,8 @@ function renderTable() {
           `<td class="stats-col-user-mark" title="オリジナル設定の印">${escapeHtml(userSymbol)}</td>`;
         const statCells =
           trials === 0
-            ? `${markCell}${horseBlockCellsHtml(entry, r.gate, fieldSize)}${emptyMetricCells}${userMarkCell}`
-            : `${markCell}${horseBlockCellsHtml(entry, r.gate, fieldSize)}` +
+            ? `${markCell}${horseBlockCellsHtml(entry, r.gate, fieldSize, carrotsByHorse[r.id] ?? 0)}${emptyMetricCells}${userMarkCell}`
+            : `${markCell}${horseBlockCellsHtml(entry, r.gate, fieldSize, carrotsByHorse[r.id] ?? 0)}` +
               `<td class="stats-col-metric">${fmtScore(compositeScores.get(r.id))}</td>` +
               `<td class="stats-col-metric">${fmtAvg(r.avgRank)}</td>` +
               `<td class="stats-col-metric">${pct(r.winRate)}</td>` +

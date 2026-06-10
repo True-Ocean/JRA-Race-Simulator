@@ -356,6 +356,16 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .horse-carrot-badge {
+      flex: 0 0 auto;
+      font-size: 0.62rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #fde68a;
+      white-space: nowrap;
+      line-height: 1.2;
+      letter-spacing: 0.01em;
+    }
     .entry-demographics {
       color: #fde68a;
       font-size: 0.56rem;
@@ -668,9 +678,32 @@
       font-size: 0.68rem;
       line-height: 1.2;
     }
+    #placing-panel .summary-placing-name-line,
+    #placing-panel-overlay .summary-placing-name-line {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.28em;
+      min-width: 0;
+      overflow: hidden;
+    }
     #placing-panel .summary-placing-name,
     #placing-panel-overlay .summary-placing-name {
       font-size: 0.66rem;
+      line-height: 1.2;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #placing-panel .horse-carrot-badge,
+    #placing-panel-overlay .horse-carrot-badge {
+      flex: 0 0 auto;
+      font-size: 0.6rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #fde68a;
+      white-space: nowrap;
       line-height: 1.2;
     }
     #placing-panel .summary-placing-badge,
@@ -1509,6 +1542,16 @@
     .summary-horse-head .summary-horse-name {
       font-weight: 700;
       color: #ffffff;
+    }
+    .summary-placing-line .horse-carrot-badge,
+    .summary-horse-head .horse-carrot-badge {
+      flex: 0 0 auto;
+      font-size: 0.68rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #fde68a;
+      white-space: nowrap;
+      line-height: 1.2;
     }
     .summary-horse-events {
       display: flex;

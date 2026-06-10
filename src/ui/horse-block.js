@@ -1,4 +1,5 @@
 import { calcWaku } from '../engine/params.js';
+import { carrotBadgeHtml, carrotCountLabel } from './carrot-display.js';
 import { JRA_WAKU_COLORS } from './colors.js';
 
 function escapeHtml(s) {
@@ -40,29 +41,34 @@ function horseBlockTexts(entry) {
 /**
  * 馬番・馬名／性齢／騎手を3つの td に分けるが、枠線で一体のブロックに見せる
  */
-export function horseBlockCellsHtml(entry, gate, fieldSize) {
+export function horseBlockCellsHtml(entry, gate, fieldSize, carrotCount = 0) {
   const { nameRaw, sexDisplay, jockeyDisplay, sexClass, title } = horseBlockTexts(entry);
+  const carrotLabel = carrotCount > 0 ? ` ${carrotCountLabel(carrotCount)}` : '';
+  const fullTitle = title + carrotLabel;
 
   return (
-    `<td class="stats-horse-block stats-horse-block-start" title="${escapeHtml(title)}">` +
+    `<td class="stats-horse-block stats-horse-block-start" title="${escapeHtml(fullTitle)}">` +
     `<div class="stats-horse-main-inner">` +
     `${gateBadgeHtml(gate, fieldSize)}` +
     `<span class="stats-horse-name-inline">${escapeHtml(nameRaw)}</span>` +
+    `${carrotBadgeHtml(carrotCount)}` +
     `</div></td>` +
-    `<td class="stats-horse-block stats-horse-block-mid stats-sex ${sexClass}" title="${escapeHtml(title)}">${escapeHtml(sexDisplay)}</td>` +
-    `<td class="stats-horse-block stats-horse-block-end stats-jockey" title="${escapeHtml(title)}">${escapeHtml(jockeyDisplay)}</td>`
+    `<td class="stats-horse-block stats-horse-block-mid stats-sex ${sexClass}" title="${escapeHtml(fullTitle)}">${escapeHtml(sexDisplay)}</td>` +
+    `<td class="stats-horse-block stats-horse-block-end stats-jockey" title="${escapeHtml(fullTitle)}">${escapeHtml(jockeyDisplay)}</td>`
   );
 }
 
 /**
  * @param {HTMLTableRowElement} tr
  */
-export function appendHorseBlockCells(tr, entry, gate, fieldSize) {
+export function appendHorseBlockCells(tr, entry, gate, fieldSize, carrotCount = 0) {
   const { nameRaw, sexDisplay, jockeyDisplay, sexClass, title } = horseBlockTexts(entry);
+  const carrotLabel = carrotCount > 0 ? ` ${carrotCountLabel(carrotCount)}` : '';
+  const fullTitle = title + carrotLabel;
 
   const tdStart = document.createElement('td');
   tdStart.className = 'stats-horse-block stats-horse-block-start';
-  tdStart.title = title;
+  tdStart.title = fullTitle;
 
   const inner = document.createElement('div');
   inner.className = 'stats-horse-main-inner';
@@ -81,16 +87,24 @@ export function appendHorseBlockCells(tr, entry, gate, fieldSize) {
   nameSpan.textContent = nameRaw;
 
   inner.append(gateBadge, nameSpan);
+  const carrotLabelText = carrotCountLabel(carrotCount);
+  if (carrotLabelText) {
+    const carrotSpan = document.createElement('span');
+    carrotSpan.className = 'horse-carrot-badge';
+    carrotSpan.title = 'あなたの評価';
+    carrotSpan.textContent = carrotLabelText;
+    inner.appendChild(carrotSpan);
+  }
   tdStart.appendChild(inner);
 
   const tdMid = document.createElement('td');
   tdMid.className = `stats-horse-block stats-horse-block-mid stats-sex ${sexClass}`.trim();
-  tdMid.title = title;
+  tdMid.title = fullTitle;
   tdMid.textContent = sexDisplay;
 
   const tdEnd = document.createElement('td');
   tdEnd.className = 'stats-horse-block stats-horse-block-end stats-jockey';
-  tdEnd.title = title;
+  tdEnd.title = fullTitle;
   tdEnd.textContent = jockeyDisplay;
 
   tr.append(tdStart, tdMid, tdEnd);
