@@ -121,7 +121,7 @@ export function calcAllParams(raceData) {
     const waku  = calcWaku(entry.gate, total);
     const color = CONFIG.JRA_WAKU_COLORS[waku] || '#CCCCCC';
 
-    const startLane = calcInitialLane(entry.gate, entries.length);
+    const startLane = calcGateSlotLane(entry.gate);
 
     const career = horse.career ?? null;
     const classIndex = Number.isFinite(career?.class_index) ? career.class_index : 0.5;
@@ -176,17 +176,19 @@ export function calcAllParams(raceData) {
 }
 
 /**
- * ゲート番号からY座標（レーン 1.0〜LANE_COUNT）を算出
- * コース左右の余白を持たせたうえで線形マッピング
+ * ゲート番号（1〜LANE_COUNT）からレーン位置を算出。
+ * 18枠固定グリッドで内埒側（1番）から外埒側（18番）へ等間隔配置。
  */
-function calcInitialLane(gate, total) {
+export function calcGateSlotLane(gate) {
   const laneMax = CONFIG.LANE_COUNT;
+  const slotCount = CONFIG.LANE_COUNT;
   const innerMargin = Math.max(0, Number(CONFIG.GATE_LANE_INNER_MARGIN) || 0);
   const outerMargin = Math.max(0, Number(CONFIG.GATE_LANE_OUTER_MARGIN) || 0);
   const usableMin = 1 + innerMargin;
   const usableMax = Math.max(usableMin, laneMax - outerMargin);
-  if (total <= 1) return Math.max(1, Math.min(laneMax, usableMin));
-  const ratio = (gate - 1) / (total - 1);
+  const clampedGate = Math.max(1, Math.min(slotCount, Number(gate) || 1));
+  if (slotCount <= 1) return Math.max(1, Math.min(laneMax, usableMin));
+  const ratio = (clampedGate - 1) / (slotCount - 1);
   const lane = usableMin + ratio * (usableMax - usableMin);
   return Math.max(1, Math.min(laneMax, lane));
 }

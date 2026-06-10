@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { calcGateSlotLane } from '../engine/params.js';
 import { getWakuFrameColor } from './colors.js';
 
 const TRACK_BASE_COLOR = {
@@ -125,19 +126,6 @@ export class Renderer {
     return this.W - this.RAIL_MARGIN - (idx + 0.5) * this.laneW;
   }
 
-  _calcGateLane(gate, total) {
-    const laneMax = CONFIG.LANE_COUNT;
-    const innerMargin = Math.max(0, Number(CONFIG.GATE_LANE_INNER_MARGIN) || 0);
-    const outerMargin = Math.max(0, Number(CONFIG.GATE_LANE_OUTER_MARGIN) || 0);
-    const usableMin = 1 + innerMargin;
-    const usableMax = Math.max(usableMin, laneMax - outerMargin);
-    if (!Number.isFinite(total) || total <= 1) return Math.max(1, Math.min(laneMax, usableMin));
-    const clampedGate = Math.max(1, Math.min(total, Number(gate) || 1));
-    const ratio = (clampedGate - 1) / (total - 1);
-    const lane = usableMin + ratio * (usableMax - usableMin);
-    return Math.max(1, Math.min(laneMax, lane));
-  }
-
   // progress=0 → 下（スタート）、progress=1 → 上（ゴール）
   progressToY(progress) {
     const topMargin    = 20;
@@ -237,13 +225,13 @@ export class Renderer {
     const gateOpenProgress = options.gateOpenProgress ?? (phaseProgress > 0 ? 1 : 0);
     const gateYOffset = options.gateYOffset ?? 0;
     const gateOpacity = options.gateOpacity ?? 1;
-    const horseCount = Math.max(1, horses?.length ?? CONFIG.LANE_COUNT);
+    const fieldSize = horses?.length ?? 0;
     const forceStartLineup = Boolean(options.forceStartLineup);
     const inGateView = phase.index === 0 && (phaseProgress === 0 || forceStartLineup);
     if (inGateView) {
-      this._drawStartingGate(phase, gateOpenProgress, 'back', gateYOffset, gateOpacity, horseCount);
+      this._drawStartingGate(phase, gateOpenProgress, 'back', gateYOffset, gateOpacity, fieldSize);
     } else {
-      this._drawStartingGate(phase, gateOpenProgress, 'full', gateYOffset, gateOpacity, horseCount);
+      this._drawStartingGate(phase, gateOpenProgress, 'full', gateYOffset, gateOpacity, fieldSize);
     }
     const furlongLayout = options.furlong
       ? this._drawFurlongMarkers(options.furlong.t ?? 0)
@@ -258,7 +246,7 @@ export class Renderer {
       this._drawGoalBandAtTop(options.goalLine, furlongLayout);
     }
     if (inGateView) {
-      this._drawStartingGate(phase, gateOpenProgress, 'front', gateYOffset, gateOpacity, horseCount);
+      this._drawStartingGate(phase, gateOpenProgress, 'front', gateYOffset, gateOpacity, fieldSize);
     }
     if (options.sceneTransition) {
       this._drawSceneTransition(options.sceneTransition);
@@ -430,9 +418,8 @@ export class Renderer {
     const targetPose = new Map();
     if (inStartLineup) {
       const horseY = this._getStartInGateCy();
-      const total = horses.length;
       horses.forEach(horse => {
-        const lane = this._calcGateLane(horse.gate ?? 1, total);
+        const lane = calcGateSlotLane(horse.gate ?? 1);
         targetPose.set(horse.id, { lane, cy: horseY });
       });
     } else {
@@ -577,9 +564,8 @@ export class Renderer {
   _drawHorsesAtStart(horses) {
     const horseY = this._getStartInGateCy();
     const sorted = [...horses].sort((a, b) => (a.gate ?? a.id) - (b.gate ?? b.id));
-    const total = sorted.length;
     sorted.forEach(horse => {
-      const lane = this._calcGateLane(horse.gate ?? 1, total);
+      const lane = calcGateSlotLane(horse.gate ?? 1);
       const cx = this.laneToX(lane);
       this._drawCard(horse, cx, horseY);
     });
@@ -606,7 +592,7 @@ export class Renderer {
     return gateTop - this.cardH * 0.30;
   }
 
-  _drawStartingGate(phase, gateOpenProgress, layer = 'full', gateYOffset = 0, gateOpacity = 1, horseCount = CONFIG.LANE_COUNT) {
+  _drawStartingGate(phase, gateOpenProgress, layer = 'full', gateYOffset = 0, gateOpacity = 1, fieldSize = 0) {
     if (phase.index !== 0 && gateOpenProgress >= 1) return;
     const ctx = this.ctx;
     const { gateY: baseGateY, gateH } = this._getGateGeometry();
@@ -614,13 +600,18 @@ export class Renderer {
     const open = Math.max(0, Math.min(1, gateOpenProgress));
     const drawBack = layer === 'full' || layer === 'back';
     const drawFront = layer === 'full' || layer === 'front';
-    const frameColor = '#8ea0ad';
-    const barColor = '#5c6e7b';
+    const activeFrameColor = '#8ea0ad';
+    const inactiveFrameColor = '#6a7580';
+    const activeBarColor = '#5c6e7b';
+    const inactiveBarColor = '#4a5560';
     const closedDoorColor = { r: 47, g: 58, b: 68 };
     const openDoorColor = { r: 36, g: 118, b: 46 };
-    const plateColor = '#c9a646';
+    const activePlateColor = '#c9a646';
+    const inactivePlateColor = '#7a8490';
     const leftX = this.RAIL_MARGIN;
     const rightX = this.W - this.RAIL_MARGIN;
+    const slotCount = CONFIG.LANE_COUNT;
+    const activeSlots = Math.max(0, Math.min(slotCount, Math.round(fieldSize)));
 
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, gateOpacity));
@@ -633,18 +624,18 @@ export class Renderer {
       ctx.stroke();
     }
 
-    const total = Math.max(1, Math.min(CONFIG.LANE_COUNT, Math.round(horseCount)));
-    const firstLane = this._calcGateLane(1, total);
-    const secondLane = total >= 2 ? this._calcGateLane(2, total) : (firstLane + 1);
+    const firstLane = calcGateSlotLane(1);
+    const secondLane = calcGateSlotLane(2);
     const cellW = Math.max(this.laneW * 0.58, Math.abs(this.laneToX(secondLane) - this.laneToX(firstLane)) * 0.92);
-    for (let gate = 1; gate <= total; gate++) {
-      const lane = this._calcGateLane(gate, total);
+    for (let gate = 1; gate <= slotCount; gate++) {
+      const isActive = gate <= activeSlots;
+      const lane = calcGateSlotLane(gate);
       const xLeft = this.laneToX(lane) - cellW / 2;
 
       if (drawBack) {
-        ctx.fillStyle = frameColor;
+        ctx.fillStyle = isActive ? activeFrameColor : inactiveFrameColor;
         ctx.fillRect(xLeft, gateY - gateH, cellW, gateH);
-        ctx.strokeStyle = 'rgba(15,24,30,0.65)';
+        ctx.strokeStyle = isActive ? 'rgba(15,24,30,0.65)' : 'rgba(15,24,30,0.38)';
         ctx.lineWidth = 1;
         ctx.strokeRect(xLeft, gateY - gateH, cellW, gateH);
       }
@@ -656,24 +647,25 @@ export class Renderer {
       const dr = Math.round(closedDoorColor.r + (openDoorColor.r - closedDoorColor.r) * open);
       const dg = Math.round(closedDoorColor.g + (openDoorColor.g - closedDoorColor.g) * open);
       const db = Math.round(closedDoorColor.b + (openDoorColor.b - closedDoorColor.b) * open);
-      const doorAlpha = Math.min(0.38, Math.max(0.08, 1 - open * 0.92));
+      const doorAlphaBase = isActive ? 1 : 0.55;
+      const doorAlpha = Math.min(0.38, Math.max(0.08, (1 - open * 0.92) * doorAlphaBase));
 
       if (drawFront) {
         ctx.fillStyle = `rgba(${dr},${dg},${db},${doorAlpha})`;
         ctx.fillRect(doorX, doorTop, doorW, doorH);
 
-        ctx.fillStyle = barColor;
+        ctx.fillStyle = isActive ? activeBarColor : inactiveBarColor;
         ctx.fillRect(xLeft + cellW * 0.12, gateY - gateH + doorH + 7, cellW * 0.76, 6);
 
-        ctx.fillStyle = plateColor;
         const plateW = Math.max(8, cellW * 0.46);
         const plateH = 12;
         const plateX = xLeft + (cellW - plateW) / 2;
         const plateY = gateY - gateH - 16;
+        ctx.fillStyle = isActive ? activePlateColor : inactivePlateColor;
         this._roundRect(ctx, plateX, plateY, plateW, plateH, 3);
         ctx.fill();
 
-        ctx.fillStyle = '#1f2932';
+        ctx.fillStyle = isActive ? '#1f2932' : '#e8ecf0';
         ctx.font = `bold ${Math.max(9, cellW * 0.24)}px 'Courier New'`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
