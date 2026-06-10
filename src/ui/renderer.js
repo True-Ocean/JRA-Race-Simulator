@@ -665,7 +665,7 @@ export class Renderer {
         this._roundRect(ctx, plateX, plateY, plateW, plateH, 3);
         ctx.fill();
 
-        ctx.fillStyle = isActive ? '#1f2932' : '#e8ecf0';
+        ctx.fillStyle = '#1f2932';
         ctx.font = `bold ${Math.max(9, cellW * 0.24)}px 'Courier New'`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
