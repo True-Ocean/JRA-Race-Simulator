@@ -361,9 +361,11 @@ function renderEntryList(horses, carrotsByHorse = {}) {
       <div class="entry-gate" style="background:${waku.bg};color:${waku.text};border:1px solid rgba(255,255,255,0.3);">${horse.gate}</div>
       <div class="entry-meta-line">
         ${horseNameCarrotGroupHtml(horse.name, carrotsByHorse[horse.id] ?? 0, 'entry-name')}
-        ${profileLabel ? `<span class="entry-demographics ${sexClass}">${escapeHtml(profileLabel)}</span>` : ''}
-        <span class="entry-jockey-inline">🏇 ${escapeHtml(horse.jockeyName ?? '')}</span>
-        <span class="entry-style-inline ${getEntryStyleBadgeClass(horse.style)}">${escapeHtml(horse.style)}</span>
+        <span class="entry-meta-tail">
+          ${profileLabel ? `<span class="entry-demographics ${sexClass}">${escapeHtml(profileLabel)}</span>` : ''}
+          <span class="entry-jockey-inline">🏇 ${escapeHtml(horse.jockeyName ?? '')}</span>
+          <span class="entry-style-inline ${getEntryStyleBadgeClass(horse.style)}">${escapeHtml(horse.style)}</span>
+        </span>
       </div>
       <div class="entry-params">
         <div class="param-row param-row--stamina">
