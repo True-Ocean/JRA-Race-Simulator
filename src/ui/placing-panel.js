@@ -1,4 +1,4 @@
-import { carrotBadgeHtml } from './carrot-display.js';
+import { horseNameCarrotGroupHtml } from './carrot-display.js';
 import { JRA_WAKU_COLORS } from './colors.js';
 import { escapeHtml } from './race-log.js';
 
@@ -33,10 +33,7 @@ function formatHomePlacingRowInnerHtml(
   return `
       <span class="summary-placing-rank">${rank}着</span>
       ${badgeHtml}
-      <span class="summary-placing-name-line">
-        <span class="summary-placing-name">${escapeHtml(horse.name)}</span>
-        ${carrotBadgeHtml(carrotsByHorse[horse.id] ?? 0)}
-      </span>
+      ${horseNameCarrotGroupHtml(horse.name, carrotsByHorse[horse.id] ?? 0, 'summary-placing-name')}
       ${timeHtml}
       ${marginHtml}
     `;

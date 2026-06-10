@@ -351,15 +351,37 @@
       color: #ffffff;
       font-size: 0.72rem;
       font-weight: 700;
-      flex: 1 1 auto;
+    }
+    .horse-name-carrot-group {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.28em;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      flex: 0 1 auto;
+    }
+    .horse-name-carrot-group .entry-name,
+    .horse-name-carrot-group .stats-horse-name-inline,
+    .horse-name-carrot-group .summary-placing-name,
+    .horse-name-carrot-group .summary-horse-name {
+      flex: 0 1 auto;
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .horse-name-carrot-group .horse-carrot-badge {
+      flex: 0 0 auto;
+    }
+    .entry-meta-line .horse-name-carrot-group {
+      flex: 1 1 auto;
+      min-width: 0;
     }
     .horse-carrot-badge {
-      flex: 0 0 auto;
-      font-size: 0.62rem;
+      font-size: 0.68rem;
       font-weight: 700;
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
       font-variant-numeric: tabular-nums;
       color: #fde68a;
       white-space: nowrap;
@@ -678,32 +700,14 @@
       font-size: 0.68rem;
       line-height: 1.2;
     }
-    #placing-panel .summary-placing-name-line,
-    #placing-panel-overlay .summary-placing-name-line {
-      display: inline-flex;
-      align-items: baseline;
-      gap: 0.28em;
+    #placing-panel .horse-name-carrot-group,
+    #placing-panel-overlay .horse-name-carrot-group {
       min-width: 0;
-      overflow: hidden;
+      max-width: 100%;
     }
     #placing-panel .summary-placing-name,
     #placing-panel-overlay .summary-placing-name {
       font-size: 0.66rem;
-      line-height: 1.2;
-      flex: 1 1 auto;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    #placing-panel .horse-carrot-badge,
-    #placing-panel-overlay .horse-carrot-badge {
-      flex: 0 0 auto;
-      font-size: 0.6rem;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      color: #fde68a;
-      white-space: nowrap;
       line-height: 1.2;
     }
     #placing-panel .summary-placing-badge,
@@ -1460,15 +1464,14 @@
       gap: 0.35em 0.45em;
       min-width: 0;
     }
+    .summary-placing-line .horse-name-carrot-group {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
     .summary-placing-name {
       font-size: 0.78rem;
       font-weight: 700;
       color: #ffffff;
-      flex: 1 1 auto;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
       line-height: 1.25;
     }
     .summary-placing-meta {
@@ -1542,16 +1545,6 @@
     .summary-horse-head .summary-horse-name {
       font-weight: 700;
       color: #ffffff;
-    }
-    .summary-placing-line .horse-carrot-badge,
-    .summary-horse-head .horse-carrot-badge {
-      flex: 0 0 auto;
-      font-size: 0.68rem;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      color: #fde68a;
-      white-space: nowrap;
-      line-height: 1.2;
     }
     .summary-horse-events {
       display: flex;

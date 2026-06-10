@@ -334,10 +334,29 @@
       overflow-wrap: anywhere;
       line-height: 1.35;
     }
-    .horse-carrot-badge {
+    .horse-name-carrot-group {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.28em;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      flex: 0 1 auto;
+    }
+    .horse-name-carrot-group .stats-horse-name-inline {
+      flex: 0 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .horse-name-carrot-group .horse-carrot-badge {
       flex: 0 0 auto;
+    }
+    .horse-carrot-badge {
       font-size: 0.72rem;
       font-weight: 700;
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
       font-variant-numeric: tabular-nums;
       color: #fde68a;
       white-space: nowrap;
@@ -461,7 +480,7 @@
         overflow-wrap: normal;
       }
       .horse-carrot-badge {
-        font-size: 0.68rem;
+        font-size: 0.7rem;
       }
       .stats-sex,
       .stats-jockey {

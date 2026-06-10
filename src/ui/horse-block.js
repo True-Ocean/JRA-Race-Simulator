@@ -1,5 +1,5 @@
 import { calcWaku } from '../engine/params.js';
-import { carrotBadgeHtml, carrotCountLabel } from './carrot-display.js';
+import { carrotCountLabel, horseNameCarrotGroupHtml } from './carrot-display.js';
 import { JRA_WAKU_COLORS } from './colors.js';
 
 function escapeHtml(s) {
@@ -50,8 +50,7 @@ export function horseBlockCellsHtml(entry, gate, fieldSize, carrotCount = 0) {
     `<td class="stats-horse-block stats-horse-block-start" title="${escapeHtml(fullTitle)}">` +
     `<div class="stats-horse-main-inner">` +
     `${gateBadgeHtml(gate, fieldSize)}` +
-    `<span class="stats-horse-name-inline">${escapeHtml(nameRaw)}</span>` +
-    `${carrotBadgeHtml(carrotCount)}` +
+    `${horseNameCarrotGroupHtml(nameRaw, carrotCount, 'stats-horse-name-inline')}` +
     `</div></td>` +
     `<td class="stats-horse-block stats-horse-block-mid stats-sex ${sexClass}" title="${escapeHtml(fullTitle)}">${escapeHtml(sexDisplay)}</td>` +
     `<td class="stats-horse-block stats-horse-block-end stats-jockey" title="${escapeHtml(fullTitle)}">${escapeHtml(jockeyDisplay)}</td>`
@@ -82,19 +81,21 @@ export function appendHorseBlockCells(tr, entry, gate, fieldSize, carrotCount = 
   gateBadge.style.color = c.text;
   gateBadge.style.border = '1px solid rgba(255,255,255,0.3)';
 
+  const group = document.createElement('span');
+  group.className = 'horse-name-carrot-group';
   const nameSpan = document.createElement('span');
   nameSpan.className = 'stats-horse-name-inline';
   nameSpan.textContent = nameRaw;
-
-  inner.append(gateBadge, nameSpan);
+  group.appendChild(nameSpan);
   const carrotLabelText = carrotCountLabel(carrotCount);
   if (carrotLabelText) {
     const carrotSpan = document.createElement('span');
     carrotSpan.className = 'horse-carrot-badge';
     carrotSpan.title = 'あなたの評価';
     carrotSpan.textContent = carrotLabelText;
-    inner.appendChild(carrotSpan);
+    group.appendChild(carrotSpan);
   }
+  inner.append(gateBadge, group);
   tdStart.appendChild(inner);
 
   const tdMid = document.createElement('td');

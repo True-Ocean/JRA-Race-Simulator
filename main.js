@@ -53,7 +53,7 @@ import {
   getStaminaBarClassName,
   updateEntryStaminaBars,
 } from './src/ui/entry-stamina.js';
-import { carrotBadgeHtml } from './src/ui/carrot-display.js';
+import { horseNameCarrotGroupHtml } from './src/ui/carrot-display.js';
 import { setPlaybackButton } from './src/ui/playback-dock-label.js';
 import {
   closeActiveInfoPopover,
@@ -253,8 +253,7 @@ function renderRaceSummaryScreen({
       <span class="summary-placing-rank">${rank}着</span>
       ${badgeHtml}
       <div class="summary-placing-line">
-        <span class="summary-placing-name">${escapeHtml(horse.name)}</span>
-        ${carrotBadgeHtml(carrotsByHorse[id] ?? 0)}
+        ${horseNameCarrotGroupHtml(horse.name, carrotsByHorse[id] ?? 0, 'summary-placing-name')}
         <span class="summary-placing-meta">
           <span class="summary-placing-sex-age${sexAgeClass}">${escapeHtml(sexAgeLabel || '—')}</span>
           <span class="summary-placing-jockey">${escapeHtml(jockeyName)}</span>
@@ -289,8 +288,7 @@ function renderRaceSummaryScreen({
     head.innerHTML = `
       <span class="summary-horse-rank">${rank}着</span>
       ${badgeHtml}
-      <span class="summary-horse-name">${escapeHtml(horse.name)}</span>
-      ${carrotBadgeHtml(carrotsByHorse[horse.id] ?? 0)}
+      ${horseNameCarrotGroupHtml(horse.name, carrotsByHorse[horse.id] ?? 0, 'summary-horse-name')}
     `;
     block.appendChild(head);
 
@@ -362,8 +360,7 @@ function renderEntryList(horses, carrotsByHorse = {}) {
     row.innerHTML = `
       <div class="entry-gate" style="background:${waku.bg};color:${waku.text};border:1px solid rgba(255,255,255,0.3);">${horse.gate}</div>
       <div class="entry-meta-line">
-        <span class="entry-name">${escapeHtml(horse.name)}</span>
-        ${carrotBadgeHtml(carrotsByHorse[horse.id] ?? 0)}
+        ${horseNameCarrotGroupHtml(horse.name, carrotsByHorse[horse.id] ?? 0, 'entry-name')}
         ${profileLabel ? `<span class="entry-demographics ${sexClass}">${escapeHtml(profileLabel)}</span>` : ''}
         <span class="entry-jockey-inline">🏇 ${escapeHtml(horse.jockeyName ?? '')}</span>
         <span class="entry-style-inline ${getEntryStyleBadgeClass(horse.style)}">${escapeHtml(horse.style)}</span>
