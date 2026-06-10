@@ -13,6 +13,7 @@ import {
   addAggregateRun,
   clearAggregateState,
   computeBucketKey,
+  formatTrialSubtitle,
   getAggregateTrialCount,
   loadAggregateState,
   loadRaceBundleFromSession,
@@ -642,7 +643,7 @@ Promise.all([
       const el = document.getElementById('simulator-subtitle');
       if (!el) return;
       const trials = getAggregateTrialCount({ runtimeRaceData, carrotsByHorse });
-      el.textContent = trials > 0 ? `シミュレーター（${trials}回実施済）` : 'シミュレーター';
+      el.textContent = formatTrialSubtitle('シミュレーター', trials);
     }
 
     function syncSimulatorChromeForAutoMode() {

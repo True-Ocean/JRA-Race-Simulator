@@ -142,6 +142,12 @@ export function getAggregateTrialCount(p) {
   return manualRunsOnly(state.runs).length;
 }
 
+/** @param {string} baseLabel 例: シミュレーター / シミュレーション集計 */
+export function formatTrialSubtitle(baseLabel, trials) {
+  const n = Math.max(0, Math.round(Number(trials) || 0));
+  return n > 0 ? `${baseLabel}（${n}回実施済）` : baseLabel;
+}
+
 /**
  * @param {{ runtimeRaceData: object, carrotsByHorse: object }} p
  */

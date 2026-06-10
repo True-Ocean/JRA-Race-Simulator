@@ -130,13 +130,6 @@
     .app-subtitle--stats {
       color: #fda4af;
     }
-    #stats-trial-summary {
-      font-size: 0.85rem;
-      color: #aabccc;
-      margin-bottom: 12px;
-      text-align: center;
-      width: 100%;
-    }
     .stats-muted { color: #8899aa; font-size: 0.88rem; }
     #stats-error {
       color: #f08080;
@@ -551,8 +544,7 @@
       <span class="title-brand-icon" aria-hidden="true">🏇</span>
       <span class="title-text">Horse Race Simulator</span>
     </h1>
-    <p class="app-subtitle app-subtitle--stats">シミュレーション集計</p>
-    <p id="stats-trial-summary" class="stats-muted"></p>
+    <p id="stats-subtitle" class="app-subtitle app-subtitle--stats" aria-live="polite">シミュレーション集計</p>
     <div id="stats-race-info"></div>
     <p id="stats-sort-hint" class="stats-muted">見出しクリックで並べ替え</p>
     <div id="stats-table-wrap"></div>

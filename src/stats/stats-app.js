@@ -10,6 +10,7 @@ import {
   loadAggregateState,
   computeAggregateRows,
   clearAggregateState,
+  formatTrialSubtitle,
   SESSION_KEY_OPEN_SCREEN,
   SESSION_KEY_STATS_RETURN_SCREEN,
 } from './aggregate-store.js';
@@ -304,9 +305,16 @@ function computeAutoMarks(rows, trials, compositeScores) {
   return marked;
 }
 
+function syncStatsTrialSubtitle(trials = 0) {
+  const el = document.getElementById('stats-subtitle');
+  if (!el) return;
+  el.textContent = formatTrialSubtitle('シミュレーション集計', trials);
+}
+
 function renderTable() {
   const wrap = document.getElementById('stats-table-wrap');
   if (!wrap || !runtimeRaceData) {
+    syncStatsTrialSubtitle(0);
     if (wrap) {
       wrap.innerHTML =
         '<p class="stats-muted">出走データがありません。シミュレータから「集計画面へ」で開いてください。</p>';
@@ -318,10 +326,7 @@ function renderTable() {
     carrotsByHorse,
   });
 
-  const summary = document.getElementById('stats-trial-summary');
-  if (summary) {
-    summary.textContent = trials > 0 ? `試行 ${trials} 回` : '試行 0 回';
-  }
+  syncStatsTrialSubtitle(trials);
 
   const fieldSize = runtimeRaceData.entries.length;
   if (!rows.length) {
