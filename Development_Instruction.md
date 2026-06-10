@@ -1,7 +1,7 @@
 # 開発仕様書：JRA RACE SIMULATOR
 
-**バージョン:** 2.0（実装準拠・as-built）  
-**最終更新:** 2026年5月29日  
+**バージョン:** 2.1.1（実装準拠・as-built）  
+**最終更新:** 2026年6月10日（UI・コードとの照合修正）  
 **対象コード:** リポジトリ `main` ブランチ上の完成アプリ
 
 > 本書は初期設計ドラフト（v1.0）を、**実際に動作するコード**に合わせて書き直したものです。数値定数の正は `src/config.js` および `src/engine/constants.js` を参照してください。
@@ -15,7 +15,7 @@
 3. [アーキテクチャ](#3-アーキテクチャ)
 4. [データ構造（入力JSON）](#4-データ構造入力json)
 5. [能力パラメータ計算](#5-能力パラメータ計算)
-6. [お好み設定（プレレース編集）](#6-お好み設定プレレース編集)
+6. [オリジナル設定](#6-オリジナル設定)
 7. [コース定義とフェーズ管理](#7-コース定義とフェーズ管理)
 8. [シミュレーションエンジン](#8-シミュレーションエンジン)
 9. [隊列形成（formation）](#9-隊列形成formation)
@@ -24,7 +24,7 @@
 12. [スタミナモデル](#12-スタミナモデル)
 13. [ゴールシーン](#13-ゴールシーン)
 14. [描画・UI（シミュレーター）](#14-描画uiシミュレーター)
-15. [レースサマリーと集計](#15-レースサマリーと集計)
+15. [レースサマリーとシミュレーション集計](#15-レースサマリーとシミュレーション集計)
 16. [ログ仕様](#16-ログ仕様)
 17. [技術スタックとプロジェクト構成](#17-技術スタックとプロジェクト構成)
 18. [テストと再現性](#18-テストと再現性)
@@ -47,26 +47,29 @@
 | 項目 | 実装内容 |
 |------|----------|
 | 進行方向 | 上向き（画面下＝スタート、画面上＝ゴール） |
-| 横位置 | **連続レーン 1.0〜18.0**（`CONFIG.LANE_COUNT`）。ゲート番号から初期レーンを線形マッピング |
-| 内ラチ | `courses.json` の `turnDirection`（左回り＝右が内、右回り＝左が内）に応じて内外ラチを描画 |
-| 馬カード | Canvas 上に縦長カード（レーン幅に比例）。枠色の縁取り＋馬番・馬名 |
+| 横位置 | **連続レーン 1.0〜18.0**（`CONFIG.LANE_COUNT`）。ゲート番号から初期レーンを線形マッピング（`calcGateSlotLane`） |
+| 回り・内ラチ | `courses.json` の `turnDirection`（**左回り＝左が内、右回り＝右が内**）を `Renderer` の `innerRailSide` に反映し、内外ラチ・レーン・馬位置を左右反転 |
+| ゲート番号 | 1番＝最内・18番＝最外。左回りは画面左から 1→2→…、右回りは画面右から 1→2→…（`laneToX` + `calcGateSlotLane`） |
+| 馬カード | Canvas 上に縦長カード（レーン幅に比例）。枠色の縁取り＋**馬番**（馬名は出馬表・サマリー側） |
 | 背景 | 芝＝緑系 HSL、ダート＝茶系。馬場状態で明度を下げ、重・不良時は荒れパッチを追加 |
 | コーナー | 外レーンに薄い黄色オーバーレイ。コーナー外回りは `LANE_COEFF` で距離ロス・スタミナ増 |
 | フェーズ名 | セグメントラベルまたは比率から日本語名を中央に薄く表示 |
 | スタート | フェーズ0・進行0%でゲート横並び表示後、上方向へ展開 |
-| 手動進行 | 各フェーズ処理後に一時停止。「次のフェーズ」／最終フェーズ後はゴール判定へ |
-| レイアウト | **3カラム:** 出馬表（左）・盤面 Canvas（中央）・レースログ（右） |
+| レース進行 | **スタート**（フェーズ送り）／**オート**（自動進行）／**リプレイ**／**リセット**（`#field-playback-dock`）。オート中は一時停止も可能 |
+| レイアウト | **3カラム:** 出馬表（左）・盤面 Canvas（中央）・レースログ＋着順掲示板（右） |
 
 ### ゲームループ（全体フロー）
+
+初回起動時は **シミュレーター画面** が開く（オリジナル設定は必須ではない）。ナビの「オリジナル設定」から任意で脚質・🥕・予想印を編集できる。
 
 ```
 [JSON 読み込み: race-info + race-entries]
         ↓
-[calcAllParams → お好み設定で補正]
+[シミュレーター画面を表示（任意: オリジナル設定で編集）]
         ↓
-[runSimulation: 全フェーズ一括計算 + スナップショット]
+[スタート押下 → calcAllParams → あなたの評価（🥕）で補正 → runSimulation]
         ↓
-[PhaseController: フェーズ再生 → ゴールシーン（rAF）]
+[PhaseController: フェーズ再生（スタート／オート）→ ゴールシーン（rAF）]
         ↓
 [着順・タイム確定 → レースサマリー]
         ↓
@@ -79,17 +82,17 @@
 
 | 画面 | DOM / ファイル | 説明 |
 |------|----------------|------|
-| **シミュレーター** | `index.html` 本体 | 3カラム、フェーズ再生、ゴール演出、掲示板 |
-| **お好み設定** | `#pre-race-editor` | 全画面オーバーレイ。脚質・評価スライダー・印 |
-| **レースサマリー** | `#race-summary-screen` | 着順・タイム・馬別イベントログ |
-| **集計** | `stats.html` | 同一条件バケット内の複数走を集計・比較 |
+| **シミュレーター** | `index.html` 本体（サブタイトル「シミュレーター」） | 3カラム、再生ドック（スタート／オート等）、ゴール演出。右カラムにレースログと着順掲示板 |
+| **オリジナル設定** | `#pre-race-editor` | 全画面オーバーレイ。脚質・あなたの評価（🥕）・予想印 |
+| **レースサマリー** | `#race-summary-screen` | 着順掲示板・各馬のイベント |
+| **シミュレーション集計** | `stats.html`（サブタイトル「シミュレーション集計」） | 同一条件バケット内の複数走を集計・比較 |
 
 **主な遷移**
 
-- シミュレーター ↔ お好み設定（設定反映でシミュレーション再実行）
-- レース完了後 → レースサマリー（`#btn-show-summary`）
-- シミュレーター / サマリー → `stats.html`（戻る先は `sessionStorage` に保存）
-- 集計画面から戻ると、保存済みのシミュレーター状態またはサマリーを復元可能
+- シミュレーター ↔ オリジナル設定（ナビ「オリジナル設定」／閉じるで「シミュレーター画面」。確定時は「オリジナル設定を反映しますか？」）
+- レース完了後 → レースサマリー（`#btn-show-summary`「📊 レースサマリー」）
+- シミュレーター / レースサマリー → 集計画面（`#btn-open-stats` 等）
+- 集計画面から「前画面に戻る」で、保存済みのシミュレーター状態またはレースサマリーを復元可能
 
 エントリポイントは `main.js`。UI ロジックは `src/ui/`、集計は `src/stats/`。
 
@@ -111,7 +114,7 @@
 
 - `src/engine/rng.js` の **Mulberry32**（`createRng(seed)`）
 - デフォルトシード: `raceData.race_id`（`runSimulation` の `options.seed` で上書き可）
-- 同一シード・同一入力（出走表・お好み設定・印）なら、エンジン出力は再現可能（Vitest ゴールデンで検証）
+- 同一シード・同一入力（`entries` の脚質含む出走表・レース条件・オリジナル設定の🥕）なら、エンジン出力は再現可能（Vitest ゴールデンで検証）。予想印はシミュレーションに直接乗らない
 
 ### 更新モデル
 
@@ -169,7 +172,12 @@
         "last_3f": 33.8,
         "results": [3, 2, 3, 1],
         "ave_3f_range": { "min": 35.6, "max": 39.2, "avg": 37.0 },
-        "last_3f_range": { "min": 32.9, "max": 35.4, "avg": 33.8 }
+        "last_3f_range": { "min": 32.9, "max": 35.4, "avg": 33.8 },
+        "career": {
+          "class_index": 0.5,
+          "goal_class_index": 0.5,
+          "stamina_efficiency": 0.5
+        }
       },
       "jockey": {
         "name": "騎手名",
@@ -186,32 +194,57 @@
 | `gate` | 馬番（1始まり） |
 | `horse.results` | 着順配列。`0` は着外（6着以下） |
 | `horse.ave_3f` / `last_3f` | 秒。小さいほど速い |
+| `horse.ave_3f_range` / `last_3f_range` | 任意。オリジナル設定の「詳細データ」ポップオーバー用の min/max/avg |
 | `horse.style` | `大逃げ` / `逃げ` / `先行` / `差し` / `追込` |
+| `horse.career` | 任意。重賞実績・`class_index`・`goal_class_index`・`stamina_efficiency` 等（ゴールシーン・スタミナ消費に反映） |
 
 ### その他データファイル
 
 | ファイル | 用途 |
 |----------|------|
-| `src/data/courses.json` | コースセグメント（フェーズ名・コーナー位置） |
+| `src/data/courses.json` | コースセグメント・回り方向・シミュ境界（`simBoundaries`） |
 | `src/data/finish-time-baseline.json` | 着順タイム表示の基準 |
 
-コース解決: `src/lib/course-resolve.js` の `resolveCourseDef(raceData, courseCatalog)` が `venue` + `track` + `distance` でマッチ。なければ `course_id`、最後に `defaultCourseId`。
+コース解決: `src/lib/course-resolve.js` の `resolveCourseDef(raceData, courseCatalog)` が次の順でマッチする。
+
+1. `venueKey` + `surface` + `distance`
+2. `race_info.course_id`
+3. `venueKey` なしで距離・馬場が一意に決まるコース
+4. `generic_one_turn`（汎用ワンターン）
+5. `defaultCourseId`（既定: `tokyo_turf_2400`）
 
 ---
 
 ## 5. 能力パラメータ計算
 
-実装: `src/engine/params.js` の `calcAllParams(raceData)`。
+実装: `src/engine/params.js` の `calcAllParams(raceData)`。ユーザー補正は `rating-adjustments.js` の `calcHorsesWithCarrots` が後段で適用する。
 
-### 3能力 + 騎手分解
+### フェーズ別速度能力 + 騎手分解
+
+出走馬の `ave_3f` / `last_3f` はフィールド内 min-max 正規化して算出する。
 
 | パラメータ | 記号 | 算出概要 |
 |-----------|------|----------|
-| 巡航速度 | `S_cruise` | `(min(ave_3f) / 当該 ave_3f) * 80` を [0,100] にクランプ |
-| 立ち回り | `M_maneuv` | `win_rate * 200` を [0,100] にクランプ |
-| 粘り強さ | `S_sustain` | 3着内率×50 + `(min(last_3f)/last_3f)*30` をクランプ |
+| 形成巡航 | `S_formation` | 脚質テーブル（`STYLE_FORMATION_CRUISE`）。隊列形成期の基準ペース |
+| 中盤巡航 | `S_pace` / `S_cruise` | `ave_3f` 正規化 × 80 を [0,100] にクランプ |
+| 終盤キック | `S_kick` | `last_3f` 正規化 × 80 を [0,100] にクランプ |
+| 立ち回り | `M_maneuv` | `jockey.win_rate * 200` を [0,100] にクランプ |
+| 粘り強さ | `S_sustain` | 馬の3着内率×50 + `last_3f` 正規化×30 をクランプ |
 | 騎手安定 | `J_reliability` | `top3_rate` を 0.30〜0.65 でスケール |
 | 騎手攻勢 | `J_aggression` | `win_rate/top3_rate` を 0.25〜0.55 でスケール |
+
+フェーズ中の実効ベース速度は `phase-speed.js` の `resolvePhaseSpeed` が `S_formation` / `S_pace` / `S_kick` を `phase-context.js` のブレンド係数で加重平均する。
+
+### キャリア実績（任意）
+
+`horse.career` がある場合:
+
+| フィールド | 用途 |
+|-----------|------|
+| `class_index` | 総合クラス指標（0〜1） |
+| `goal_class_index` | ゴールシーン速度用（`career-goal.js` で G1 実績を主に合成） |
+| `stamina_efficiency` | スタミナ消費倍率（`stamina-drain.js` の `careerDrainMult`） |
+| `graded.G1` 等 | 重賞別出走・勝利・平均着順 |
 
 ### スタミナ初期値
 
@@ -219,40 +252,42 @@
 initialStamina = S_sustain * 2.2
 ```
 
-（お好み設定適用後も `S_sustain` から再計算）
+（🥕補正適用後も `S_sustain` から再計算）
 
 ### 枠番・初期レーン
 
 - `calcWaku(gate, total)`: JRA 枠割り当てルール（8枠、1枠最大3頭）
-- `calcInitialLane(gate, total)`: レーン 1〜18 の usable 範囲へ線形配置（内外マージン `GATE_LANE_*_MARGIN`）
+- `calcGateSlotLane(gate)`: 18枠固定グリッドで 1番（最内）〜18番（最外）へ等間隔配置（内外マージン `GATE_LANE_*_MARGIN`）
 
 ### 実行時に付与される主な馬オブジェクトフィールド
 
-`x`（縦位置・sim-x）、`y`（横レーン）、`stamina`、`battlePenalty`、`pathMeters`、`formationTargetRank` など（`params.js` 戻り値参照）。
+`x`（縦位置・sim-x）、`y`（横レーン）、`stamina`、`battlePenalty`、`pathMeters`、`formationTargetRank`、`goalClassIndex`、`careerDrainMult` など（`params.js` 戻り値参照）。
 
 ---
 
-## 6. お好み設定（プレレース編集）
+## 6. オリジナル設定
 
-実装: `src/ui/pre-race-editor.js` + `src/engine/rating-adjustments.js`。
+実装: `src/ui/pre-race-editor.js` + `src/engine/rating-adjustments.js` + `src/ui/carrot-display.js`。画面上の名称は **オリジナル設定**（DOM ID は歴史的に `#pre-race-editor`）。
 
-### 評価スライダー
+### あなたの評価（🥕・シミュレーション補正）
 
-| 軸 | 範囲 | 効き方 |
-|----|------|--------|
-| 馬 | -5〜+5 | `S_sustain` に `horseMult^0.5`、`S_cruise` に `horseMult` の一部 |
-| 騎手 | -5〜+5 | `M_maneuv` に `jockeyMult` |
-| 調教 | -5〜+5 | `S_cruise` に `trainingMult^0.25`、`S_sustain` に `trainingMult` |
+| 項目 | 内容 |
+|------|------|
+| UI 列名 | **あなたの評価**（🥕バッジの title も同文言） |
+| 範囲 | 0〜10（`CARROT_MIN` / `CARROT_MAX`） |
+| 補正式 | `carrotsToMultiplier(n) = 1 + n × 0.008`（10個で +8%） |
+| 適用先 | `S_pace` / `S_kick` / `S_sustain` / `M_maneuv`（`S_formation` は固定） |
+| UI | 各行の ± ステッパー。出馬表・レースサマリー・集計に `🥕×n` バッジ表示 |
 
-1段階 = **±1%**（`ratingToMultiplier`: `1 + rating * 0.01`）。
+> v1.0〜v2.0 設計の「お好み設定」「馬・騎手・調教スライダー（±5%）」は廃止し、**あなたの評価（🥕）** に統合。
 
-> v1.0 設計の「合計10ptを3能力に振り分け」は廃止。
+### 予想印
 
-### 印
-
+- UI 列名: **予想印**
 - 選択肢: `◎` `◯` `▲` `△` `★` `☆` `×` `消`（空欄＝なし）
-- `◎` `◯` `▲` `△` `★` `☆` は **各1頭まで**（`UNIQUE_MARK_SYMBOLS`）
-- 印はシミュレーション本体の能力式には直接乗らない（UI・集計バケット識別用）
+- 印を選ぶと **デフォルト🥕数** が自動設定される（例: `◎`→7、`◯`→6、…、`×`→1）。その後ステッパーで手動変更可能
+- 予想印は **複数頭に同じ印を付けられる**（`×` `消` 含む）
+- `UNIQUE_MARK_SYMBOLS` は集計画面の**推奨印**表示用。シミュレーション能力式には印は直接乗らず、🥕経由のみ
 
 ### 脚質
 
@@ -260,9 +295,15 @@ initialStamina = S_sustain * 2.2
 
 ### 操作
 
-- **設定反映:** 集計リセット確認のうえ `runSimulation` を再実行
-- **設定リセット:** スライダー・印・脚質を初期化
-- 状態は `sessionStorage`（`aggregate-store.js`）にバンドル保存され、集計のバケットキーにも含まれる
+- **反映:** 「オリジナル設定を反映しますか？」（変更時は集計リセット確認付き）のうえ `runSimulation` を再実行
+- **設定リセット:** ボタン「設定リセット」。🥕・予想印・脚質を初期化（脚質は JSON 初期値へ）
+- **シミュレーター画面:** 閉じるボタンでオリジナル設定を閉じ、シミュレーターへ戻る
+- 状態は `sessionStorage`（`aggregate-store.js` の `STORAGE_KEY_BUNDLE`）に `carrotsByHorse` + `marksByHorse` + `entries` を保存
+- 集計バケットキー（`computeBucketKey`）は `race_id` + `race_info` + **`entries`（脚質変更を含む）** + **🥕** のハッシュ。予想印（`marksByHorse`）は集計の同一条件判定には含めない（表示・推奨印計算用に別管理）
+
+### 開発用 API（UI 未接続）
+
+`computeBaselineAbilityRanks(raceData)` は🥕未適用の能力順位を返すユーティリティ（`rating-adjustments.js`）。現行 UI では未表示。テスト（`rating-adjustments.test.js`）で検証。
 
 ---
 
@@ -280,17 +321,38 @@ calcPhaseCount(distance) = max(5, round(distance / 270))
 
 ### コース定義あり（推奨）
 
-`courses.json` の `segments[]` 各要素:
+`courses.json` の各コース:
+
+| フィールド | 説明 |
+|-----------|------|
+| `id` | コース ID（`tokyo_turf_1600` 等） |
+| `venueKey` / `surface` / `distance` | 解決キー（`finish-times.js` の venue/surface 正規化と対応） |
+| `turnDirection` | `"left"`（左回り）または `"right"`（右回り）。描画の `innerRailSide` に使用 |
+| `innerRailSide` | 任意。`turnDirection` より優先（`"left"` / `"right"`） |
+| `simBoundaries` | シミュレーション境界（下記） |
+| `segments[]` | フェーズセグメント配列 |
+
+`segments[]` 各要素:
 
 | フィールド | 説明 |
 |-----------|------|
 | `id` | セグメント ID（`corner4`, `final` 等） |
 | `label` | 画面表示名（「第3コーナー」等） |
 | `kind` | `start` / `straight` / `corner` / `final` |
+| `simRole` | `launch` / `settle` / `pace` / `kick`（速度ブレンド用） |
 | `ratio` | 距離配分（合計で正規化） |
 | `cornerNo` | コーナー番号（任意） |
 
-`buildPhasesFromCourse` が `distance * ratio` を各フェーズの `distance` に設定。
+`simBoundaries` の主なフィールド:
+
+| フィールド | 説明 |
+|-----------|------|
+| `launchThroughSegmentIndex` | スタート〜序盤（launch）終了セグメント |
+| `settleThroughSegmentIndex` | 隊列形成（settle）終了セグメント |
+| `formationEndRule` | `"beforeFirstCorner"` 時は第1コーナー手前で settle 終了 |
+| `kickRemainingMeters` | 終盤キック帯の残り距離（既定 600m） |
+
+`buildPhasesFromCourse` が `distance * ratio` を各フェーズの `distance` に設定。`phase-context.js` の `createPhaseContext` が境界進行率（`launchEndProgress` / `settleEndProgress` 等）を解決し、`phase-speed.js`・`formation.js` が参照する。
 
 ### フェーズオブジェクト（実行時）
 
@@ -308,8 +370,10 @@ calcPhaseCount(distance) = max(5, round(distance / 270))
 
 ## 8. シミュレーションエンジン
 
-エントリ: `runSimulation(raceData, options, ratingAdjustments, renderer)`  
+エントリ: `runSimulation(raceData, options, carrotsByHorse, renderer)`  
 戻り値: `{ results, logs, snapshots, phases }`
+
+`raceData.courseDef` は `main.js` 側で `resolveCourseDef` 済みを想定。`createPhaseContext` がコース境界を構築する。
 
 ### 1フェーズの処理順（概要）
 
@@ -331,9 +395,10 @@ calcPhaseCount(distance) = max(5, round(distance / 270))
 ### 実効速度
 
 ```
-paceMult = getFormationPaceMultiplier(...)   // 隊列形成期のみ ≠ 1
+baseSpeed = resolvePhaseSpeed(horse, phase, phaseCtx)  // S_formation / S_pace / S_kick のブレンド
+paceMult = getFormationStylePaceMult(...) 等          // 隊列形成・脚質補正
 staminaMod = stamina > 0 ? 1.0 : 0.7
-V_eff = S_cruise * staminaMod * battlePenalty * paceMult
+V_eff = baseSpeed * staminaMod * battlePenalty * paceMult
 desiredAdvance = V_eff * (phase.distance / 80)
 ```
 
@@ -347,15 +412,16 @@ desiredAdvance = V_eff * (phase.distance / 80)
 
 ## 9. 隊列形成（formation）
 
-実装: `src/engine/formation.js`。全行程の脚質ペーステーブル（`CONFIG.STYLE_PACE`）は **deprecated**。
+実装: `src/engine/formation.js` + `src/engine/phase-context.js` + `src/engine/battle-formation.js`。全行程の脚質ペーステーブル（`CONFIG.STYLE_PACE`）は **deprecated**。
 
 | 概念 | 説明 |
 |------|------|
 | `formationTargetRank` | 脚質レンジ内で RNG サンプルした目標隊列位置（0=先頭側, 1=後方） |
-| `FORMATION_LOCK_PHASE`（0.40） | これより前を「隊列形成期」とみなす |
-| `getFormationPaceMultiplier` | 形成期のみ ave3f・スタートバーストで微調整 |
+| `launch` / `settle` / `pace` / `kick` | `courses.json` の `simRole` と `phase-context` 境界でフェーズ速度ブレンドを切替 |
+| `getFormationStylePaceMult` | 形成期（launch/settle）の脚質別ペース微調整 |
 | `getFormationOrderBias` | 目標隊列との差に応じた縦位置バイアス |
 | `getFormationPreferredLane` | 逃げ・大逃げは内寄りレーンを優先 |
+| `FORMATION_LOCK_PHASE`（0.40） | レガシー定数。現行は `phaseCtx.settleEndProgress` 等が優先 |
 
 脚質別目標レンジ例: 大逃げ 0.00〜0.08、逃げ 0.00〜0.18、先行 0.12〜0.38、差し 0.35〜0.72、追込 0.55〜0.92。
 
@@ -431,18 +497,23 @@ e = M_maneuv * 0.6 + S_cruise * 0.4 + rand(-5, 5)
 
 `horse.weight` から `weightStaminaMult`（`horse-utils.js`）— バトル消費等に反映。
 
+### キャリア効率
+
+`horse.career.stamina_efficiency` から `careerDrainMult`（`stamina-drain.js`）— 経路スタミナ消費の全体倍率に反映。
+
 ---
 
 ## 13. ゴールシーン
 
-実装: `src/ui/goal-scene.js` + `PhaseController` のゴールラン。
+実装: `src/ui/goal-scene.js` + `PhaseController` のゴールラン + `src/engine/goal-stamina-expression.js`。
 
 | 項目 | 内容 |
 |------|------|
 | 距離イメージ | ゴールライン手前 **200m**（`GOAL_FURLONG_METERS`）を画面に収める |
-| 速度 | 各馬の `last_3f` から intrinsic 速度を算出し、スタミナ残で上限 |
-| 演出 | 横スクロール的カメラ追従、フurlong マーカー、シーン遷移フェード |
-| 記録 | `goalRecording` フレーム列を sessionStorage に分離保存（容量対策） |
+| 速度 | 各馬の `last_3f` から intrinsic 速度（`goalIntrinsicMpsFromLast3f`）を算出。`goalClassIndex`（キャリア実績）・スタミナ残・進路品質で補正 |
+| スタミナ | ゴール専用ドレイン（予備燃焼・先頭粘り等、`goal-scene.js`） |
+| 演出 | 進行度ベースの描画、ゴールライン、シーン遷移フェード（`drawGoalCourseFrame`） |
+| 記録 | `goalRecording` フレーム列を `SESSION_KEY_SIMULATOR_GOAL_RECORDING` に分離保存（容量対策） |
 
 本編最終フェーズのスナップショットから、ゴール専用の進行・バトル・描画に切り替わる。
 
@@ -453,21 +524,24 @@ e = M_maneuv * 0.6 + S_cruise * 0.4 + rand(-5, 5)
 ### Renderer（`src/ui/renderer.js`）
 
 - Canvas 2D、DPR 対応リサイズ
+- `courseDef.turnDirection`（または `innerRailSide`）から `innerRailSide` を解決し、レーン・ラチ・馬・ゲートを左右反転
+- `laneToX(lane)`: レーン1＝最内。左回りは X 昇順、右回りは X 降順
 - `_drawBackground` / `_drawLanes` / `_drawRails` / `_drawHorses`
-- スタートゲート二層描画（`back` / `front`）
+- スタートゲート二層描画（`back` / `front`）。各枠は `calcGateSlotLane(gate)` → `laneToX` で配置
 - 同一レーン近接時は縦方向オフセットでカード重なり防止
+- 盤面上に `#field-placing-overlay` で着順掲示板のオーバーレイも重ねる（右カラムの掲示板と同期）
+- シミュレーションエンジンは `turnDirection` を参照しない（レーン1＝最内の論理座標のみ）。左右反転は描画専用
 
-### PhaseController（`src/ui/phase-controller.js`）
+### PhaseController（`src/ui/phase-controller.js`）と再生ドック
 
-- シミュレーション結果の `snapshots` を順再生
-- フェーズ内 `phaseProgress` 0→1 をアニメーション
-- 再生速度・一時停止・「次のフェーズ」ボタン
+- `PhaseController`: シミュレーション結果の `snapshots` を順再生。フェーズ内 `phaseProgress` 0→1 をアニメーション。ゴールシーン本体も担当
+- `main.js` + `#field-playback-dock`: **スタート**（初回はシミュレーション実行、以降はフェーズ送り）／**オート**（自動進行・一時停止）／**リプレイ**／**リセット**。ラベル更新は `playback-dock-label.js`
 - ログを `#log-panel` に HTML 整形して追記（`race-log.js`）
 
 ### 出馬表（左パネル）
 
 - 折りたたみ可能（`entry-panel--collapsed`）
-- スタミナバー（`entry-stamina.js`）、脚質バッジ、印表示
+- スタミナバー（`entry-stamina.js`）、脚質バッジ、**あなたの評価（🥕）** バッジ（`carrot-display.js`）
 
 ### レスポンシブ
 
@@ -475,18 +549,21 @@ e = M_maneuv * 0.6 + S_cruise * 0.4 + rand(-5, 5)
 
 ---
 
-## 15. レースサマリーと集計
+## 15. レースサマリーとシミュレーション集計
 
 ### レースサマリー
 
-- 着順掲示板（枠色・タイム・着差）: `placing-panel.js`, `finish-times.js`
-- 馬別イベント: スナップショットの `eventLogs` から馬名で抽出（`main.js` `extractHorseEventsBySnapshots`）
+- **着順掲示板**（枠色・タイム・着差）: `placing-panel.js`, `finish-times.js`
+- **各馬のイベント**: スナップショットの `eventLogs` から馬名で抽出（`main.js` `extractHorseEventsBySnapshots`）
 
-### 集計（`stats.html`）
+### シミュレーション集計（`stats.html`）
 
+- 画面サブタイトル: **シミュレーション集計**。ツールバーに「前画面に戻る」「集計リセット」
 - `aggregate-store.js`: `sessionStorage` キー `jra-sim-aggregate-v1`
-- バケットキー: `race_id` + 出走・条件・スライダー・印のハッシュ（`computeBucketKey`）
-- 各 run に着順・1着馬名等を保存し、頻度表・ソート可能テーブルで表示（`stats-app.js`）
+- バケットキー: `race_id` + `race_info` + `entries`（脚質含む）+ **🥕**（`computeBucketKey`）。予想印はバケットに含めない
+- 各 run に着順を `source: 'manual' | 'auto'` で保存（`addAggregateRun`）。集計表示は手動・オートのみ（`manualRunsOnly`）。`source: 'batch'` はレガシーで現行 UI からは追加されない
+- 頻度表・ソート可能テーブルで表示（`stats-app.js`）
+- 集計表の**推奨印**（`AUTO_MARKS`）と**オリジナル設定の印**（`marksByHorse`）を併記。複合スコア順位も表示
 
 ---
 
@@ -520,14 +597,32 @@ e = M_maneuv * 0.6 + S_cruise * 0.4 + rand(-5, 5)
 ```
 jra-race-simulator/
 ├── index.html              # メイン UI
-├── stats.html              # 集計
+├── stats.html              # シミュレーション集計
 ├── main.js                 # エントリ
 ├── src/
 │   ├── config.js           # ゲームバランス定数
 │   ├── engine/             # シミュレーションコア
-│   ├── ui/                 # 描画・再生・プレレース
+│   │   ├── simulation.js   # runSimulation
+│   │   ├── params.js       # calcAllParams / calcGateSlotLane
+│   │   ├── phase.js        # buildPhases
+│   │   ├── phase-context.js # launch/settle/pace/kick 境界
+│   │   ├── phase-speed.js  # resolvePhaseSpeed
+│   │   ├── formation.js    # 隊列形成
+│   │   ├── rating-adjustments.js  # 🥕・印
+│   │   ├── career-goal.js  # ゴール用クラス指数
+│   │   ├── goal-stamina-expression.js
+│   │   └── …               # battle / collision / lane-ai 等
+│   ├── ui/                 # 描画・再生・オリジナル設定
+│   │   ├── renderer.js     # Canvas（回り方向反転含む）
+│   │   ├── phase-controller.js
+│   │   ├── pre-race-editor.js  # オリジナル設定 UI
+│   │   ├── goal-scene.js
+│   │   └── carrot-display.js
 │   ├── stats/              # 集計・race-info 表示
-│   ├── lib/                # コース解決等
+│   │   ├── aggregate-store.js
+│   │   └── stats-app.js
+│   ├── lib/
+│   │   └── course-resolve.js
 │   └── data/               # JSON データ
 ├── tests/                  # Vitest
 └── scripts/                # DB エクスポート
@@ -546,9 +641,14 @@ npm run test:watch
 |--------|------|
 | `simulation.test.js` | 同一 `race_id` で結果が一致（ゴールデンスナップショット） |
 | `formation.test.js` | 隊列目標の脚質レンジ |
-| `rating-adjustments.test.js` | スライダー補正 |
+| `rating-adjustments.test.js` | 🥕補正・印デフォルト・バンドル復元 |
+| `phase-context.test.js` | コース境界（launch/settle/kick） |
+| `phase-speed.test.js` | フェーズ別速度ブレンド |
+| `gate-slot-lane.test.js` | ゲート→レーン配置 |
+| `career-goal.test.js` | ゴール用クラス指数 |
 | `path-stamina.test.js` | 経路消費 |
-| 他 | RNG、コース解決、バトル近接、斤量、ゴールスタミナ等 |
+| `stamina-drain.test.js` | キャリア効率・消費倍率 |
+| 他 | RNG、コース解決、バトル近接・formation、斤量、ゴールスタミナ、params 等 |
 
 エンジン変更で意図的に結果を変えた場合は `tests/fixtures/golden-snapshot.json` の更新が必要。
 
@@ -589,16 +689,21 @@ python3 -m venv .venv
 
 ## 付録B：初期設計（v1.0）からの主な変更
 
+> 盤面の内ラチ向きなど現行仕様の正は **§1・§14** を参照。下表の「v1.0 設計」列は初期ドラフトまたは旧版の記述。
+
 | v1.0 設計 | 現行実装 |
 |-----------|----------|
 | 製品名 CARD SIMULATOR | **RACE SIMULATOR** |
 | 横5レーン（最内〜大外） | **連続18レーン** + ゲート線形配置 |
-| 10pt 一括配分 | **馬・騎手・調教** の ±5 スライダー（各±5%） |
-| 印 ◎〇▲ のみ | ◎◯▲△★☆×消、重複ルール拡張 |
-| 脚質4種 + 全行程 STYLE_PACE | **大逃げ** 追加、形成期 **formation** へ移行 |
-| 単一 JSON | **race-info / race-entries** 分割 + courses |
+| お好み設定・10pt 一括配分 | **オリジナル設定**の**あなたの評価（🥕）** 0〜10（1個=+0.8%、10個=+8%） |
+| 印 ◎〇▲ のみ | **予想印** ◎◯▲△★☆×消。デフォルト🥕設定用、複数頭に同一印可 |
+| 脚質4種 + 全行程 STYLE_PACE | **大逃げ** 追加、**launch/settle/pace/kick** + formation |
+| 単一 JSON | **race-info / race-entries** 分割 + courses（`simBoundaries`・`turnDirection`） |
 | RaceState シングルトン | **runSimulation** + snapshots |
 | 常時60fps ロジック | **フェーズ離散** + rAF 描画のみ |
+| 3能力のみ（S_cruise 等） | **S_formation / S_pace / S_kick** 分離 + `resolvePhaseSpeed` |
+| キャリア実績なし | `horse.career` 任意（ゴール速度・スタミナ効率） |
+| 内ラチ「左回り＝右が内」 | **左回り＝左が内、右回り＝右が内**（`Renderer.innerRailSide`） |
 | MVP Phase 1〜3 チェックリスト | **実装済み機能**として本書に統合 |
 | 結果・払戻画面 | **レースサマリー** + **stats 集計**（払戻は非対象） |
 
