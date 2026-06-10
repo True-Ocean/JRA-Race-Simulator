@@ -572,8 +572,9 @@ export class Renderer {
   }
 
   _getGateGeometry() {
-    // ゲート下辺を画面最下部に寄せる
-    const gateY = this.H - 2;
+    // コース下端余白（progressToY の bottomMargin）に揃え、枠線のはみ出しで見切れないようにする
+    const bottomMargin = 20;
+    const gateY = this.H - bottomMargin;
     const gateH = Math.max(34, this.H * 0.082);
     return { gateY, gateH };
   }
@@ -655,7 +656,9 @@ export class Renderer {
         ctx.fillRect(doorX, doorTop, doorW, doorH);
 
         ctx.fillStyle = isActive ? activeBarColor : inactiveBarColor;
-        ctx.fillRect(xLeft + cellW * 0.12, gateY - gateH + doorH + 7, cellW * 0.76, 6);
+        const barH = 6;
+        const barTop = Math.min(gateY - gateH + doorH + 7, gateY - barH - 1);
+        ctx.fillRect(xLeft + cellW * 0.12, barTop, cellW * 0.76, barH);
 
         const plateW = Math.max(8, cellW * 0.46);
         const plateH = 12;
@@ -677,8 +680,8 @@ export class Renderer {
       ctx.strokeStyle = 'rgba(255,255,255,0.55)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(leftX, gateY + 1);
-      ctx.lineTo(rightX, gateY + 1);
+      ctx.moveTo(leftX, gateY - 1);
+      ctx.lineTo(rightX, gateY - 1);
       ctx.stroke();
     }
     ctx.restore();

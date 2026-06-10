@@ -152,38 +152,49 @@
       filter: brightness(1.08);
     }
 
-    /* 全画面共通：上段ナビは 2 列グリッドで左右位置を揃える */
-    .simulator-toolbar,
-    .pre-race-toolbar,
-    .summary-toolbar {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: var(--app-toolbar-btn-gap);
+    /* 上段ナビ（PC）：固定幅ボタンを左右に配置 */
+    .simulator-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px 16px;
       width: 100%;
-      max-width: var(--app-screen-max-width);
-      margin-left: auto;
-      margin-right: auto;
       margin-bottom: var(--app-toolbar-title-gap);
-      box-sizing: border-box;
     }
-    .simulator-toolbar-right,
-    .pre-race-toolbar-right,
+    .simulator-toolbar-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+    .pre-race-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: var(--app-toolbar-title-gap);
+      width: 100%;
+    }
+    .pre-race-toolbar-right {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .summary-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px 16px;
+      width: 100%;
+      margin-bottom: 2px;
+    }
     .summary-header-row {
       display: contents;
-    }
-    .simulator-toolbar .app-nav-btn,
-    .pre-race-toolbar .app-nav-btn,
-    .summary-toolbar .app-nav-btn {
-      width: 100%;
-      max-width: none;
-      min-width: 0;
-      min-height: 34px;
-      padding: 5px 8px;
-      font-size: 0.7rem;
-      letter-spacing: 0.03em;
-    }
-    #btn-back-to-pre-race:not([hidden]) {
-      grid-column: 1 / -1;
     }
 
     .simulator-page-header {
@@ -1658,6 +1669,40 @@
       }
       .simulator-page-header .app-subtitle--simulator {
         display: none;
+      }
+
+      /* 上段ナビ：2 列グリッドで左右位置を揃える（モバイル） */
+      .simulator-toolbar,
+      .pre-race-toolbar,
+      .summary-toolbar {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--app-toolbar-btn-gap);
+        width: 100%;
+        max-width: var(--app-screen-max-width);
+        margin-left: auto;
+        margin-right: auto;
+        margin-bottom: var(--app-toolbar-title-gap);
+        box-sizing: border-box;
+      }
+      .simulator-toolbar-right,
+      .pre-race-toolbar-right,
+      .summary-header-row {
+        display: contents;
+      }
+      .simulator-toolbar .app-nav-btn,
+      .pre-race-toolbar .app-nav-btn,
+      .summary-toolbar .app-nav-btn {
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+        min-height: 34px;
+        padding: 5px 8px;
+        font-size: 0.7rem;
+        letter-spacing: 0.03em;
+      }
+      #btn-back-to-pre-race:not([hidden]) {
+        grid-column: 1 / -1;
       }
 
       #main-layout {
