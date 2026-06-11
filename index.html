@@ -1265,6 +1265,17 @@
       font-size: 0.9rem;
       font-weight: 600;
     }
+    .pre-race-table td.pre-race-style-cell {
+      text-align: center;
+      padding: 4px 3px;
+    }
+    .pre-race-style-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      box-sizing: border-box;
+    }
     /* 脚質：出馬表と同じバッジ色（ラッパーに entry-style--* を付与） */
     .pre-race-style-wrap.entry-style-inline {
       display: inline-flex;
@@ -1288,8 +1299,11 @@
       background: transparent;
       color: inherit;
       cursor: pointer;
+      width: 100%;
+      min-width: 3rem;
       max-width: 5.35rem;
       text-align: center;
+      text-align-last: center;
     }
     .pre-race-style-wrap select.pre-race-select:focus {
       outline: 1px solid rgba(255, 255, 255, 0.45);

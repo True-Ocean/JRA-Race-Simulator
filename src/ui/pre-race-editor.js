@@ -371,6 +371,9 @@ export function renderPreRaceEditor(p) {
     appendHorseBlockCells(tr, entry, entry.gate, totalEntries);
 
     const tdStyle = document.createElement('td');
+    tdStyle.className = 'pre-race-style-cell';
+    const styleInner = document.createElement('div');
+    styleInner.className = 'pre-race-style-inner';
     const styleWrap = document.createElement('span');
     const sel = document.createElement('select');
     sel.className = 'pre-race-select';
@@ -400,7 +403,8 @@ export function renderPreRaceEditor(p) {
     });
     syncStyleBadgeClass();
     styleWrap.appendChild(sel);
-    tdStyle.appendChild(styleWrap);
+    styleInner.appendChild(styleWrap);
+    tdStyle.appendChild(styleInner);
     tr.appendChild(tdStyle);
 
     tr.appendChild(makeCarrotCell(idx, carrotsByHorse, carrotControlsByRow));
