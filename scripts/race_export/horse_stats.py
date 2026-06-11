@@ -5,12 +5,16 @@ import pandas as pd
 
 from .career_stats import aggregate_career, apply_class_index_to_last3f
 from .config import (
+    AVE_3F_MAX,
+    AVE_3F_MIN,
     DEFAULT_AVE_3F,
     DEFAULT_LAST_3F,
     DEFAULT_STYLE,
     DEFAULT_TOP3_RATE,
     DEFAULT_WIN_RATE,
     KESSHI_TO_STYLE,
+    LAST_3F_MAX,
+    LAST_3F_MIN,
     MAX_RECENT_RUNS,
     MIN_GOOD_RUNS,
 )
@@ -68,8 +72,16 @@ def _select_runs(records: pd.DataFrame, target_distance: int = 0) -> pd.DataFram
     return selected
 
 
-def _stat_range(series: pd.Series) -> dict | None:
-    values = series.dropna().astype(float)
+def _valid_3f_values(series: pd.Series, lo: float, hi: float) -> pd.Series:
+    """海外レース等で欠損のプレースホルダーになっている 0 や範囲外を除外する。"""
+    values = pd.to_numeric(series, errors="coerce").dropna()
+    if values.empty:
+        return values
+    return values[(values > 0) & (values >= lo) & (values <= hi)]
+
+
+def _stat_range(series: pd.Series, lo: float, hi: float) -> dict | None:
+    values = _valid_3f_values(series, lo, hi)
     if values.empty:
         return None
     return {
@@ -79,17 +91,38 @@ def _stat_range(series: pd.Series) -> dict | None:
     }
 
 
-def _pair_aggregate(selected: pd.DataFrame) -> tuple[dict | None, dict | None, float | None]:
+def _count_invalid_3f(series: pd.Series, lo: float, hi: float) -> int:
+    raw = pd.to_numeric(series, errors="coerce")
+    present = raw.notna()
+    if not present.any():
+        return 0
+    valid = _valid_3f_values(series, lo, hi)
+    return int(present.sum() - len(valid))
+
+
+def _pair_aggregate(
+    selected: pd.DataFrame,
+    horse_name: str = "",
+    warnings: list[str] | None = None,
+) -> tuple[dict | None, dict | None, float | None]:
     """同一走集合から Ave / 上りをペアとして平均。距離乖離の参考値も返す。"""
     if selected.empty:
         return None, None, None
 
-    pairs = selected[["Ave-3F", "上り3F"]].dropna(how="all")
-    if pairs.empty:
+    ave_range = _stat_range(selected["Ave-3F"], AVE_3F_MIN, AVE_3F_MAX)
+    last_range = _stat_range(selected["上り3F"], LAST_3F_MIN, LAST_3F_MAX)
+    if ave_range is None and last_range is None:
         return None, None, None
 
-    ave_range = _stat_range(selected["Ave-3F"])
-    last_range = _stat_range(selected["上り3F"])
+    warn = warnings if warnings is not None else []
+    invalid_ave = _count_invalid_3f(selected["Ave-3F"], AVE_3F_MIN, AVE_3F_MAX)
+    invalid_last = _count_invalid_3f(selected["上り3F"], LAST_3F_MIN, LAST_3F_MAX)
+    if invalid_ave or invalid_last:
+        label = horse_name or "?"
+        warn.append(
+            f"{label}: excluded invalid 3F data "
+            f"(Ave-3F={invalid_ave}, 上り3F={invalid_last} run(s); overseas/missing)"
+        )
     dist_bias = None
     if "距離" in selected.columns:
         dists = selected["距離"].dropna()
@@ -142,7 +175,9 @@ def aggregate_horse_stats(
     for horse_name, group in horse_records_df.groupby("馬名", sort=False):
         career = aggregate_career(group)
         selected = _select_runs(group, target_distance)
-        ave_range, last_range, dist_bias = _pair_aggregate(selected)
+        ave_range, last_range, dist_bias = _pair_aggregate(
+            selected, horse_name=str(horse_name), warnings=warn
+        )
         last_3f_raw = last_range["avg"] if last_range else None
         last_3f_effective = apply_class_index_to_last3f(
             last_3f_raw,
@@ -220,6 +255,20 @@ def apply_fallbacks(entries: list[dict], warnings: list[str]) -> list[dict]:
                 "graded": {},
             }
             warnings.append(f"HorseRecords missing: {horse['name']} (fallback applied)")
+        else:
+            if horse.get("ave_3f") is None:
+                horse["ave_3f"] = round(float(fallback_ave), 1)
+                warnings.append(
+                    f"{horse['name']}: no valid Ave-3F in selected runs (fallback applied)"
+                )
+            if horse.get("last_3f") is None:
+                horse["last_3f"] = round(float(fallback_last), 1)
+                horse["last_3f_raw"] = horse["last_3f"]
+                warnings.append(
+                    f"{horse['name']}: no valid 上り3F in selected runs (fallback applied)"
+                )
+            elif horse.get("last_3f_raw") is None:
+                horse["last_3f_raw"] = horse["last_3f"]
 
         if jockey.get("win_rate") is None or jockey.get("top3_rate") is None:
             jockey["win_rate"] = round(float(fallback_win), 2)

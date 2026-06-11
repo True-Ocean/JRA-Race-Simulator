@@ -131,6 +131,23 @@ def validate(
                     f"{horse['name']}: {key}={value} outside expected range [{lo}, {hi}]"
                 )
 
+        for range_key, lo, hi in (
+            ("ave_3f_range", AVE_3F_MIN, AVE_3F_MAX),
+            ("last_3f_range", LAST_3F_MIN, LAST_3F_MAX),
+        ):
+            range_obj = horse.get(range_key)
+            if not range_obj:
+                continue
+            for part in ("min", "max", "avg"):
+                value = range_obj.get(part)
+                if value is None:
+                    continue
+                if value <= 0 or not (lo <= value <= hi):
+                    warnings.append(
+                        f"{horse['name']}: {range_key}.{part}={value} invalid "
+                        f"(expected {lo}–{hi})"
+                    )
+
 
 def write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
