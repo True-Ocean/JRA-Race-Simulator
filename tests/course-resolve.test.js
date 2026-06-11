@@ -71,6 +71,16 @@ describe('resolveCourseDef', () => {
     expect(def?.id).toBe('tokyo_turf_1600');
   });
 
+  it('race-info の venue / track / distance で阪神芝2200（内）を解決する', () => {
+    const def = resolveCourseDef(
+      { race_info: { venue: '阪神競馬場', track: '芝', distance: 2200 } },
+      courseCatalog,
+    );
+    expect(def?.id).toBe('hanshin_turf_2200');
+    expect(def?.turnDirection).toBe('right');
+    expect(def?.segments?.find(s => s.id === 'back')?.label).toBe('向正面');
+  });
+
   it('race-info の venue / track / distance で東京芝1600を解決する', () => {
     const def = resolveCourseDef(
       { race_info: { venue: '東京競馬場', track: '芝', distance: 1600 } },

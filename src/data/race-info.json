@@ -1,13 +1,13 @@
 {
-  "race_id": 20260607,
+  "race_id": 20260614,
   "race_info": {
-    "date": "2026-06-07",
-    "venue": "東京競馬場",
+    "date": "2026-06-14",
+    "venue": "阪神競馬場",
     "grade": "G1",
-    "age_condition": "3歳以上",
-    "race_name": "安田記念",
+    "age_condition": "３上",
+    "race_name": "宝塚記念",
     "track": "芝",
-    "distance": 1600,
+    "distance": 2200,
     "condition": "良"
   }
 }
