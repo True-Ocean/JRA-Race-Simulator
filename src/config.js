@@ -21,6 +21,13 @@ export const CONFIG = {
   GOAL_SPREAD_MS:          2000,
   DISPLAY_OFFSET_Y:        0.2,
 
+  /** 本編: 先頭馬の前進に連動してラチ支柱をスクロール（ゴールシーンは常に無効） */
+  TRACK_RAIL_SCROLL_ENABLED: true,
+  /** 馬 x の想定スパン（renderer の描画正規化と合わせる） */
+  TRACK_RAIL_SCROLL_X_SPAN:  140,
+  /** スクロール量の微調整係数 */
+  TRACK_RAIL_SCROLL_GAIN:    0.88,
+
   LANE_COEFF: [0, 1.0, 1.0, 1.01, 1.01, 1.02, 1.02, 1.03, 1.03, 1.04, 1.04, 1.05, 1.05, 1.06, 1.06, 1.07, 1.07, 1.08, 1.08],
 
   // JRA枠番カラー（1〜8枠）

@@ -95,6 +95,11 @@ import {
   calcPackRankNorm,
   assignStretchFanLanesForPack,
 } from '../engine/lane-decision.js';
+import {
+  createTrackRailScrollState,
+  resetTrackRailScrollState,
+  advanceTrackRailScroll,
+} from './track-rail-scroll.js';
 
 function applyStartSlowMotion(progress) {
   const p = Math.max(0, Math.min(1, progress));
@@ -160,6 +165,26 @@ class PhaseController {
     this.advanceExternallyLocked = false;
     this.frameCount  = 24; // 1フェーズを細かく刻む
     this.frameMs     = 70; // 1コマの表示時間
+    this._trackRailScroll = createTrackRailScrollState();
+  }
+
+  _resetTrackRailScroll() {
+    resetTrackRailScrollState(this._trackRailScroll);
+  }
+
+  _railScrollDrawOptions(horses, baseOptions = {}) {
+    const freeze = Boolean(
+      baseOptions.freezeTrackRailScroll
+      || baseOptions.goalRun
+      || this.goalSceneActive,
+    );
+    const trackScrollY = advanceTrackRailScroll(
+      this._trackRailScroll,
+      horses,
+      this.renderer,
+      { freeze },
+    );
+    return { ...baseOptions, trackScrollY };
   }
 
   _syncAdvanceButton() {
@@ -175,6 +200,7 @@ class PhaseController {
   start() {
     this.currentIdx = 0;
     this.renderer.resetHorseRenderState();
+    this._resetTrackRailScroll();
     this._initializePlacingPanel();
     this._renderPhase(0);
     this._syncAdvanceButton();
@@ -244,12 +270,13 @@ class PhaseController {
           rendered,
           phase,
           moveProgress,
-          {
+          this._railScrollDrawOptions(rendered, {
             forceStartLineup: moveProgress <= 0.02,
+            freezeTrackRailScroll: frame <= holdFrames || moveProgress <= 0.02,
             gateOpenProgress: moveProgress <= 0 ? holdProgress * 0.03 : gateOpenProgress,
             gateYOffset: gateSlide * this.renderer.H * 0.22,
             gateOpacity: 1 - gateSlide * 0.95,
-          }
+          }),
         );
         this.lastRenderedHorses = rendered.map(h => ({ ...h }));
         updateEntryStaminaBars(rendered);
@@ -292,7 +319,7 @@ class PhaseController {
         };
       });
 
-      this.renderer.draw(tweened, phase, 1);
+      this.renderer.draw(tweened, phase, 1, this._railScrollDrawOptions(tweened));
       this.lastRenderedHorses = tweened.map(h => ({ ...h }));
       updateEntryStaminaBars(tweened);
       if (frame === 1) {
@@ -511,6 +538,7 @@ class PhaseController {
     this._goalReplayLogs = [];
     this._replayGoalLogSynced = 0;
     this.renderer.resetGoalDrawProgress();
+    this._resetTrackRailScroll();
     let replayGoalRenderSynced = false;
 
     const step = (ts) => {
@@ -524,6 +552,8 @@ class PhaseController {
 
       if (frame.kind === 'transition') {
         this.renderer.draw(horses, phase, 1, {
+          freezeTrackRailScroll: true,
+          trackScrollY: 0,
           sceneTransition: {
             t: frame.transitionT ?? 0,
             maxAlpha: GOAL_SCENE_TRANSITION_MAX_ALPHA,
@@ -758,6 +788,7 @@ class PhaseController {
     this._goalReplayLogs = [];
     this._replayGoalLogSynced = 0;
     this.renderer.resetGoalDrawProgress();
+    this._resetTrackRailScroll();
 
     const step = (ts) => {
       if (!goalSceneStarted) {
@@ -768,6 +799,8 @@ class PhaseController {
         );
         if (transitionElapsed < transitionHalfMs) {
           this.renderer.draw(baseHorses, phase, 1, {
+            freezeTrackRailScroll: true,
+            trackScrollY: 0,
             sceneTransition: {
               t: transitionT,
               maxAlpha: GOAL_SCENE_TRANSITION_MAX_ALPHA,

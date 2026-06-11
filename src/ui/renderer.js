@@ -221,7 +221,8 @@ export class Renderer {
     ctx.clearRect(0, 0, this.W, this.H);
     this._drawBackground(phase);
     this._drawLanes(phase);
-    this._drawRails();
+    const trackScrollY = this._resolveTrackScrollY(options);
+    this._drawRails(trackScrollY);
     const gateOpenProgress = options.gateOpenProgress ?? (phaseProgress > 0 ? 1 : 0);
     const gateYOffset = options.gateYOffset ?? 0;
     const gateOpacity = options.gateOpacity ?? 1;
@@ -313,7 +314,14 @@ export class Renderer {
     }
   }
 
-  _drawRails() {
+  _resolveTrackScrollY(options = {}) {
+    if (CONFIG.TRACK_RAIL_SCROLL_ENABLED === false) return 0;
+    if (options.goalRun) return 0;
+    const scrollY = Number(options.trackScrollY);
+    return Number.isFinite(scrollY) && scrollY >= 0 ? scrollY : 0;
+  }
+
+  _drawRails(trackScrollY = 0) {
     const ctx = this.ctx;
     const innerRailX = this._getRailX('inner');
     const outerRailX = this._getRailX('outer');
@@ -324,6 +332,11 @@ export class Renderer {
       { x: outerRailX, postOffset: outerOutwardSign * 8 },
     ];
 
+    const postInterval = 48;
+    const postW = 5;
+    const postH = 14;
+    const scrollOffset = trackScrollY % postInterval;
+
     rails.forEach(({ x, postOffset }) => {
       ctx.strokeStyle = 'rgba(255,255,255,0.85)';
       ctx.lineWidth   = 4;
@@ -333,10 +346,9 @@ export class Renderer {
       ctx.lineTo(x, this.H);
       ctx.stroke();
 
-      const postInterval = 48;
-      const postW = 5, postH = 14;
       const postX = x + postOffset - postW / 2;
-      for (let y = 10; y < this.H; y += postInterval) {
+      const startY = 10 + scrollOffset - postInterval;
+      for (let y = startY; y < this.H + postInterval; y += postInterval) {
         ctx.fillStyle   = '#1a4a1a';
         ctx.shadowColor = 'rgba(0,0,0,0.5)';
         ctx.shadowBlur  = 3;
