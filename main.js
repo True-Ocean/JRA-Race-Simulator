@@ -57,6 +57,7 @@ import {
 } from './src/ui/entry-stamina.js';
 import { horseNameCarrotGroupHtml } from './src/ui/carrot-display.js';
 import { setPlaybackButton } from './src/ui/playback-dock-label.js';
+import { recordDisplayDiagnostic, startDisplayDiagnostics } from './src/ui/display-diagnostics.js';
 import {
   closeActiveInfoPopover,
   getEntryStyleBadgeClass,
@@ -340,6 +341,7 @@ function cloneRaceEntries(entries) {
 function renderEntryList(horses, carrotsByHorse = {}) {
   const listEl = document.getElementById('entry-list');
   if (!listEl) return;
+  recordDisplayDiagnostic('entry-list-rebuild', { horses: horses.length });
   listEl.innerHTML = '';
   horses.forEach(horse => {
     const waku = JRA_WAKU_COLORS[horse.waku] ?? { bg: '#888', text: '#fff' };
@@ -420,7 +422,8 @@ const SIMULATOR_BOOT =
 //  エントリーポイント
 // =====================
 if (SIMULATOR_BOOT) {
-Promise.all([
+  startDisplayDiagnostics();
+  Promise.all([
   fetch('./src/data/race-info.json').then(res => res.json()),
   fetch('./src/data/race-entries.json').then(res => res.json()),
   fetch('./src/data/courses.json').then(res => res.json()),
@@ -723,12 +726,18 @@ Promise.all([
     }
 
     function refreshCourseAfterViewportChange() {
-      renderer.syncLayout();
+      recordDisplayDiagnostic('viewport-refresh', { mode: playbackDockMode });
+      // リサイズ時は Renderer が直前フレームを一度だけ描き直す。
+      // サイズが変わらないタブ復帰では、同じフレームを再描画するだけにする。
+      const resized = renderer.syncLayout();
+      if (resized || renderer.redrawLast()) return;
+
+      // 直前フレームがない初期化直後だけ、保存状態から復元する。
       if (playbackDockMode === 'complete' && Array.isArray(simSnapshots) && simSnapshots.length) {
         applyRestoredRaceVisuals();
         return;
       }
-      if (!renderer.redrawLast() && Array.isArray(initialHorses) && initialHorses.length) {
+      if (Array.isArray(initialHorses) && initialHorses.length) {
         renderer.draw(initialHorses, phases[0], 0);
       }
     }
@@ -831,6 +840,7 @@ Promise.all([
 
     /** 集計画面から戻ったときなど、保存済みのレース結果表示を復元する */
     function applyRestoredRaceVisuals() {
+      recordDisplayDiagnostic('restore-race-visuals');
       if (!Array.isArray(simSnapshots) || simSnapshots.length === 0) {
         applyComputedHorsesToUi();
         return;
@@ -1532,12 +1542,19 @@ Promise.all([
     });
 
     // タブ破棄・GPU スリープ・bfcache・アドレスバー伸縮のあと、消えた Canvas を描き直す
+    let resumeCourseRafId = 0;
     const resumeCourseAfterPause = () => {
-      refreshCourseAfterViewportChange();
-      if (autoAdvanceActive && controller && !controller.goalSceneActive) {
-        scheduleAutoAdvanceLoop();
-      }
-      syncSimulatorChromeForAutoMode();
+      // pageshow と visibilitychange が同じ復帰で連続発火するため、1フレームに集約する。
+      if (resumeCourseRafId) return;
+      resumeCourseRafId = requestAnimationFrame(() => {
+        resumeCourseRafId = 0;
+        if (document.visibilityState !== 'visible') return;
+        refreshCourseAfterViewportChange();
+        if (autoAdvanceActive && controller && !controller.goalSceneActive) {
+          scheduleAutoAdvanceLoop();
+        }
+        syncSimulatorChromeForAutoMode();
+      });
     };
 
     window.addEventListener('pageshow', resumeCourseAfterPause);

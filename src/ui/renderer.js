@@ -6,6 +6,7 @@ import {
   shouldApplyCanvasResize,
 } from './canvas-viewport.js';
 import { easeCardAdjust, resolveHorseCardPlacement } from './horse-card-spacing.js';
+import { recordDisplayDiagnostic } from './display-diagnostics.js';
 
 const TRACK_BASE_COLOR = {
   '芝':    { h: 120, s: 55, l: 22 },
@@ -66,8 +67,7 @@ export class Renderer {
     });
     this.canvas?.addEventListener('contextrestored', () => {
       this._dpr = 0;
-      this.syncLayout();
-      this.redrawLast();
+      if (!this.syncLayout()) this.redrawLast();
     });
   }
 
@@ -85,11 +85,12 @@ export class Renderer {
       cancelAnimationFrame(this._resizeRaf);
       this._resizeRaf = 0;
     }
-    this._resize();
+    return this._resize();
   }
 
   redrawLast() {
     if (!this._lastDraw) return false;
+    recordDisplayDiagnostic('redraw-last');
     const { horses, phase, phaseProgress, options } = this._lastDraw;
     this.draw(horses, phase, phaseProgress, options);
     return true;
@@ -118,7 +119,7 @@ export class Renderer {
 
   _resize() {
     const wrap = this.canvas?.parentElement;
-    if (!wrap || !this.canvas) return;
+    if (!wrap || !this.canvas) return false;
     const nextW = wrap.clientWidth;
     const nextH = wrap.clientHeight;
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -128,12 +129,13 @@ export class Renderer {
       { w: prevW, h: prevH, dpr: this._dpr },
       { w: nextW, h: nextH, dpr },
     )) {
-      return;
+      return false;
     }
 
     this.W = nextW;
     this.H = nextH;
     this._dpr = dpr;
+    recordDisplayDiagnostic('canvas-resize', { prevW, prevH, width: nextW, height: nextH, dpr });
     // 表示サイズは CSS（inset: 0）に任せ、インライン幅指定で 0×0 固定や再フローを起こさない
     this.canvas.width = Math.max(1, Math.round(this.W * dpr));
     this.canvas.height = Math.max(1, Math.round(this.H * dpr));
@@ -155,9 +157,11 @@ export class Renderer {
     scaleHorseRenderPositions(this.horseRenderState, prevW, prevH, this.W, this.H);
     this._scaleCardAdjust(prevW, prevH);
     this.redrawLast();
+    return true;
   }
 
   resetHorseRenderState() {
+    recordDisplayDiagnostic('reset-horse-render-state');
     this.horseRenderState.clear();
     this._goalLastDrawProgressById.clear();
     this._cardAdjust.clear();
@@ -304,6 +308,7 @@ export class Renderer {
   }
 
   draw(horses, phase, phaseProgress = 1, options = {}) {
+    recordDisplayDiagnostic('draw');
     this._lastDraw = { horses, phase, phaseProgress, options };
     if (!(this.W > 1 && this.H > 1) || !this.ctx) return;
     const ctx = this.ctx;
