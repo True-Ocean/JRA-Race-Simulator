@@ -115,6 +115,7 @@
 
 - `src/engine/rng.js` の **Mulberry32**（`createRng(seed)`）
 - デフォルトシード: `raceData.race_id`（`runSimulation` の `options.seed` で上書き可）
+- 通常 UI は新規レース開始ごとにシードを更新し、ゴール AI にも同じ走行シードを渡す。再現性テスト用の固定シードを通常プレイに強制しない。リプレイではゴールの記録フレームを使い、再抽選しない
 - 同一シード・同一入力（`entries` の脚質含む出走表・レース条件・オリジナル設定の🥕）なら、エンジン出力は再現可能（Vitest ゴールデンで検証）。予想印はシミュレーションに直接乗らない
 
 ### 更新モデル
@@ -206,13 +207,11 @@
 | `src/data/courses.json` | コースセグメント・回り方向・シミュ境界（`simBoundaries`） |
 | `src/data/finish-time-baseline.json` | 着順タイム表示の基準 |
 
-コース解決: `src/lib/course-resolve.js` の `resolveCourseDef(raceData, courseCatalog)` が次の順でマッチする。
+公開対象はG1の1レースのみ。毎回提供される出走データ・コースレイアウトで公開版を差し替える。レース／コース選択UIや過去レース公開は設けない。既存の実コース定義は再利用用に保持できる。
 
-1. `venueKey` + `surface` + `distance`
-2. `race_info.course_id`
-3. `venueKey` なしで距離・馬場が一意に決まるコース
-4. `generic_one_turn`（汎用ワンターン）
-5. `defaultCourseId`（既定: `tokyo_turf_2400`）
+`src/lib/published-race.js` がメイン・集計画面共通で最新JSONを読み込み、G1・出走表・両ファイルの `race_id`・コース定義を検証する。保存結果とサマリーにも `race_id` を記録し、異なるレースやIDのない旧記録は復元しない。集計画面を直接開いても公開中レースと照合する。
+
+コース解決: `src/lib/course-resolve.js` の `resolveCourseDef` は `venueKey` + `surface` + `distance` が一致する実コースのみを返す。`race_info.course_id` がある場合はそのIDも一致必須（内外回り等の区別用であり、利用者の選択機能ではない）。未登録・不一致・複数候補なら `null`。汎用コース・既定コースへの代替はなく、起動時にエラーを表示して再生を止める。
 
 ---
 
@@ -310,17 +309,9 @@ initialStamina = S_sustain * 2.2
 
 ## 7. コース定義とフェーズ管理
 
-### フェーズ数（フォールバック）
+### コース定義（必須）
 
-`src/engine/phase.js`:
-
-```javascript
-calcPhaseCount(distance) = max(5, round(distance / 270))
-```
-
-コーナー位置はフェーズインデックスの 15% / 35% / 55% / 75% 付近に自動配置。
-
-### コース定義あり（推奨）
+`src/engine/phase.js` の `buildPhases` は提供された `segments` からのみフェーズを生成する。定義がない場合、空・不正な距離比、登録距離との不一致はエラー。距離だけからコーナーを自動生成しない。
 
 `courses.json` の各コース:
 
@@ -372,7 +363,7 @@ calcPhaseCount(distance) = max(5, round(distance / 270))
 ## 8. シミュレーションエンジン
 
 エントリ: `runSimulation(raceData, options, carrotsByHorse, renderer)`  
-戻り値: `{ results, logs, snapshots, phases }`
+戻り値: `{ results, logs, snapshots, phases, seed }`
 
 `raceData.courseDef` は `main.js` 側で `resolveCourseDef` 済みを想定。`createPhaseContext` がコース境界を構築する。
 
@@ -384,11 +375,11 @@ calcPhaseCount(distance) = max(5, round(distance / 270))
 3. フェーズ特化バトル（battle-phase.js: 先頭争い・コーナー位置・終盤決戦）
 4. 接触ペア検出 → 通常バトル（最大1組/フェーズ）
 5. 各馬を前から順に:
-   a. V_eff 算出・縦移動意図
+   a. 移動前の隊列から走行負荷 effort を算出 → V_eff・縦移動意図
    b. スタート/隊列形成/不規則イベント
    c. targetLane 決定（lane-ai / lane-decision）
    d. 横移動・衝突解決（collision.js）
-   e. 経路スタミナ消費（path-stamina.js）
+   e. 経路を記録し、実コース距離・負荷・外回り・再加速から共通の走行消費を積算
 6. コーナー距離ロス（applyCornerLoss）
 7. フェーズ終了: battlePenalty リセット、スナップショット保存
 ```
@@ -396,10 +387,10 @@ calcPhaseCount(distance) = max(5, round(distance / 270))
 ### 実効速度
 
 ```
-baseSpeed = resolvePhaseSpeed(horse, phase, phaseCtx)  // S_formation / S_pace / S_kick のブレンド
+baseSpeed = resolvePhaseSpeed(horse, phase, phaseCtx, effort)  // 仕掛けに応じた能力ブレンド
 paceMult = getFormationStylePaceMult(...) 等          // 隊列形成・脚質補正
-staminaMod = stamina > 0 ? 1.0 : 0.7
-V_eff = baseSpeed * staminaMod * battlePenalty * paceMult
+staminaMod = staminaSpeedMultiplier(stamina / initialStamina)
+V_eff = baseSpeed * staminaMod * battlePenalty * paceMult * effortSpeedMultiplier(effort)
 desiredAdvance = V_eff * (phase.distance / 80)
 ```
 
@@ -407,7 +398,7 @@ desiredAdvance = V_eff * (phase.distance / 80)
 
 ### 着順・タイム
 
-全フェーズ終了後、各馬の `x` とスタミナ・last_3f 等から到達時刻を算出（`simulation.js` 末尾）。UI では `finish-times.js` がタイムラベル・着差を整形。
+エンジン末尾の `arrivalTime` は能力・余力から算出する参考値。UI の実着順は、道中の位置から継続するゴール AI と描画上の通過判定で決まる（`PhaseController`）。`finish-times.js` が通過記録をもとにタイムラベル・着差を整形。
 
 ---
 
@@ -440,7 +431,7 @@ desiredAdvance = V_eff * (phase.distance / 80)
 
 **レーン変更率:** `CONFIG.LANE_CHANGE_RATE`（0.15）をベースに、フェーズ・脚質で変動（`getLaneChangeRate`）。
 
-衝突・描画の最小間隔は `Renderer.getCollisionMetrics` が頭数・フェーズに応じて動的に返し、バトル近接判定（`battle.js`）と共有する。
+エンジンの希望進路の間隔は `Renderer.getCollisionMetrics` が馬体寸法・フェーズから返し、バトル近接判定（`battle.js`）と共有する。実際の移動は `ui/horse-motion.js` が各フレームの始点〜終点を連続衝突判定し、途中で交差する進路も制限する。横から押し出すのではなく、希望方向への移動を保留・減速して前走馬へ追従する。馬体の安全領域は幅108%・長さ104%の矩形で、道中とゴールを共通化している。
 
 ---
 
@@ -476,23 +467,28 @@ e = M_maneuv * 0.6 + S_cruise * 0.4 + rand(-5, 5)
 
 ### 馬場係数
 
-`CONFIG.TRACK_MODIFIER[track][condition]` — 経路消費・旧式フェーズ消費に乗算。
+`CONFIG.TRACK_MODIFIER[track][condition]` — 道中・ゴール共通の走行消費に乗算。
 
-### 経路ベース消費（現行）
+### 走行負荷と消費（現行）
 
-フラグ: `USE_PATH_BASED_STAMINA = true`（`constants.js`）
+`race-effort.js` が脚質・順位・競り合い・前詰まり・残り距離から `raceEffort` を決める。走行ごとの小さな作戦差（仕掛け時期・負荷）はシード付き乱数。脚質は傾向であり、勝ち馬や最終残量を固定しない。
 
-- フェーズ内の移動セグメントごとに `calcPathSegmentMeters` → `calcPathStaminaDrain`
-- コーナー外レーンは `LANE_COEFF[lane]` で追加消費
-- レーン変更・加速・バトルはイベントとして別トラッカー（`staminaLaneCost` 等）
+- `calcRunningStaminaDrain` を道中とゴールで共用。初期余力 ×「距離割合 ×（基礎負荷 + effort の二乗）+ 正の速度変化の追加負荷」に、持久力・斤量・馬場・キャリア効率などを反映する
+- 距離予算は本編 `レース距離 - 200m`、ゴール `200m`。フェーズの描画用距離を二重消費しない。ゴールは進路制約後の実前進量で積算し、通過後の流し走行は課金しない
+- コーナー外回りは `calcLanePathFactor`、レーン変更・バトルはイベント消費で追加負荷になる
+- sim-x の経路換算は基準速度50で `80 / 50`。`pathMeters` は主に経路制約・表示補間用。区間距離をもう一度掛けない
+- 速度差を比較して再加速を計算する（長いフェーズの前進量を加速と誤認しない）。加速消費に時間差分を二重に掛けない
+- `staminaRunningCost` は共通の走行消費、`staminaBaseCost` / `staminaEventCost` は消費内訳
 
 ### 安全策モデル
 
 `USE_SAFE_STAMINA_MODEL = true` 時、イベント疲労スコアが終盤速度に反映（`SAFE_GOAL_EVENT_FATIGUE_WEIGHT` 等）。
 
-### 枯渇時
+### 疲労と表示
 
-`stamina <= 0` → `STAMINA_MODIFIER_EMPTY`（0.7）を `V_eff` に適用。
+残量35%以下で速度、40%以下で加速が連続的に低下する。ゼロでも走行は続く。バーは実残量0〜100%（小数あり）で、色の境界による急な速度変化はない。フェーズ開始時に終了時の残量を先出しせず、移動と一緒に減らす。道中の強制回復・ゴールの目標残量への強制消費・演出時間超過時の強制加速は行わない。
+
+ゴール前は余力と追い出しの強さに応じ、基礎速度に最大14%のスパート余地を持つ。入口で瞬時に速度を変えず、加速上限を通して到達する。前方馬との間隔は従来どおり制約し、実際に発揮できた増速分だけ走行負荷を追加する。余力が減ればスパートの効果も連続的に弱まる。
 
 ### 斤量
 
@@ -500,7 +496,7 @@ e = M_maneuv * 0.6 + S_cruise * 0.4 + rand(-5, 5)
 
 ### キャリア効率
 
-`horse.career.stamina_efficiency` から `careerDrainMult`（`stamina-drain.js`）— 経路スタミナ消費の全体倍率に反映。
+`horse.career.stamina_efficiency` から `careerDrainMult`（`stamina-drain.js`）— 走行・イベント消費の共通倍率に反映。
 
 ---
 
@@ -512,8 +508,9 @@ e = M_maneuv * 0.6 + S_cruise * 0.4 + rand(-5, 5)
 |------|------|
 | 距離イメージ | ゴールライン手前 **200m**（`GOAL_FURLONG_METERS`）を画面に収める |
 | 速度 | 各馬の `last_3f` から intrinsic 速度（`goalIntrinsicMpsFromLast3f`）を算出。`goalClassIndex`（キャリア実績）・スタミナ残・進路品質で補正 |
-| スタミナ | ゴール専用ドレイン（予備燃焼・先頭粘り等、`goal-scene.js`） |
+| スタミナ | 道中から同じ余力・負荷状態を引き継ぎ、共通の走行負荷式で消費 |
 | 演出 | 進行度ベースの描画、ゴールライン、シーン遷移フェード（`drawGoalCourseFrame`） |
+| 再生テンポ | ゴール走行のみ `GOAL_PLAYBACK_RATE = 1.15`。走行時計を表示時計より15%速く進めるが、能力・消費の式や着順表の走破タイムは走行時計のまま。フェードと終了後待機は表示時計で維持。記録は表示時刻と倍率を保存し、リプレイで再現する（旧記録は等速） |
 | 記録 | `goalRecording` フレーム列を `SESSION_KEY_SIMULATOR_GOAL_RECORDING` に分離保存（容量対策） |
 
 本編最終フェーズのスナップショットから、ゴール専用の進行・バトル・描画に切り替わる。
@@ -525,11 +522,14 @@ e = M_maneuv * 0.6 + S_cruise * 0.4 + rand(-5, 5)
 ### Renderer（`src/ui/renderer.js`）
 
 - Canvas 2D、DPR 対応リサイズ
+- 横方向は希望進路への安全な移動だけを許し、重なり補正で別方向の進路を追加しない。カメラ移動は全馬共通、詰まり解消後の遅れ回復は速度制限付きとし、押し戻し・飛び出しを避ける
 - `courseDef.turnDirection`（または `innerRailSide`）から `innerRailSide` を解決し、レーン・ラチ・馬・ゲートを左右反転
 - `laneToX(lane)`: レーン1＝最内。左回りは X 昇順、右回りは X 降順
 - `_drawBackground` / `_drawLanes` / `_drawRails` / `_drawHorses`
 - スタートゲート二層描画（`back` / `front`）。各枠は `calcGateSlotLane(gate)` → `laneToX` で配置
-- 同一レーン近接時は縦方向オフセットでカード重なり防止
+- 狭い画面でも馬体幅はレーン幅の72%以内。初期配置・リサイズ時に安全な隊列を確保し、走行中は共通の連続衝突判定を適用する
+- ゴール入口は道中の実描画位置を引き継ぎ、外へ広がる目標レーンへの瞬間移動はしない。安全判定後の実位置をAI・距離・走行消費・レーン変更消費・通過判定に反映する。ゴール後も先着馬を画面外で止めず、後続の通過を妨げない
+- リプレイは低fpsでも記録した途中経路を順番に処理し、高fpsで同じ記録を表示する間は移動を重ねない（再抽選・着順再計算なし）
 - 盤面上に `#field-placing-overlay` で着順掲示板のオーバーレイも重ねる（右カラムの掲示板と同期）
 - シミュレーションエンジンは `turnDirection` を参照しない（レーン1＝最内の論理座標のみ）。左右反転は描画専用
 
@@ -560,7 +560,7 @@ e = M_maneuv * 0.6 + S_cruise * 0.4 + rand(-5, 5)
 ### シミュレーション集計（`stats.html`）
 
 - 画面サブタイトル: **シミュレーション集計**。ツールバーに「前画面に戻る」「集計リセット」
-- `aggregate-store.js`: `sessionStorage` キー `jra-sim-aggregate-v1`
+- `aggregate-store.js`: `sessionStorage` キー `jra-sim-aggregate-v2`（現行消費モデル。旧モデルの集計・再生記録とは分離し、出走表設定は維持）
 - バケットキー: `race_id` + `race_info` + `entries`（脚質含む）+ **🥕**（`computeBucketKey`）。予想印はバケットに含めない
 - 各 run に着順を `source: 'manual' | 'auto'` で保存（`addAggregateRun`）。集計表示は手動・オートのみ（`manualRunsOnly`）。`source: 'batch'` はレガシーで現行 UI からは追加されない
 - 頻度表・ソート可能テーブルで表示（`stats-app.js`）

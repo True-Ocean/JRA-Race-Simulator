@@ -4,7 +4,8 @@
 
 import { serializeCarrotsByHorse, serializeMarksByHorse } from '../engine/rating-adjustments.js';
 
-export const STORAGE_KEY_AGGREGATE = 'jra-sim-aggregate-v1';
+// 消費モデル変更前の着順・リプレイを、新しいモデルと混在させない。
+export const STORAGE_KEY_AGGREGATE = 'jra-sim-aggregate-v2';
 export const STORAGE_KEY_BUNDLE = 'jra-sim-bundle-v1';
 /** 集計画面から戻るとき、プレレースではなくシミュレータ本体を開く */
 export const SESSION_KEY_OPEN_SIMULATOR = 'jra-open-simulator';
@@ -13,11 +14,11 @@ export const SESSION_KEY_STATS_RETURN_SCREEN = 'jra-stats-return-screen';
 /** 集計画面から戻るときに index 側で開く画面 */
 export const SESSION_KEY_OPEN_SCREEN = 'jra-open-screen';
 /** 集計→戻るでサマリー復元するための最小状態 */
-export const SESSION_KEY_SUMMARY_STATE = 'jra-summary-state';
+export const SESSION_KEY_SUMMARY_STATE = 'jra-summary-state-v2';
 /** 集計→戻るでシミュレーター結果（ログ/掲示板/完了状態）を復元 */
-export const SESSION_KEY_SIMULATOR_STATE = 'jra-simulator-state';
+export const SESSION_KEY_SIMULATOR_STATE = 'jra-simulator-state-v2';
 /** ゴール演出フレーム（本体 state とは別キーで保存し、モバイルの容量制限を回避） */
-export const SESSION_KEY_SIMULATOR_GOAL_RECORDING = 'jra-simulator-goal-recording';
+export const SESSION_KEY_SIMULATOR_GOAL_RECORDING = 'jra-simulator-goal-recording-v2';
 
 /** FNV-1a 風の軽量ハッシュ（同期・短いキー用） */
 export function hashString(str) {

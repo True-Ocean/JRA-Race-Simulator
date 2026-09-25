@@ -106,7 +106,7 @@ export function resolveHorseCardPlacement(entries, options = {}) {
  * @param {{ y: number, x: number } | null | undefined} prev
  * @param {{ y: number, x: number }} target
  * @param {number} [dtMs]
- * @param {{ tauY?: number, tauX?: number }} [timing]
+ * @param {{ tauY?: number, tauX?: number, maxYSpeed?: number }} [timing] maxYSpeed は px/秒
  */
 export function easeCardAdjust(prev, target, dtMs, timing = undefined) {
   if (!prev || !Number.isFinite(prev.y) || !Number.isFinite(prev.x)) {
@@ -118,8 +118,11 @@ export function easeCardAdjust(prev, target, dtMs, timing = undefined) {
   const tauX = Number.isFinite(timing?.tauX) ? timing.tauX : 45;
   const ky = 1 - Math.exp(-Math.min(dt, 80) / Math.max(1, tauY));
   const kx = 1 - Math.exp(-Math.min(dt, 80) / Math.max(1, tauX));
+  const maxYStep = Number.isFinite(timing?.maxYSpeed)
+    ? Math.max(0, timing.maxYSpeed) * Math.min(dt, 80) / 1000 : Infinity;
+  const dy = Math.max(-maxYStep, Math.min(maxYStep, (target.y - prev.y) * ky));
   return {
-    y: prev.y + (target.y - prev.y) * ky,
+    y: prev.y + dy,
     x: prev.x + (target.x - prev.x) * kx,
   };
 }

@@ -5,7 +5,7 @@ import {
   scaleHorseRenderPositions,
   shouldApplyCanvasResize,
 } from './canvas-viewport.js';
-import { easeCardAdjust, resolveHorseCardPlacement } from './horse-card-spacing.js';
+import { advanceHorsePoses, arrangeHorsePoses, horseClearance } from './horse-motion.js';
 import { recordDisplayDiagnostic } from './display-diagnostics.js';
 
 const TRACK_BASE_COLOR = {
@@ -41,10 +41,6 @@ export class Renderer {
     this.courseDef    = courseDef ?? null;
     this.innerRailSide = this._resolveInnerRailSide(this.courseDef);
     this.horseRenderState = new Map();
-    /** @type {Map<number, { y: number, x: number }>} カード間隔の滑らかな補正 */
-    this._cardAdjust = new Map();
-    /** @type {Map<number, number>} ゴールシーン描画で前フレームに使った progress（後退防止用） */
-    this._goalLastDrawProgressById = new Map();
     /** @type {{ horses: object[], phase: object, phaseProgress: number, options: object } | null} */
     this._lastDraw = null;
     this.W = 0;
@@ -92,7 +88,8 @@ export class Renderer {
     if (!this._lastDraw) return false;
     recordDisplayDiagnostic('redraw-last');
     const { horses, phase, phaseProgress, options } = this._lastDraw;
-    this.draw(horses, phase, phaseProgress, options);
+    // 復帰・リサイズの再描画でレースや間隔補正の時間を進めない。
+    this.draw(horses, phase, phaseProgress, { ...options, motionDtMs: 0, horseSmoothing: 0 });
     return true;
   }
 
@@ -151,11 +148,12 @@ export class Renderer {
 
     // 実寸比に寄せる（目安: レーン幅3.0mに対して馬体幅1.8m）
     const horseToLaneRatio = 1.8 / 3.0;
-    this.cardW = Math.max(14, Math.min(this.laneW * horseToLaneRatio, this.laneW * 0.72));
+    // 狭い画面でもゲート間隔を超える最低幅を強制しない。
+    this.cardW = Math.min(Math.max(14, this.laneW * horseToLaneRatio), this.laneW * 0.72);
     // 馬体の長さ/幅 ≒ 4.5m / 1.8m
     this.cardH = this.cardW * (4.5 / 1.8);
     scaleHorseRenderPositions(this.horseRenderState, prevW, prevH, this.W, this.H);
-    this._scaleCardAdjust(prevW, prevH);
+    this.horseRenderState = arrangeHorsePoses(this.horseRenderState, this.getHorseClearance());
     this.redrawLast();
     return true;
   }
@@ -163,27 +161,6 @@ export class Renderer {
   resetHorseRenderState() {
     recordDisplayDiagnostic('reset-horse-render-state');
     this.horseRenderState.clear();
-    this._goalLastDrawProgressById.clear();
-    this._cardAdjust.clear();
-  }
-
-  _scaleCardAdjust(prevW, prevH) {
-    if (!(this._cardAdjust instanceof Map) || this._cardAdjust.size === 0) return;
-    if (!(prevW > 1 && prevH > 1 && this.W > 1 && this.H > 1)) {
-      this._cardAdjust.clear();
-      return;
-    }
-    const sx = this.W / prevW;
-    const sy = this.H / prevH;
-    if (sx < 0.4 || sx > 2.5 || sy < 0.4 || sy > 2.5) {
-      this._cardAdjust.clear();
-      return;
-    }
-    this._cardAdjust.forEach(state => {
-      if (!state) return;
-      if (Number.isFinite(state.x)) state.x *= sx;
-      if (Number.isFinite(state.y)) state.y *= sy;
-    });
   }
 
   /**
@@ -191,21 +168,27 @@ export class Renderer {
    * @param {Array<{ id: number, y?: number }>} horses
    * @param {Map<number, number>} progressById
    */
-  resetGoalDrawProgress() {
-    this._goalLastDrawProgressById.clear();
-  }
-
   syncGoalRenderState(horses, progressById) {
     if (!progressById) return;
+    const poses = new Map();
     horses.forEach(horse => {
       const progress = progressById.get(horse.id);
       if (!Number.isFinite(progress)) return;
       const lane = Math.max(1, Math.min(CONFIG.LANE_COUNT, horse.y ?? 1));
       const cy = this.progressToY(progress);
       const cx = this.laneToX(lane);
-      this.horseRenderState.set(horse.id, { cx, cy });
-      this._goalLastDrawProgressById.set(horse.id, progress);
+      poses.set(horse.id, { cx, cy, baseCy: cy });
     });
+    this.horseRenderState = arrangeHorsePoses(poses, this.getHorseClearance());
+  }
+
+  getHorseClearance() {
+    return horseClearance(this.cardW, this.cardH);
+  }
+
+  xToLane(x) {
+    return 0.5 + (this.innerRailSide === 'left'
+      ? x - this.RAIL_MARGIN : this.W - this.RAIL_MARGIN - x) / this.laneW;
   }
 
   // Lane1=最内（innerRailSide に応じて左右反転）
@@ -232,36 +215,6 @@ export class Renderer {
     return (this.H - bottomMargin - y) / Math.max(1, usableH);
   }
 
-  _getLateralGapScale(phase = null) {
-    if (!phase) return 1.0;
-    const cornerNo = Number.isFinite(phase.cornerNo) ? phase.cornerNo : null;
-    const segmentId = String(phase.segmentId ?? '').toLowerCase();
-    const segmentLabel = String(phase.segmentLabel ?? '');
-    const r = Number.isFinite(phase.ratio) ? phase.ratio : 0;
-    const isBeforeThirdCorner = (
-      (cornerNo != null && cornerNo <= 3) ||
-      segmentId === 'start' ||
-      segmentId === 'home' ||
-      segmentId === 'back' ||
-      segmentId === 'corner1' ||
-      segmentId === 'corner2' ||
-      segmentId === 'corner3' ||
-      segmentLabel.includes('スタート') ||
-      segmentLabel.includes('ホーム直線') ||
-      segmentLabel.includes('向正面') ||
-      segmentLabel.includes('第1コーナー') ||
-      segmentLabel.includes('第2コーナー') ||
-      segmentLabel.includes('第3コーナー') ||
-      (!phase.isFinal && r < 0.75)
-    );
-    if (isBeforeThirdCorner) return 0.56;
-    if (phase.isFinal || r >= 0.92) return 1.22;
-    if (r >= 0.80) return 1.10;
-    if (r >= 0.65) return 0.94;
-    if (r >= 0.12) return 0.88;
-    return 0.92;
-  }
-
   /**
    * 描画サイズをもとに、シミュレーション/描画で使う非接触しきい値を返す。
    * @param {number} xSpan - main.js 側と同じ x スパン
@@ -273,9 +226,10 @@ export class Renderer {
     const usableH = this.H - topMargin - bottomMargin;
     const pxPerXUnit = usableH / Math.max(1, xSpan);
 
-    const safeForwardPx = this.cardH * 1.24 + 8;
-    const lateralScale = this._getLateralGapScale(phase);
-    const safeLateralPx = this.cardW * 1.12 * lateralScale;
+    // 接触判定と描画の馬体寸法を揃える。序盤だけ幅を縮めると、
+    // AIが通れると判断した場所で描画側が押し戻し続けてしまう。
+    const safeForwardPx = this.cardH * 1.10 + 4;
+    const safeLateralPx = this.cardW * 1.12;
     const isEarlyPhase = Number.isFinite(phase?.index) && phase.index <= 1;
     const earlyXMult = isEarlyPhase ? 1.08 : 1.0;
     const earlyYMult = isEarlyPhase ? 1.10 : 1.0;
@@ -285,7 +239,7 @@ export class Renderer {
       minYGap: (safeLateralPx * earlyYMult) / Math.max(0.001, this.laneW),
       drawNearLaneGap: safeLateralPx / Math.max(0.001, this.laneW),
       drawNearXGap: safeForwardPx / Math.max(0.001, pxPerXUnit),
-      drawCardSpacingPx: safeForwardPx + 14 + (isEarlyPhase ? 12 : 0),
+      drawCardSpacingPx: safeForwardPx + 2,
     };
   }
 
@@ -510,189 +464,59 @@ export class Renderer {
 
   _drawHorses(horses, phase, phaseProgress, forceStartLineup = false, options = {}) {
     const inStartLineup = phaseProgress === 0 || forceStartLineup;
-
-    const xValues = horses.map(h => h.x);
-    const maxX = Math.max(...xValues, 1);
-    // フェーズ間の見た目ジャンプを抑えるため、毎フレームの最小値再正規化は行わない。
-    const minX = 0;
-    const span = Math.max(140, maxX - minX);
-    const metrics = this.getCollisionMetrics(span, phase);
-
-    const targetPose = new Map();
-    if (inStartLineup) {
-      const horseY = this._getStartInGateCy();
-      horses.forEach(horse => {
-        const lane = calcGateSlotLane(horse.gate ?? 1);
-        targetPose.set(horse.id, { lane, cy: horseY });
-      });
-    } else {
-      const goalLayoutProgressById = new Map();
-      const isGoalRunMode = Boolean(options.goalRun);
-      const spacingActivation =
-        phase.index === 0
-          ? Math.max(0, Math.min(1, (phaseProgress - 0.20) / 0.45))
-          : 1;
-      const cardSpacing = metrics.drawCardSpacingPx * spacingActivation;
-      const layoutEntries = [];
-      const sortedForLayout = [...horses].sort((a, b) => b.x - a.x);
-      sortedForLayout.forEach(horse => {
-        const lane = Math.max(1, Math.min(CONFIG.LANE_COUNT, horse.y));
-        const normalized = Math.max(0, Math.min(1, (horse.x - minX) / span));
-        const easedProgress = Math.pow(normalized, 0.82);
-        let progress = easedProgress * phaseProgress;
-        if (options.goalRun) {
-          const forcedProgress = options.goalRun.progressById?.get(horse.id);
-          if (Number.isFinite(forcedProgress)) {
-            progress = forcedProgress;
-          } else {
-            const distanceMeters = Math.max(1, options.goalRun.distanceMeters ?? 400);
-            const advanceRatio = Math.max(0, Math.min(1.25, (horse.goalMeters ?? 0) / distanceMeters));
-            const startProgress = Number.isFinite(horse.goalStartProgress)
-              ? horse.goalStartProgress
-              : Math.min(0.82, progress * 0.88 + 0.06);
-            const progressSpan = options.goalRun.progressSpan ?? 0.55;
-            progress = startProgress + advanceRatio * progressSpan;
-          }
-        } else if (options.goalClimb) {
-          const t = Math.max(0, Math.min(1, options.goalClimb.t ?? 0));
-          const fastWeight = Math.max(
-            0,
-            Math.min(1, options.goalClimb.byId?.get(horse.id) ?? 0.5),
-          );
-          progress = Math.min(0.99, progress + t * 0.35 * (0.40 + fastWeight * 0.60));
-        }
-        const mappedProgress = options.goalRun
-          ? Math.max(
-            Number.isFinite(options.goalRun.minProgress) ? options.goalRun.minProgress : -1.2,
-            Math.min(
-              Number.isFinite(options.goalRun.maxProgress) ? options.goalRun.maxProgress : 1.22,
-              progress,
-            ),
-          )
-          : Math.max(-0.25, Math.min(0.95, progress * 0.90 + 0.02));
-        layoutEntries.push({
-          id: horse.id,
-          x: horse.x,
-          lane,
-          baseY: this.progressToY(mappedProgress),
-          mappedProgress,
-        });
-      });
-
-      if (isGoalRunMode) {
-        // ゴールシーンは進行度より後ろへ押し出さない。閾値の切り替わりはシーン側の間隔で吸収する。
-        const placed = [];
-        layoutEntries.forEach(entry => {
-          let finalY = entry.baseY;
-          for (const prev of placed) {
-            const nearLane = Math.abs(prev.lane - entry.lane) < metrics.drawNearLaneGap;
-            if (!nearLane || cardSpacing <= 0) continue;
-            const nearX = Math.abs(prev.x - entry.x) < metrics.drawNearXGap;
-            if (!nearX) continue;
-            if (Math.abs(finalY - prev.y) < cardSpacing) {
-              const pushedY = prev.y + cardSpacing;
-              if (pushedY <= entry.baseY + 0.5) finalY = pushedY;
-            }
-          }
-          entry.finalY = finalY;
-          goalLayoutProgressById.set(entry.id, entry.mappedProgress);
-          placed.push({ id: entry.id, lane: entry.lane, x: entry.x, y: finalY });
-        });
-      }
-
-      const placement = isGoalRunMode
-        ? null
-        : resolveHorseCardPlacement(layoutEntries, {
-          cardSpacing,
-          nearLaneGap: metrics.drawNearLaneGap,
-          nearXGap: metrics.drawNearXGap,
-          maxLateralNudge: this.cardW * 0.92,
-        });
-      const gateFrontY = phase.index === 0 ? this._getStartFrontCy() : null;
-
-      layoutEntries.forEach(entry => {
-        let cy = entry.baseY;
-        let cx = this.laneToX(entry.lane);
-        if (isGoalRunMode) {
-          cy = entry.finalY ?? entry.baseY;
-        } else {
-          const placedCard = placement.get(entry.id);
-          let targetY = placedCard?.y ?? entry.baseY;
-          if (gateFrontY != null) targetY = Math.min(targetY, gateFrontY);
-          const eased = easeCardAdjust(
-            this._cardAdjust.get(entry.id),
-            { y: targetY - entry.baseY, x: placedCard?.xNudge ?? 0 },
-            options.motionDtMs,
-            { tauY: 140, tauX: 42 },
-          );
-          this._cardAdjust.set(entry.id, eased);
-          cy = entry.baseY + eased.y;
-          cx += eased.x;
-        }
-        targetPose.set(entry.id, {
-          lane: entry.lane,
-          cx,
-          cy,
-          goalProgress: goalLayoutProgressById.get(entry.id) ?? null,
-        });
-      });
-    }
-
-    const sortedHorses = [...horses].sort((a, b) => a.x - b.x);
-    const activeHorseIds = new Set(sortedHorses.map(h => h.id));
-    const smoothing = Number.isFinite(options.horseSmoothing)
-      ? Math.max(0, Math.min(1, options.horseSmoothing))
-      : (inStartLineup
-        ? 0.32
-        : (options.goalRun
-          ? 0.78
-          : phase.isFinal
-            ? 0.48
-            : (phase.index === 0 ? 0.26 : 0.40)));
-
     const isGoalRun = Boolean(options.goalRun);
-    sortedHorses.forEach(horse => {
-      const target = targetPose.get(horse.id);
-      if (!target) return;
-      const targetCx = Number.isFinite(target.cx) ? target.cx : this.laneToX(target.lane);
-      const targetCy = target.cy;
-      const prev = this.horseRenderState.get(horse.id);
-      const cx = prev ? (prev.cx + (targetCx - prev.cx) * smoothing) : targetCx;
-      let cy;
-      if (prev) {
-        const lerped = prev.cy + (targetCy - prev.cy) * smoothing;
-        if (isGoalRun && Number.isFinite(target.goalProgress)) {
-          const lastProgress = this._goalLastDrawProgressById.get(horse.id);
-          const progressAdvanced = !Number.isFinite(lastProgress)
-            || target.goalProgress >= lastProgress - 1e-6;
-          // progress が進んでいる間だけ「画面上の後退 (cy 増加)」を禁止する。
-          cy = progressAdvanced ? Math.min(prev.cy, lerped) : lerped;
-        } else {
-          cy = lerped;
-        }
+    const span = Math.max(140, ...horses.map(h => h.x));
+    const targets = new Map(horses.map(horse => {
+      const lane = inStartLineup ? calcGateSlotLane(horse.gate ?? 1)
+        : Math.max(1, Math.min(CONFIG.LANE_COUNT, horse.y));
+      let progress = Math.pow(Math.max(0, Math.min(1, horse.x / span)), 0.82) * phaseProgress;
+      if (isGoalRun) {
+        progress = options.goalRun.progressById?.get(horse.id)
+          ?? ((horse.goalStartProgress ?? 0.2)
+            + (horse.goalMeters ?? 0) / (options.goalRun.distanceMeters ?? 200)
+              * (options.goalRun.progressSpan ?? 0.64) * (horse.goalProgressScale ?? 1));
       } else {
-        cy = targetCy;
-      }
-      this.horseRenderState.set(horse.id, { cx, cy });
-      if (!isFinite(cx) || !isFinite(cy)) return;
-      this._drawCard(horse, cx, cy);
-    });
-
-    if (isGoalRun && options.goalRun?.progressById) {
-      options.goalRun.progressById.forEach((progress, id) => {
-        if (Number.isFinite(progress)) {
-          this._goalLastDrawProgressById.set(id, progress);
+        if (options.goalClimb) {
+          const weight = Math.max(0, Math.min(1, options.goalClimb.byId?.get(horse.id) ?? 0.5));
+          progress += Math.max(0, Math.min(1, options.goalClimb.t ?? 0)) * 0.35 * (0.4 + weight * 0.6);
         }
+        progress = Math.max(-0.25, Math.min(0.95, progress * 0.90 + 0.02));
+      }
+      const cy = inStartLineup ? this._getStartInGateCy() : this.progressToY(progress);
+      return [horse.id, { cx: this.laneToX(lane), cy, baseCy: cy }];
+    }));
+
+    // 先頭基準の表示倍率変化による後退は、隊列全体の同じカメラ移動として扱う。
+    // 個体ごとの押し戻しを混ぜると、安全だった間隔を再び潰してしまう。
+    let cameraShift = 0;
+    if (!inStartLineup && !isGoalRun) {
+      const shifts = [...targets].map(([id, target]) => {
+        const prev = this.horseRenderState.get(id);
+        return Number.isFinite(prev?.baseCy) ? target.baseCy - prev.baseCy : 0;
+      }).sort((a, b) => a - b);
+      cameraShift = Math.max(0, shifts[Math.floor(shifts.length / 2)] ?? 0);
+      const dt = Math.max(0, Math.min(80, options.motionDtMs ?? 16.7)) / 1000;
+      targets.forEach((target, id) => {
+        const prev = this.horseRenderState.get(id);
+        if (!Number.isFinite(prev?.baseCy)) return;
+        // 詰まりが解消しても、遅れを一気に取り返して前へ飛び出さない。
+        const advance = Math.max(0, prev.baseCy - target.baseCy) + this.cardH * 0.8 * dt;
+        target.cy = Math.max(target.cy, prev.cy + cameraShift - advance);
       });
     }
-
-    for (const id of this.horseRenderState.keys()) {
-      if (!activeHorseIds.has(id)) {
-        this.horseRenderState.delete(id);
-        this._goalLastDrawProgressById.delete(id);
-        this._cardAdjust.delete(id);
+    const poses = advanceHorsePoses(this.horseRenderState, targets, this.getHorseClearance(), {
+      dtMs: options.horseSmoothing === 0 ? 0 : options.motionDtMs,
+      maxLateralSpeed: this.laneW * 2,
+      maxForwardSpeed: this.H * 0.8,
+      cameraShift,
+    });
+    this.horseRenderState = poses;
+    [...horses].sort((a, b) => a.x - b.x).forEach(horse => {
+      const pose = poses.get(horse.id);
+      if (pose && Number.isFinite(pose.cx) && Number.isFinite(pose.cy)) {
+        this._drawCard(horse, pose.cx, pose.cy);
       }
-    }
+    });
   }
 
   // スタート時：各ゲート枠の中央に整列
@@ -870,13 +694,13 @@ export class Renderer {
 
     // 馬番（背中中央）
     const gateStr  = String(horse.gate ?? '');
-    const numSize  = Math.max(11, cw * 0.54);
+    const numSize  = Math.min(Math.max(11, cw * 0.54), ch * 0.65);
     const textColor = (frameColor === '#FFFFFF' || frameColor === '#FFFF00') ? '#000' : '#fff';
     ctx.fillStyle  = textColor;
     ctx.font       = `bold ${numSize}px 'Courier New'`;
     ctx.textAlign  = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(gateStr, cx, cy + ch * 0.05);
+    ctx.fillText(gateStr, cx, cy + ch * 0.05, cw * 0.96);
 
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'left';

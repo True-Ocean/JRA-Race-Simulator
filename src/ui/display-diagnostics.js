@@ -45,6 +45,29 @@ export function recordDisplayDiagnostic(type, detail) {
   if (type !== 'draw') flushActiveTrace?.();
 }
 
+/** Go Live の通知を読み取り専用で記録する。元の自動更新・WebSocketは変更しない。 */
+export function observeLiveReload(win, doc, record) {
+  if (!isLocalDisplayDiagnostics(win?.location) || typeof win.WebSocket !== 'function') return null;
+  const injected = Array.from(doc.scripts ?? []).some(script =>
+    script.textContent?.includes('Live reload enabled.'),
+  );
+  if (!injected) return null;
+  try {
+    const protocol = win.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socket = new win.WebSocket(`${protocol}//${win.location.host}${win.location.pathname}/ws`);
+    socket.addEventListener('message', event => {
+      if (event.data === 'reload' || event.data === 'refreshcss') {
+        record('live-server-message', { message: event.data });
+      }
+    });
+    socket.addEventListener('error', () => record('live-server-observer-error'));
+    return socket;
+  } catch {
+    record('live-server-observer-error');
+    return null;
+  }
+}
+
 export function startDisplayDiagnostics() {
   if (typeof window === 'undefined' || !isLocalDisplayDiagnostics(window.location) || activeTrace) return;
   let previous = null;
@@ -64,6 +87,7 @@ export function startDisplayDiagnostics() {
     dpr: window.devicePixelRatio,
   });
   const record = (type, detail = {}) => recordDisplayDiagnostic(type, detail);
+  observeLiveReload(window, document, record);
   record('boot', {
     navigation: performance.getEntriesByType('navigation')[0]?.type ?? 'unknown',
     visibility: document.visibilityState,

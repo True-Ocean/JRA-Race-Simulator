@@ -14,7 +14,15 @@ import { USE_PATH_BASED_STAMINA } from '../src/engine/constants.js';
 describe('path-stamina', () => {
   it('calcPathSegmentMeters: 縦移動のみ', () => {
     const m = calcPathSegmentMeters(0, 1, 80, 1, 300);
-    expect(m).toBeCloseTo(300, 1);
+    expect(m).toBeCloseTo(128, 1);
+  });
+
+  it('同じ速度・総距離なら区間を分割しても経路長は変わらない', () => {
+    const speed = 50;
+    const whole = calcPathSegmentMeters(0, 1, speed * 300 / 80, 1, 300);
+    const split = 3 * calcPathSegmentMeters(0, 1, speed * 100 / 80, 1, 100);
+    expect(whole).toBeCloseTo(300, 8);
+    expect(split).toBeCloseTo(whole, 8);
   });
 
   it('calcPathSegmentMeters: 横移動のみ', () => {

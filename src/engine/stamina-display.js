@@ -1,23 +1,16 @@
 /** エントリーUIとゴールシーンで共有するスタミナ表示％・色 tier */
 
-export const ENTRY_STAMINA_BAR_RAW_MIN = 50;
-export const ENTRY_STAMINA_BAR_RAW_MAX = 100;
+import { getStaminaRatio } from './race-effort.js';
 
 export function getStaminaRemainRawPct(horse) {
-  if (!horse || horse.initialStamina <= 0) return 0;
-  const ratio = (horse.stamina / horse.initialStamina) * 100;
-  return Math.max(0, Math.min(100, Math.round(ratio)));
+  return Math.round(getStaminaRatio(horse) * 100);
 }
 
 /**
- * バー幅・表示用％（ENTRY_STAMINA_BAR_RAW_MIN〜MAX を 0〜100 に線形マップ）
+ * 実際の余力をそのまま表示。小数を保ち、1%単位の段差も作らない。
  */
 export function getStaminaDisplayBarPct(horse) {
-  const raw = getStaminaRemainRawPct(horse);
-  const span = ENTRY_STAMINA_BAR_RAW_MAX - ENTRY_STAMINA_BAR_RAW_MIN;
-  if (span <= 0) return raw;
-  const t = (raw - ENTRY_STAMINA_BAR_RAW_MIN) / span;
-  return Math.max(0, Math.min(100, Math.round(t * 100)));
+  return getStaminaRatio(horse) * 100;
 }
 
 /** @returns {'green'|'yellow'|'red'} */

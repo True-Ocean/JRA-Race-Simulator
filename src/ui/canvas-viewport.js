@@ -62,5 +62,6 @@ export function scaleHorseRenderPositions(stateMap, prevW, prevH, nextW, nextH) 
     if (!state) return;
     if (Number.isFinite(state.cx)) state.cx *= sx;
     if (Number.isFinite(state.cy)) state.cy *= sy;
+    if (Number.isFinite(state.baseCy)) state.baseCy *= sy;
   });
 }

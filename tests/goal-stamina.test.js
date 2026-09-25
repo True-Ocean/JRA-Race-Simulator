@@ -1,76 +1,59 @@
 import { describe, expect, it } from 'vitest';
-import { getStaminaBarClassName } from '../src/ui/entry-stamina.js';
-import {
-  calcGoalPathQuality,
-  calcGoalReserveBurnDrain,
-  calcGoalLeadingHoldDrain,
-} from '../src/ui/goal-scene.js';
+import { getStaminaBarClassName, getStaminaDisplayBarPct } from '../src/ui/entry-stamina.js';
+import { calcRunningStaminaDrain } from '../src/engine/stamina-drain.js';
+import { getRaceDistanceBudget } from '../src/engine/race-effort.js';
 
-describe('スタミナバー色分け（表示%の3等分）', () => {
-  it('下1/3=赤・中1/3=黄・上1/3=緑', () => {
-    expect(getStaminaBarClassName(10)).toContain('is-critical');
+describe('実際の余力とスタミナバー', () => {
+  it('100%から0%まで実残量を表示し、半分で空にならない', () => {
+    for (const pct of [100, 66, 50, 33, 10, 0]) {
+      expect(getStaminaDisplayBarPct({ stamina: pct * 1.5, initialStamina: 150 })).toBeCloseTo(pct);
+    }
     expect(getStaminaBarClassName(33)).toContain('is-critical');
-    expect(getStaminaBarClassName(40)).toContain('is-warning');
-    expect(getStaminaBarClassName(66)).toContain('is-warning');
+    expect(getStaminaBarClassName(50)).toContain('is-warning');
     expect(getStaminaBarClassName(80)).toBe('stamina-remain-bar');
-    expect(getStaminaBarClassName(100)).toBe('stamina-remain-bar');
+  });
+
+  it('小数残量を保ち、不正・範囲外の入力でもバー幅を壊さない', () => {
+    expect(getStaminaDisplayBarPct({ stamina: 49.75, initialStamina: 100 })).toBe(49.75);
+    for (const h of [null, {}, { initialStamina: 0, stamina: 5 }, { initialStamina: 100, stamina: NaN }]) {
+      expect(getStaminaDisplayBarPct(h)).toBe(0);
+    }
+    expect(getStaminaDisplayBarPct({ initialStamina: 100, stamina: -4 })).toBe(0);
+    expect(getStaminaDisplayBarPct({ initialStamina: 100, stamina: 140 })).toBe(100);
   });
 });
 
-describe('ゴールシーンスタミナ燃焼', () => {
-  it('進路が空いているほど pathQuality が高い', () => {
-    const open = calcGoalPathQuality(18, 1.0, 0);
-    const blocked = calcGoalPathQuality(2, 0.25, 900);
-    expect(open).toBeGreaterThan(blocked);
+describe('道中・ゴール共通の消費', () => {
+  const horse = { initialStamina: 150, S_sustain: 70, careerDrainMult: 0.98 };
+
+  it('本編と最後の200mの距離合計がレース距離になる', () => {
+    for (const distance of [1200, 1600, 2200, 2400, 3200]) {
+      const budget = getRaceDistanceBudget(distance);
+      expect(budget.main + budget.goal).toBe(distance);
+    }
   });
 
-  it('残スタミナが多いほど reserveBurn が大きい（ゴール接近後）', () => {
-    const base = {
-      initialStamina: 150,
-      remainMeters: 80,
-      goalCurrentMps: 16,
-      staminaRatio: 0.8,
-      pathQuality: 0.9,
-      distRatio: 0.65,
-      dt: 0.05,
+  it('同じ移動・加速の消費量は30/60/120fpsで変わらない', () => {
+    const simulate = fps => {
+      let drain = 0;
+      for (let i = 0; i < fps * 10; i++) {
+        drain += calcRunningStaminaDrain(horse, {
+          distanceMeters: 18 / fps, totalDistance: 1200, effort: 0.95,
+          deltaSpeed: 2 / (fps * 10),
+        });
+      }
+      return drain;
     };
-    const high = calcGoalReserveBurnDrain({ ...base, stamina: 120 });
-    const low = calcGoalReserveBurnDrain({ ...base, stamina: 40 });
-    expect(high).toBeGreaterThan(low);
+    expect(simulate(30)).toBeCloseTo(simulate(60), 8);
+    expect(simulate(120)).toBeCloseTo(simulate(60), 8);
   });
 
-  it('ゴールシーン序盤（distRatio 低）は reserveBurn がほぼゼロ', () => {
-    const burn = calcGoalReserveBurnDrain({
-      initialStamina: 150,
-      stamina: 120,
-      remainMeters: 190,
-      goalCurrentMps: 15,
-      staminaRatio: 0.8,
-      pathQuality: 0.95,
-      distRatio: 0.05,
-      dt: 0.05,
-    });
-    expect(burn).toBe(0);
-  });
-
-  it('先頭グループの粘りドレインは先頭時のみ発生する', () => {
-    const drain = calcGoalLeadingHoldDrain({
-      initialStamina: 150,
-      staminaRatio: 0.7,
-      pathQuality: 0.8,
-      distRatio: 0.55,
-      dt: 0.05,
-      isLeadingPack: true,
-    });
-    const none = calcGoalLeadingHoldDrain({
-      initialStamina: 150,
-      staminaRatio: 0.7,
-      pathQuality: 0.8,
-      distRatio: 0.5,
-      dt: 0.05,
-      isLeadingPack: false,
-    });
-    expect(drain).toBeGreaterThan(0);
-    expect(none).toBe(0);
+  it('巡航中にも負荷に応じて消費し、加速と外回りには代償がある', () => {
+    const params = { distanceMeters: 100, totalDistance: 1600, effort: 0.4 };
+    const easy = calcRunningStaminaDrain(horse, params);
+    expect(easy).toBeGreaterThan(0);
+    expect(calcRunningStaminaDrain(horse, { ...params, effort: 1 })).toBeGreaterThan(easy * 2);
+    expect(calcRunningStaminaDrain(horse, { ...params, deltaSpeed: 1 })).toBeGreaterThan(easy);
+    expect(calcRunningStaminaDrain(horse, { ...params, laneFactor: 1.08 })).toBeGreaterThan(easy);
   });
 });

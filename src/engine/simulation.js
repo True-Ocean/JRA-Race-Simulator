@@ -3,7 +3,6 @@ import { createRng } from './rng.js';
 import { calcHorsesWithRatingAdjustments } from './rating-adjustments.js';
 import {
   buildPhases,
-  calcStaminaCons,
   applyCornerLoss,
   laneIndex,
 } from './phase.js';
@@ -36,7 +35,11 @@ import {
   resolveBattle,
 } from './battle.js';
 import { CONFIG } from '../config.js';
-import { getCombinedStaminaDrainMult } from './stamina-drain.js';
+import { calcRunningStaminaDrain, getCombinedStaminaDrainMult } from './stamina-drain.js';
+import {
+  getRaceDistanceBudget, getRaceEffortContext, resolveRaceEffort,
+  getStaminaRatio, staminaSpeedMultiplier, staminaAccelMultiplier, effortSpeedMultiplier,
+} from './race-effort.js';
 import {
   MIN_FORWARD_GAP,
   LATERAL_BLOCK_X_GAP,
@@ -61,14 +64,9 @@ import {
   EARLY_ORDER_TIE_NOISE,
   USE_SAFE_STAMINA_MODEL,
   USE_PATH_BASED_STAMINA,
-  SAFE_BASE_STAMINA_PER_M,
   SAFE_LANE_EVENT_DRAIN_MULT,
   SAFE_CORNER_EVENT_DRAIN_MULT,
-  SAFE_ACCEL_EVENT_DRAIN_MULT,
   SAFE_GOAL_EVENT_FATIGUE_WEIGHT,
-  SAFE_GOAL_STAMINA_PER_M_REF,
-  SAFE_GOAL_STAMINA_PER_M_RANGE,
-  START_BURST_STAMINA_FREE_CAP,
   GOAL_FURLONG_METERS,
   GOAL_TIME_SCALE,
   GOAL_DISTANCE_METERS,
@@ -112,7 +110,6 @@ import {
   GOAL_CAMERA_LERP_MAX,
   GOAL_ANCHOR_DYNAMIC_BOOST,
   STAMINA_LANE_CHANGE_COST,
-  STAMINA_ACCEL_COST,
   STAMINA_BATTLE_BASE_COST,
   STAMINA_BATTLE_LOSER_EXTRA,
   STAMINA_BATTLE_TRACKER_GAIN,
@@ -135,7 +132,6 @@ import {
   INNER_CUTIN_BUFFER_MULT,
   PACK_DENSITY_PENALTY_QUAD,
   STAMINA_CORNER_OUTER_PER_LANE,
-  GOAL_STAMINA_DRAIN_MULT,
   GOAL_AI,
   CENTRIFUGAL_DRIFT_STAMINA_MULT,
   STRETCH_LANE_SUBSTEPS,
@@ -144,7 +140,7 @@ import {
 import {
   applyPathBudget,
   calcPathSegmentMeters,
-  calcPathStaminaDrain,
+  calcLanePathFactor,
 } from './path-stamina.js';
 import {
   clampLane,
@@ -152,10 +148,8 @@ import {
   isOonigeStyle,
   getJockeyReliabilityNorm,
   applyBattleStaminaImpact,
-  getWeightStaminaMult,
 } from './horse-utils.js';
 import {
-  isKickReserveReleased,
   isBeforeFirstCornerPhase,
   isStartToHomePhase,
   isThroughThirdCornerPhase,
@@ -199,54 +193,15 @@ import {
   buildLaneDecisionContext,
   calcPackRankNorm,
 } from './lane-decision.js';
-function staminaAccelAbilityMult(staminaRatio) {
-  const r = Math.max(0, Math.min(1, staminaRatio));
-  if (r >= 0.35) return 1.0;
-  // 0.35 -> 1.0, 0.00 -> 0.62
-  return 0.62 + (r / 0.35) * 0.38;
-}
-
-function initUniversalKickProfile(horse, rng, last3fMin, last3fMax, last3fSpan) {
-  const span = Math.max(0.001, last3fSpan);
-  const last3fW = Number.isFinite(horse.last3f)
-    ? (last3fMax - horse.last3f) / span
-    : 0.5;
-  const sustainN = Math.max(0, Math.min(1, horse.S_sustain / 100));
-  let mult = 0.855 + sustainN * 0.095 + last3fW * 0.075 + (rng() - 0.5) * 0.055;
-  mult = Math.max(0.795, Math.min(0.99, mult));
-  let floorR = 0.05 + sustainN * 0.135 + last3fW * 0.09 + (rng() - 0.5) * 0.045;
-  floorR = Math.max(0.042, Math.min(0.27, floorR));
-  horse.kickEarlyDrainMult = mult;
-  horse.kickReserveFloorRatio = floorR;
-  horse.kickDayRoll = 0.962 + rng() * 0.076;
-}
-
-function applyUniversalReserveDrain(horse, rawDrain, phase) {
-  if (!Number.isFinite(rawDrain) || rawDrain <= 0) return 0;
-  if (!horse || horse.initialStamina <= 0) return rawDrain;
-  let d = rawDrain;
-  if (!isKickReserveReleased(phase)) {
-    d *= (horse.kickEarlyDrainMult ?? 1) * (horse.kickDayRoll ?? 1);
-    const floor = horse.initialStamina * (horse.kickReserveFloorRatio ?? 0);
-    const maxDrain = Math.max(0, horse.stamina - floor);
-    d = Math.min(d, maxDrain);
-  }
-  return d;
-}
-
-function recordHorsePathSegment(horse, prevX, prevY, phase, trackMod) {
+function recordHorsePathSegment(horse, prevX, prevY, phase) {
   const segM = calcPathSegmentMeters(prevX, prevY, horse.x, horse.y, phase.distance);
   if (segM <= 0) return;
   horse.pathMeters = (horse.pathMeters ?? 0) + segM;
-  if (!USE_PATH_BASED_STAMINA) return;
-  const drain = calcPathStaminaDrain(segM, trackMod, horse.y, phase);
-  subtractStaminaWithReserve(horse, drain, phase, {
-    trackField: 'staminaPathCost',
-    category: 'base',
-  });
+  // 描画用 sim-x は速度スコアで伸縮するため、走行負荷の距離には使わない。
+  // 消費はフェーズ末尾で実コース距離・負荷・外回りからまとめて積算する。
 }
 
-function subtractStaminaWithReserve(horse, rawDrain, phase, trackFieldOrOptions = null) {
+function subtractEventStamina(horse, rawDrain, trackFieldOrOptions = null) {
   let trackField = null;
   let fatigueGain = 0;
   let category = 'event';
@@ -262,7 +217,7 @@ function subtractStaminaWithReserve(horse, rawDrain, phase, trackFieldOrOptions 
   const scaledRaw = Number.isFinite(rawDrain) && rawDrain > 0
     ? rawDrain * getCombinedStaminaDrainMult(horse)
     : rawDrain;
-  const d = applyUniversalReserveDrain(horse, scaledRaw, phase);
+  const d = Math.min(Math.max(0, horse.stamina), Math.max(0, scaledRaw || 0));
   if (d <= 0) return;
   horse.stamina = Math.max(0, horse.stamina - d);
   if (trackField && horse[trackField] !== undefined) horse[trackField] += d;
@@ -321,7 +276,7 @@ function applyIrregularEvents(rng, horse, phase, phaseEventLogs, globalLogs) {
       const lossRatio = 0.12 + rng() * 0.14;
       mult *= (1 - lossRatio);
       horse.stumbleCooldown = 2;
-      subtractStaminaWithReserve(horse, 1.0 + rng() * 2.0, phase, null);
+      subtractEventStamina(horse, 1.0 + rng() * 2.0);
       horse.startTroubleScore = (horse.startTroubleScore ?? 0) + 0.65;
       const log = `[つまずき] ${horse.name}`;
       globalLogs.push(log);
@@ -427,6 +382,7 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
   const courseDef = raceData.courseDef ?? null;
   const phases    = buildPhases(raceData.race_info.distance, courseDef);
   const phaseCtx  = createPhaseContext(raceData.race_info.distance, courseDef, phases);
+  const distanceBudget = getRaceDistanceBudget(raceData.race_info.distance);
   const track     = raceData.race_info.track;
   const condition = raceData.race_info.condition;
   const trackMod  = CONFIG.TRACK_MODIFIER[track]?.[condition] ?? 1.0;
@@ -470,12 +426,18 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
     horse.stretchFanLane = null;
     horse.laneCommitDir = 0;
     horse.laneCommitPhases = 0;
-    initUniversalKickProfile(horse, rng, last3fMin, last3fMax, last3fSpan);
+    horse.effortBias = (rng() - 0.5) * 0.06;
+    horse.kickTimingOffset = (rng() - 0.5) * 60;
+    horse.staminaRunningCost = 0;
     initFormationTarget(horse, rng);
   });
 
   for (const phase of phases) {
     phase._phaseCtx = phaseCtx;
+    const effortPack = horses.map(h => ({ ...h }));
+    const phaseMeters = phase.distance * distanceBudget.main / distanceBudget.total;
+    const remainingMeters = distanceBudget.total
+      - ((phase.progressStart + phase.progressEnd) / 2) * distanceBudget.main;
     horses.forEach(horse => {
       horse.pathAtPhaseStart = horse.pathMeters ?? 0;
     });
@@ -565,9 +527,12 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
       ? sortEarlyPhaseMovementOrder(horses, rng, phase, phaseCtx)
       : [...horses].sort((a, b) => b.x - a.x);
     for (const horse of order) {
-      const staminaMod = horse.stamina > 0
-        ? CONFIG.STAMINA_MODIFIER_FULL
-        : CONFIG.STAMINA_MODIFIER_EMPTY;
+      const staminaMod = staminaSpeedMultiplier(getStaminaRatio(horse));
+      const effortHorse = effortPack.find(h => h.id === horse.id);
+      horse.raceEffort = resolveRaceEffort(horse, {
+        ...getRaceEffortContext(effortHorse, effortPack, collisionMetrics.minXGap),
+        totalDistance: distanceBudget.total, remainingMeters, distanceMeters: phaseMeters,
+      });
 
       const horseLanePre = clampLane(horse.y);
       const packRankNow = calcPackRankNorm(horse, horses);
@@ -577,8 +542,9 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
       const styleBlend = getStyleBlend(phase, phaseCtx);
       const kickBlend = getKickBlend(phase, phaseCtx);
       let paceMult = getFormationStylePaceMult(horse, styleBlend, horse.startBurstFactor);
-      const baseSpeed = resolvePhaseSpeed(horse, phase, phaseCtx);
-      const V_eff    = baseSpeed * staminaMod * horse.battlePenalty * paceMult;
+      const baseSpeed = resolvePhaseSpeed(horse, phase, phaseCtx, horse.raceEffort);
+      const V_eff    = baseSpeed * staminaMod * horse.battlePenalty * paceMult
+        * effortSpeedMultiplier(horse.raceEffort);
       const desiredAdvance = V_eff * (phase.distance / 80);
       const irregularMult = applyIrregularEvents(
         rng,
@@ -606,7 +572,7 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
         adjustedAdvance *= (1 + stretchKick * kickBlend);
         if (stretchKick > 0.02) {
           const kickDrain = (Math.max(0, phase.distance) / 100) * stretchKick * kickBlend * 0.85;
-          subtractStaminaWithReserve(horse, kickDrain, phase, {
+          subtractEventStamina(horse, kickDrain, {
             trackField: 'staminaAccelCost',
             fatigueGain: 0.24,
           });
@@ -682,7 +648,7 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
           );
           if (chaserNear) {
             const holdDrain = (Math.max(0, phase.distance) / 100) * 0.55;
-            subtractStaminaWithReserve(horse, holdDrain, phase, {
+            subtractEventStamina(horse, holdDrain, {
               trackField: 'staminaAccelCost',
               fatigueGain: 0.32,
             });
@@ -831,7 +797,7 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
         if (Number.isFinite(laneCheck.xNudge) && laneCheck.xNudge > 0 && stretchStep === 0) {
           horse.x += laneCheck.xNudge;
         }
-        recordHorsePathSegment(horse, pathPrevX, pathPrevY, phase, trackMod);
+        recordHorsePathSegment(horse, pathPrevX, pathPrevY, phase);
         pathPrevX = horse.x;
         pathPrevY = horse.y;
       }
@@ -847,7 +813,7 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
         const safeLaneDrain = USE_SAFE_STAMINA_MODEL
           ? laneDrain * SAFE_LANE_EVENT_DRAIN_MULT
           : laneDrain;
-        subtractStaminaWithReserve(horse, safeLaneDrain, phase, {
+        subtractEventStamina(horse, safeLaneDrain, {
           trackField: 'staminaLaneCost',
           fatigueGain: 0.20,
         });
@@ -889,37 +855,36 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
         engagedHorseIds,
         battleProximityLimits,
       );
-      const prevAdvance = horse.lastAdvance ?? 0;
+      // 区間長の違いを加速と取り違えないよう、前進量を速度スコアへ戻して比較する。
+      const phaseTimeScale = Math.max(1e-6, phase.distance / 80);
+      const prevSpeed = horse.lastSpeedScore ?? 0;
       let frameAdvance = forwardCheck.advance;
       const staminaRatioNow = horse.initialStamina > 0 ? horse.stamina / horse.initialStamina : 0;
-      const accelIntent = Math.max(0, frameAdvance - prevAdvance);
+      const accelIntent = Math.max(0, frameAdvance / phaseTimeScale - prevSpeed);
       if (accelIntent > 0.001) {
-        const accelMultByStamina = staminaAccelAbilityMult(staminaRatioNow);
-        frameAdvance = prevAdvance + accelIntent * accelMultByStamina;
+        const accelMultByStamina = staminaAccelMultiplier(staminaRatioNow);
+        frameAdvance = (prevSpeed + accelIntent * accelMultByStamina) * phaseTimeScale;
       }
       horse.x += frameAdvance;
-      recordHorsePathSegment(horse, pathPrevX, pathPrevY, phase, trackMod);
+      recordHorsePathSegment(horse, pathPrevX, pathPrevY, phase);
 
-      const accelAmount = Math.max(0, frameAdvance - prevAdvance);
-      if (accelAmount > 0.001) {
-        let baselineStaminaAdvance = V_eff * (phase.distance / 80) * irregularMult;
-        if (phase.index === 0 && Number.isFinite(horse.startBurstFactor)) {
-          baselineStaminaAdvance *= Math.min(horse.startBurstFactor, START_BURST_STAMINA_FREE_CAP);
-        }
-        const taxableAccel = Math.max(0, accelAmount - baselineStaminaAdvance);
-        const accelDrain =
-          (taxableAccel < 0.02 ? 0 : taxableAccel) *
-          STAMINA_ACCEL_COST *
-          getWeightStaminaMult(horse);
-        const safeAccelDrain = USE_SAFE_STAMINA_MODEL
-          ? accelDrain * SAFE_ACCEL_EVENT_DRAIN_MULT
-          : accelDrain;
-        subtractStaminaWithReserve(horse, safeAccelDrain, phase, {
-          trackField: 'staminaAccelCost',
-          fatigueGain: 0.28,
-        });
-      }
       horse.lastAdvance = frameAdvance;
+      horse.lastSpeedScore = frameAdvance / phaseTimeScale;
+
+      const runningDrain = calcRunningStaminaDrain(horse, {
+        distanceMeters: phaseMeters,
+        totalDistance: distanceBudget.total,
+        effort: horse.raceEffort,
+        speedRatio: frameAdvance / Math.max(1, phase.distance * 50 / 80),
+        trackModifier: trackMod,
+        laneFactor: calcLanePathFactor(horse.y, phase),
+        // 発馬の立ち上がりは launch 負荷に含む。以後の再加速は追加消費する。
+        deltaSpeed: phase.index > 0 ? Math.max(0, horse.lastSpeedScore - prevSpeed) * 17 / 50 : 0,
+      });
+      const actualDrain = Math.min(horse.stamina, runningDrain);
+      horse.stamina = Math.max(0, horse.stamina - actualDrain);
+      horse.staminaRunningCost += actualDrain;
+      horse.staminaBaseCost += actualDrain;
 
       applyCornerLoss(phase, horse);
       if (phase.isCorner && !USE_PATH_BASED_STAMINA) {
@@ -929,20 +894,11 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
           const safeOuterDrain = USE_SAFE_STAMINA_MODEL
             ? outerDrain * SAFE_CORNER_EVENT_DRAIN_MULT
             : outerDrain;
-          subtractStaminaWithReserve(horse, safeOuterDrain, phase, {
+          subtractEventStamina(horse, safeOuterDrain, {
             trackField: 'staminaCornerCost',
             fatigueGain: 0.18,
           });
         }
-      }
-
-      if (!USE_PATH_BASED_STAMINA) {
-        const cons = USE_SAFE_STAMINA_MODEL
-          ? Math.max(0, phase.distance) * trackMod * SAFE_BASE_STAMINA_PER_M
-          : calcStaminaCons(phase, horse, trackMod);
-        subtractStaminaWithReserve(horse, cons, phase, {
-          category: 'base',
-        });
       }
 
       horse.battleLosses  = 0;
@@ -950,13 +906,6 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
 
       // レースログはバトル関連のみを表示するため、通常の進行ログは出力しない
     }
-
-    // バトル等で予備ラインを割った場合に同期（脚質共通）
-    horses.forEach(horse => {
-      if (isKickReserveReleased(phase)) return;
-      const floor = horse.initialStamina * (horse.kickReserveFloorRatio ?? 0);
-      if (horse.stamina < floor) horse.stamina = floor;
-    });
 
     const xBeforeOverlap = horses.map(h => h.x ?? 0);
     horses.forEach((horse, i) => {
@@ -1076,14 +1025,15 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
   const results = horses.map(horse => {
     const staminaBonus = horse.initialStamina > 0
       ? (horse.stamina / horse.initialStamina) * 0.1 : 0;
-    const V_final     = (horse.S_kick ?? horse.S_pace ?? horse.S_cruise) * (horse.stamina > 0 ? 1.0 : 0.7);
+    const V_final     = (horse.S_kick ?? horse.S_pace ?? horse.S_cruise)
+      * staminaSpeedMultiplier(getStaminaRatio(horse));
     const arrivalTime = (raceData.race_info.distance + horse.distanceLoss)
                       / (V_final * (1 + staminaBonus));
     return { ...horse, arrivalTime };
   });
   results.sort((a, b) => a.arrivalTime - b.arrivalTime);
 
-  return { results, logs: globalLogs, snapshots, phases };
+  return { results, logs: globalLogs, snapshots, phases, seed: seedBase };
 }
 export {
   clampLane,

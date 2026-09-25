@@ -8,7 +8,6 @@ import {
   getKickBlend,
   getPaceIntroBlend,
   resolveFormationEndProgress,
-  resolveSimBoundaries,
   isRearPelotonForwardExempt,
   isLaunchPhase,
 } from '../src/engine/phase-context.js';
@@ -49,10 +48,10 @@ describe('phase-context', () => {
     expect(getKickBlend(corner4, ctx)).toBe(1);
   });
 
-  it('ワンターン: launch=2セグメント、settle=corner3', () => {
-    const course = courses.courses.find(c => c.id === 'generic_one_turn');
-    const phases = buildPhases(2000, course);
-    const ctx = createPhaseContext(2000, course, phases);
+  it('東京芝1600のワンターン: launch=2セグメント、settle=corner3', () => {
+    const course = courses.courses.find(c => c.id === 'tokyo_turf_1600');
+    const phases = buildPhases(1600, course);
+    const ctx = createPhaseContext(1600, course, phases);
     const back = phases.find(p => p.segmentId === 'back');
     const corner3 = phases.find(p => p.segmentId === 'corner3');
     const corner4 = phases.find(p => p.segmentId === 'corner4');
@@ -106,16 +105,19 @@ describe('phase-context', () => {
     expect(back.ratio).toBeCloseTo(0.08, 3);
   });
 
-  it('コース未定義フェーズは距離・構造から境界を推定する', () => {
-    const phases = buildPhases(1600, null);
-    const ctx = createPhaseContext(1600, null, phases);
-    const bounds = resolveSimBoundaries(1600, null, phases);
+  it('コース未定義時に距離から架空のフェーズを作らない', () => {
+    expect(() => buildPhases(1600, null)).toThrow('コースの区間定義');
+  });
 
-    expect(bounds.launchEndProgress).toBeGreaterThan(0);
-    expect(bounds.settleEndProgress).toBeGreaterThanOrEqual(bounds.launchEndProgress);
-    expect(bounds.paceStartProgress).toBeGreaterThanOrEqual(bounds.settleEndProgress);
-    expect(getLaunchBlend(phases[0], ctx)).toBe(1);
-    expect(getKickBlend(phases[phases.length - 1], ctx)).toBe(1);
+  it.each([[], [{ ratio: 0 }], [{ ratio: NaN }], [{ ratio: Infinity }], [null]].map(segments => ({ segments })))(
+    '壊れた区間定義を無視して続行しない: $segments', ({ segments }) => {
+      expect(() => buildPhases(1600, { segments })).toThrow('コースの区間定義');
+    },
+  );
+
+  it('登録コースを別距離へ自動で伸縮しない', () => {
+    const course = courses.courses.find(c => c.id === 'tokyo_turf_1600');
+    expect(() => buildPhases(2000, course)).toThrow('距離が一致しません');
   });
 
   it('legacy formation simRole を launch/settle に分割する', () => {

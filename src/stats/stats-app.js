@@ -1,4 +1,5 @@
-import { resolveCourseDef, formatRaceInfo } from './race-display.js';
+import { formatRaceInfo } from './race-display.js';
+import { isCurrentRace, loadPublishedRace } from '../lib/published-race.js';
 import {
   loadCarrotsByHorseFromBundle,
   loadMarksByHorseFromBundle,
@@ -428,14 +429,15 @@ async function init() {
   }
 
   try {
-    const courseCatalog = await fetch('./src/data/courses.json').then(r => r.json());
-    const raceData = {
-      race_id: bundle.race_id,
-      race_info: bundle.race_info,
-      entries: bundle.entries,
-    };
-    const courseDef = resolveCourseDef(raceData, courseCatalog);
-    runtimeRaceData = { ...raceData, courseDef };
+    const publishedRace = await loadPublishedRace();
+    if (!isCurrentRace(bundle, publishedRace)) {
+      if (infoEl) infoEl.textContent = '';
+      if (errEl) errEl.textContent = '公開レースが更新されています。シミュレーターに戻って新しいレースを開始してください。';
+      renderTable();
+      return;
+    }
+    // 出走表の脚質変更は同じ公開レース内だけで保持する。コース・開催情報は公開データを使う。
+    runtimeRaceData = { ...publishedRace, entries: bundle.entries };
     marksByHorse = loadMarksByHorseFromBundle(bundle, runtimeRaceData.entries.length);
     carrotsByHorse = loadCarrotsByHorseFromBundle(
       bundle,
@@ -444,7 +446,7 @@ async function init() {
     );
   } catch (e) {
     console.error(e);
-    if (errEl) errEl.textContent = 'コースデータの読み込みに失敗しました。';
+    if (errEl) errEl.textContent = `公開レースを読み込めません。${e.message ?? ''}`;
     return;
   }
 

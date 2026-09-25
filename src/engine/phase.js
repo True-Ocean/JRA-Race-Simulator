@@ -1,50 +1,22 @@
 import { CONFIG } from '../config.js';
 
-export function calcPhaseCount(distance) {
-  return Math.max(5, Math.round(distance / 270));
-}
-
 export function buildPhases(distance, courseDef = null) {
-  if (courseDef?.segments?.length) {
-    return buildPhasesFromCourse(distance, courseDef);
+  if (!Number.isFinite(distance) || distance <= 0) {
+    throw new Error('レース距離が不正です。');
   }
-
-  const total = calcPhaseCount(distance);
-  const phases = [];
-
-  const cornerSlots = [
-    Math.floor(total * 0.15),
-    Math.floor(total * 0.35),
-    Math.floor(total * 0.55),
-    Math.floor(total * 0.75),
-  ].filter(i => i < total - 1 && i > 0);
-  const cornerSet = new Set(cornerSlots);
-
-  for (let i = 0; i < total; i++) {
-    const progressStart = i / Math.max(1, total - 1);
-    const progressEnd = (i + 1) / Math.max(1, total - 1);
-    phases.push({
-      index: i,
-      isCorner: cornerSet.has(i),
-      isFinal: i === total - 1,
-      distance: distance / total,
-      ratio: progressStart,
-      progressStart,
-      progressEnd,
-      metersStart: distance * progressStart,
-      metersEnd: distance * progressEnd,
-      segmentId: cornerSet.has(i) ? `corner-${i}` : (i === 0 ? 'start' : (i === total - 1 ? 'final' : 'straight')),
-      segmentLabel: `Phase ${i + 1}`,
-      kind: cornerSet.has(i) ? 'corner' : (i === 0 ? 'start' : (i === total - 1 ? 'final' : 'straight')),
-      cornerNo: null,
-      simRole: null,
-    });
+  if (!Array.isArray(courseDef?.segments) || courseDef.segments.length === 0
+    || courseDef.segments.some(s => !s || !Number.isFinite(s.ratio) || s.ratio <= 0)
+    || !Number.isFinite(courseDef.segments.reduce((sum, s) => sum + s.ratio, 0))) {
+    throw new Error('コースの区間定義がありません、または不正です。courses.json を確認してください。');
   }
-  return phases;
+  if (courseDef.distance != null && courseDef.distance !== distance) {
+    throw new Error('レース距離とコース定義の距離が一致しません。');
+  }
+  return buildPhasesFromCourse(distance, courseDef);
 }
 
 function buildPhasesFromCourse(distance, courseDef) {
-  const segments = courseDef.segments.filter(s => typeof s.ratio === 'number' && s.ratio > 0);
+  const segments = courseDef.segments;
   const ratioSum = segments.reduce((acc, s) => acc + s.ratio, 0);
   const safeRatioSum = ratioSum > 0 ? ratioSum : 1;
   const lastCornerNo = Math.max(0, ...segments.map(s => s.cornerNo ?? 0));
@@ -59,7 +31,7 @@ function buildPhasesFromCourse(distance, courseDef) {
     return {
       index,
       distance: distance * normRatio,
-      /** 走行距離比（非 course ビルドと同義。旧 index/(n-1) ではない） */
+      /** コース区間の距離累計による走行距離比 */
       ratio: progressStart,
       progressStart,
       progressEnd,

@@ -26,6 +26,7 @@ import {
   SESSION_KEY_SUMMARY_STATE,
 } from './src/stats/aggregate-store.js';
 import { formatRaceInfo, resolveCourseDef } from './src/stats/race-display.js';
+import { isCurrentRace, loadPublishedRace } from './src/lib/published-race.js';
 import { JRA_WAKU_COLORS } from './src/ui/colors.js';
 import { runSimulation } from './src/engine/simulation.js';
 import { RACE_SUMMARY_HEADER_LINE } from './src/engine/constants.js';
@@ -328,7 +329,6 @@ function hideRaceSummaryScreen() {
 // =====================
 //  出馬表の初期描画（充実版）
 // =====================
-/** 残スタミナ表示: 実比率この％未満はバー0%、この％でバー100%（見せ方のスケール） */
 
 function cloneRaceEntries(entries) {
   try {
@@ -423,27 +423,13 @@ const SIMULATOR_BOOT =
 // =====================
 if (SIMULATOR_BOOT) {
   startDisplayDiagnostics();
-  Promise.all([
-  fetch('./src/data/race-info.json').then(res => res.json()),
-  fetch('./src/data/race-entries.json').then(res => res.json()),
-  fetch('./src/data/courses.json').then(res => res.json()),
-])
-  .then(([raceInfoData, raceEntriesData, courseCatalog]) => {
-    if (raceInfoData?.race_id !== raceEntriesData?.race_id) {
-      throw new Error(`race_id mismatch: race-info=${raceInfoData?.race_id} race-entries=${raceEntriesData?.race_id}`);
-    }
+  loadPublishedRace()
+  .then(publishedRace => {
     const raceData = {
-      race_id: raceInfoData.race_id,
-      race_info: raceInfoData.race_info,
-      entries: cloneRaceEntries(raceEntriesData.entries),
+      ...publishedRace,
+      entries: cloneRaceEntries(publishedRace.entries),
     };
-    const courseDef = resolveCourseDef(raceData, courseCatalog);
-    if (!courseDef) {
-      console.warn(
-        '[jra-race-simulator] courses.json に一致するコースがありません。距離ベースの汎用フェーズで実行します。',
-        raceData.race_info,
-      );
-    }
+    const { courseDef } = raceData;
     const runtimeRaceData = { ...raceData, courseDef };
     /** オリジナル設定リセット用（JSON 初期の脚質など） */
     const baselineRaceEntries = cloneRaceEntries(raceData.entries);
@@ -458,7 +444,7 @@ if (SIMULATOR_BOOT) {
     const marksByHorse = createDefaultMarksByHorse(runtimeRaceData.entries.length);
 
     const savedBundle = loadRaceBundleFromSession();
-    if (savedBundle?.race_id === runtimeRaceData.race_id) {
+    if (isCurrentRace(savedBundle, runtimeRaceData)) {
       Object.assign(
         marksByHorse,
         loadMarksByHorseFromBundle(savedBundle, runtimeRaceData.entries.length),
@@ -689,7 +675,12 @@ if (SIMULATOR_BOOT) {
       } else if (raceComplete) {
         if (btnPlayStep) btnPlayStep.disabled = true;
         if (btnPlayAuto) btnPlayAuto.disabled = true;
-        if (btnPlayReplay) btnPlayReplay.disabled = !replayBundle;
+        if (btnPlayReplay) {
+          btnPlayReplay.disabled = !replayBundle?.goalRecording?.length;
+          btnPlayReplay.title = btnPlayReplay.disabled
+            ? '再生記録が残っていないためリプレイできません。結果の再計算は行いません。'
+            : '';
+        }
         if (btnPlayReset) btnPlayReset.disabled = false;
         if (btnShowSummary) {
           btnShowSummary.disabled = !simResults || !simSnapshots;
@@ -816,8 +807,9 @@ if (SIMULATOR_BOOT) {
 
     function rebuildHorseMetaByName(horses = initialHorses) {
       horseMetaByName = new Map();
+      const horsesById = new Map(horses.map(h => [h.id, h]));
       runtimeRaceData.entries.forEach((entry, idx) => {
-        const horse = horses[idx] ?? initialHorses[idx];
+        const horse = horsesById.get(idx) ?? initialHorses[idx];
         if (!horse) return;
         horse.jockeyName = entry.jockey.name;
         horseMetaByName.set(horse.name, {
@@ -848,8 +840,18 @@ if (SIMULATOR_BOOT) {
       const lastIdx = simSnapshots.length - 1;
       const lastSnap = simSnapshots[lastIdx];
       const phase = phases[lastIdx];
+      const courseFrame =
+        playbackDockMode === 'complete'
+          ? (postGoalCourseFrame ??
+            replayBundle?.postGoalCourseFrame ??
+            lastGoalRecordingFrame(
+              replayBundle?.goalRecording ?? loadGoalRecordingFromSession(),
+            ))
+          : null;
+      const goalHorsesById = new Map((courseFrame?.horses ?? []).map(h => [h.id, h]));
+      // 記録フレームは軽量版なので、馬番順・斤量・性齢を元データから保ったまま余力を重ねる。
       const finalHorses = Array.isArray(lastSnap?.horses)
-        ? lastSnap.horses.map(h => ({ ...h }))
+        ? lastSnap.horses.map(h => ({ ...h, ...goalHorsesById.get(h.id) }))
         : null;
       if (!finalHorses?.length) {
         applyComputedHorsesToUi();
@@ -869,15 +871,6 @@ if (SIMULATOR_BOOT) {
       renderEntryList(finalHorses, carrotsByHorse);
       updateEntryStaminaBars(finalHorses);
       renderer.resetHorseRenderState();
-
-      const courseFrame =
-        playbackDockMode === 'complete'
-          ? (postGoalCourseFrame ??
-            replayBundle?.postGoalCourseFrame ??
-            lastGoalRecordingFrame(
-              replayBundle?.goalRecording ?? loadGoalRecordingFromSession(),
-            ))
-          : null;
 
       const drawRestoredCourse = () => {
         if (courseFrame && drawGoalCourseFrame(renderer, courseFrame, phase)) {
@@ -995,6 +988,7 @@ if (SIMULATOR_BOOT) {
         replayBundle?.postGoalCourseFrame ??
         lastGoalRecordingFrame(goalRecording);
       const payload = {
+        race_id: runtimeRaceData.race_id,
         simResults,
         simLogs,
         snapshots: simSnapshots,
@@ -1093,6 +1087,7 @@ if (SIMULATOR_BOOT) {
           recordGoalPlayback: Boolean(replayOpts.recordGoalPlayback),
           goalRecording: replayOpts.goalRecording ?? null,
           raceId: runtimeRaceData.race_id,
+          raceSeed: simulationRunSeed ?? runtimeRaceData.race_id,
           raceInfo: runtimeRaceData.race_info,
           carrotsByHorse,
         },
@@ -1139,7 +1134,8 @@ if (SIMULATOR_BOOT) {
     }
 
     function startReplay() {
-      if (!replayBundle?.snapshots?.length || !replayBundle?.simResults?.length) return;
+      if (!replayBundle?.snapshots?.length || !replayBundle?.simResults?.length
+        || !replayBundle?.goalRecording?.length) return;
       isReplayPlayback = true;
       stopAutoAdvanceLoop();
       playbackDockMode = 'play';
@@ -1298,6 +1294,7 @@ if (SIMULATOR_BOOT) {
       const saveSummaryStateForReturn = () => {
         if (!simResults || !simSnapshots) return;
         const payload = {
+          race_id: runtimeRaceData.race_id,
           simResults,
           finishOrderIds: Array.isArray(lastFinishOrderIds) ? [...lastFinishOrderIds] : [],
           goalFinishedAtById: { ...lastGoalFinishedAtById },
@@ -1447,6 +1444,7 @@ if (SIMULATOR_BOOT) {
       if (!raw) return false;
       try {
         const parsed = JSON.parse(raw);
+        if (!isCurrentRace(parsed, runtimeRaceData)) return false;
         if (!Array.isArray(parsed?.simResults) || !Array.isArray(parsed?.snapshots)) return false;
         simResults = parsed.simResults;
         simLogs = Array.isArray(parsed.simLogs) ? parsed.simLogs : null;
@@ -1458,6 +1456,8 @@ if (SIMULATOR_BOOT) {
             : {};
         postGoalCourseFrame = parsed.postGoalCourseFrame ?? null;
         rebuildReplayBundleFromSessionParts(parsed);
+        // 掲示板のHTMLを作る前に馬番・枠色を復元する（結果配列は着順で並んでいる）。
+        rebuildHorseMetaByName(simResults);
         const ui = parsed.ui ?? {};
         document.getElementById('phase-indicator').textContent = ui.phaseText ?? 'ゴール';
         if (typeof ui.logHtml === 'string') {
@@ -1507,7 +1507,8 @@ if (SIMULATOR_BOOT) {
         if (raw) {
           try {
             const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed?.simResults) && Array.isArray(parsed?.snapshots)) {
+            if (isCurrentRace(parsed, runtimeRaceData)
+              && Array.isArray(parsed?.simResults) && Array.isArray(parsed?.snapshots)) {
               simResults = parsed.simResults;
               simSnapshots = parsed.snapshots;
               lastFinishOrderIds = Array.isArray(parsed.finishOrderIds) ? parsed.finishOrderIds : [];
@@ -1568,7 +1569,16 @@ if (SIMULATOR_BOOT) {
 
   })
   .catch(err => {
-    console.error('JSONの読み込みに失敗しました:', err);
+    console.error('公開レースの初期化に失敗しました:', err);
+    const errorEl = document.getElementById('race-load-error');
+    if (errorEl) {
+      errorEl.hidden = false;
+      errorEl.textContent = `レースを開始できません。${err.message ?? '公開データを確認してください。'}`;
+    }
+    document.querySelectorAll('#field-playback-dock button, #btn-back-to-pre-race, #btn-show-summary, #btn-open-stats')
+      .forEach(button => { button.disabled = true; });
+    const logPanel = document.getElementById('log-panel');
+    if (logPanel) logPanel.textContent = '公開データの確認が必要です。';
   });
 }
 

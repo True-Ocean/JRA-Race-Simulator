@@ -8,12 +8,13 @@ import {
 import { isFourthCornerPhase } from './phase-helpers.js';
 
 /**
- * シミュ x 進行（1フェーズあたり V_eff * phase.distance/80）と名目距離を揃える換算。
+ * sim-x は速度スコア50を基準にメートルへ換算する。
+ * 区間距離は advance に既に含まれているため、ここで再度掛けない。
  * @param {number} phaseDistanceM
  */
 export function simXToMetersScale(phaseDistanceM) {
   const d = Number.isFinite(phaseDistanceM) ? phaseDistanceM : 0;
-  return d > 0 ? d / SIM_X_METERS_DIVISOR : 0;
+  return d > 0 ? SIM_X_METERS_DIVISOR / 50 : 0;
 }
 
 /**
@@ -64,7 +65,7 @@ export function calcLanePathFactor(laneY, phase) {
 }
 
 /**
- * 経路セグメントに対するスタミナ消費量（予備ライン前の raw 値）。
+ * 旧経路モデルの互換計算。現行の道中・ゴールは calcRunningStaminaDrain を使用。
  */
 export function calcPathStaminaDrain(segmentMeters, trackMod, laneY, phase) {
   if (segmentMeters <= 0) return 0;

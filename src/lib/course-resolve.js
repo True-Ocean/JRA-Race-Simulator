@@ -1,53 +1,26 @@
-import { resolveSurfaceKey, resolveVenueKey } from '../ui/finish-times.js';
+import { resolveVenueKey } from '../ui/finish-times.js';
 
 /**
- * race_info（venue / track / distance）から courses.json の1件を解決する。
+ * 公開レースの競馬場・馬場・距離に一致する実コースだけを解決する。
+ * course_id は内外回りなどの区別用。一致条件を省略・上書きする指定ではない。
  * @param {{ race_info?: { venue?: string, track?: string, distance?: number, course_id?: string } } | null | undefined} raceData
- * @param {{ courses?: object[], defaultCourseId?: string } | null | undefined} courseCatalog
+ * @param {{ courses?: object[] } | null | undefined} courseCatalog
  * @returns {object | null}
  */
 export function resolveCourseDef(raceData, courseCatalog) {
   const info = raceData?.race_info ?? {};
-  const courses = courseCatalog?.courses ?? [];
+  const courses = Array.isArray(courseCatalog?.courses) ? courseCatalog.courses : [];
 
   const venueKey = resolveVenueKey(info.venue);
-  const surface = resolveSurfaceKey(info.track);
+  const track = String(info.track ?? '').trim().toLowerCase();
+  const surface = { '芝': 'turf', turf: 'turf', 'ダート': 'dirt', dirt: 'dirt' }[track];
   const distance = Number(info.distance);
 
-  if (venueKey && Number.isFinite(distance)) {
-    const match = courses.find(
-      c =>
-        c.venueKey === venueKey &&
-        (c.surface ?? 'turf') === surface &&
-        c.distance === distance,
-    );
-    if (match) return match;
-  }
-
-  const requestedId = info.course_id;
-  if (requestedId) {
-    const byId = courses.find(c => c.id === requestedId);
-    if (byId) return byId;
-  }
-
-  // venueKey なしの距離専用コースが1件だけなら採用（競馬場非依存の汎用レイアウト向け）
-  if (Number.isFinite(distance)) {
-    const byDistance = courses.filter(
-      c =>
-        !c.venueKey &&
-        c.distance === distance &&
-        (c.surface ?? 'turf') === surface,
-    );
-    if (byDistance.length === 1) return byDistance[0];
-  }
-
-  // セグメント定義付きの汎用コース（距離非依存・ratio でスケール）
-  const generic = courses.find(c => c.id === 'generic_one_turn');
-  if (generic) return generic;
-
-  const defId = courseCatalog?.defaultCourseId;
-  if (defId) {
-    return courses.find(c => c.id === defId) ?? null;
-  }
-  return null;
+  if (!venueKey || !surface || !Number.isFinite(distance) || distance <= 0) return null;
+  const matches = courses.filter(c =>
+    c?.venueKey === venueKey && c.surface === surface && c.distance === distance
+    && (!info.course_id || c.id === info.course_id),
+  );
+  // 未登録・矛盾・曖昧な定義を、汎用コースや配列の先頭で補わない。
+  return matches.length === 1 ? matches[0] : null;
 }

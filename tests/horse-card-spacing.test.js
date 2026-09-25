@@ -47,6 +47,14 @@ describe('resolveHorseCardPlacement', () => {
 });
 
 describe('easeCardAdjust', () => {
+  it.each([30, 60, 120])('%sfpsでも補正の上限速度は秒単位で一定', (fps) => {
+    let position = { y: 0, x: 0 };
+    for (let i = 0; i < fps; i++) {
+      position = easeCardAdjust(position, { y: 1000, x: 0 }, 1000 / fps, { maxYSpeed: 28 });
+    }
+    expect(position.y).toBeCloseTo(28, 8);
+  });
+
   it('目標が大きく跳んでも1フレームでは追いつかない', () => {
     const next = easeCardAdjust({ y: 0, x: 0 }, { y: 80, x: 20 }, 16, { tauY: 90, tauX: 90 });
     expect(next.y).toBeGreaterThan(0);

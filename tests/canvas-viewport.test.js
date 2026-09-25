@@ -34,10 +34,10 @@ describe('canvas-viewport', () => {
 
   it('リサイズ時は馬座標をスケールし、極端な変化では破棄する', () => {
     const state = new Map([
-      [1, { cx: 100, cy: 200 }],
+      [1, { cx: 100, cy: 200, baseCy: 180 }],
     ]);
     scaleHorseRenderPositions(state, 200, 400, 400, 800);
-    expect(state.get(1)).toEqual({ cx: 200, cy: 400 });
+    expect(state.get(1)).toEqual({ cx: 200, cy: 400, baseCy: 360 });
 
     scaleHorseRenderPositions(state, 400, 800, 40, 80);
     expect(state.size).toBe(0);

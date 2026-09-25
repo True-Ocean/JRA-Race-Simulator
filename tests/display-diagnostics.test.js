@@ -4,6 +4,7 @@ import {
   createDisplayTrace,
   isLocalDisplayDiagnostics,
   shouldShowDisplayDiagnostics,
+  observeLiveReload,
 } from '../src/ui/display-diagnostics.js';
 
 describe('display-diagnostics', () => {
@@ -65,5 +66,29 @@ describe('display-diagnostics', () => {
         { type: 'pageshow' },
       ],
     });
+  });
+
+  it('ローカルのGo Live通知を記録し、再読み込み自体は診断側で実行しない', () => {
+    const events = [];
+    const listeners = new Map();
+    let url;
+    const win = {
+      location: { hostname: '127.0.0.1', host: '127.0.0.1:5503', protocol: 'http:', pathname: '/' },
+      WebSocket: class {
+        constructor(value) { url = value; }
+        addEventListener(type, cb) { listeners.set(type, cb); }
+      },
+    };
+    const doc = { scripts: [{ textContent: "console.log('Live reload enabled.');" }] };
+    observeLiveReload(win, doc, (type, detail) => events.push({ type, detail }));
+    expect(url).toBe('ws://127.0.0.1:5503//ws');
+    listeners.get('message')({ data: 'connected' });
+    expect(events).toHaveLength(0);
+    listeners.get('message')({ data: 'reload' });
+    listeners.get('message')({ data: 'refreshcss' });
+    expect(events.map(e => e.detail.message)).toEqual(['reload', 'refreshcss']);
+    expect(events.every(e => e.type === 'live-server-message')).toBe(true);
+    expect(observeLiveReload({ ...win, location: { hostname: 'example.com' } }, doc, () => {})).toBeNull();
+    expect(observeLiveReload(win, { scripts: [] }, () => {})).toBeNull();
   });
 });

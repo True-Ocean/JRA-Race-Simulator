@@ -1,51 +1,36 @@
 import { describe, expect, it } from 'vitest';
-import { runSimulation } from '../src/engine/simulation.js';
-import { loadDefaultRaceFixture } from './helpers/load-race-fixture.js';
-import {
-  calcGoalEffortNorm,
-  calcGoalReserveBurnDrain,
-} from '../src/ui/goal-scene.js';
+import { getRaceEffortContext, resolveRaceEffort } from '../src/engine/race-effort.js';
+import { calcRunningStaminaDrain } from '../src/engine/stamina-drain.js';
 
-describe('競争圧・実行圧', () => {
-  it('実行圧: 加速・望む速度への追従で effort が上がる', () => {
-    const low = calcGoalEffortNorm(14, 14, 0);
-    const high = calcGoalEffortNorm(16, 13, 0.08);
-    expect(low).toBeLessThan(high);
+const horse = { id: 1, x: 100, y: 2, style: '逃げ', initialStamina: 150, S_sustain: 70 };
+const context = { totalDistance: 1600, remainingMeters: 1200, distanceMeters: 150, rankNorm: 0 };
+
+describe('展開による走行負荷', () => {
+  it('単騎逃げより近くに競りかける相手がいると脚を使う', () => {
+    const alone = getRaceEffortContext(horse, [horse]);
+    const contested = getRaceEffortContext(horse, [horse,
+      { id: 2, x: 98, y: 3 }, { id: 3, x: 104, y: 4 },
+    ]);
+    const easy = resolveRaceEffort(horse, { ...context, ...alone });
+    const hard = resolveRaceEffort(horse, { ...context, ...contested });
+    expect(hard).toBeGreaterThan(easy);
+    const drain = effort => calcRunningStaminaDrain(horse, { ...context, effort });
+    expect(drain(hard)).toBeGreaterThan(drain(easy));
   });
 
-  it('実行圧: effort が低いと reserveBurn は小さい', () => {
-    const base = {
-      stamina: 100,
-      initialStamina: 150,
-      remainMeters: 60,
-      goalCurrentMps: 15,
-      staminaRatio: 0.66,
-      pathQuality: 0.9,
-      distRatio: 0.7,
-      dt: 0.05,
-    };
-    const withEffort = calcGoalReserveBurnDrain({ ...base, effortNorm: 0.85 });
-    const noEffort = calcGoalReserveBurnDrain({ ...base, effortNorm: 0 });
-    expect(withEffort).toBeGreaterThan(noEffort);
+  it('前が塞がると仕掛けを控え、開けば同じ位置から脚を使える', () => {
+    const closer = { ...horse, style: '差し', raceEffort: 0.7 };
+    const late = { ...context, remainingMeters: 180, distanceMeters: 30 };
+    const blocked = resolveRaceEffort(closer, { ...late, frontBlocked: true });
+    const open = resolveRaceEffort(closer, { ...late, frontBlocked: false });
+    expect(open).toBeGreaterThan(blocked);
+    expect(open - closer.raceEffort).toBeLessThan(0.2);
   });
 
-  it('大逃げは向正面で枯渇せず、レース後はスタミナが減っている', () => {
-    const { snapshots, phases, results } = runSimulation(
-      loadDefaultRaceFixture(),
-      { seed: 20260523 },
-      {},
-      null,
-    );
-    const backIdx = phases.findIndex(
-      p => p.segmentId === 'back' || String(p.segmentLabel ?? '').includes('向正面'),
-    );
-    expect(backIdx).toBeGreaterThanOrEqual(0);
-    for (const h of snapshots[backIdx].horses.filter(x => x.style === '大逃げ')) {
-      const ratio = h.stamina / h.initialStamina;
-      expect(ratio).toBeGreaterThan(0.12);
-    }
-    for (const h of results.filter(x => x.style === '逃げ' || x.style === '大逃げ')) {
-      expect(h.stamina).toBeLessThan(h.initialStamina);
-    }
+  it('目標位置より後ろなら早めに仕掛ける判断が生じる', () => {
+    const closer = { ...horse, style: '差し', formationTargetRank: 0.4 };
+    const late = { ...context, remainingMeters: 450 };
+    expect(resolveRaceEffort(closer, { ...late, rankNorm: 0.9 }))
+      .toBeGreaterThan(resolveRaceEffort(closer, { ...late, rankNorm: 0.4 }));
   });
 });

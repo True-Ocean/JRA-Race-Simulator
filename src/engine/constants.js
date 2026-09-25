@@ -53,11 +53,11 @@ export const EARLY_ORDER_TIE_NOISE = 1.2;
  * - 実行圧: ゴールで「脚を入れている」→ 燃焼増（着順の答え合わせはしない）
  * - 競争なしで後方・高残もあり得る（バー緑は常にバグではない）
  */
-/** 安全策: 新スタミナモデル（イベント主導 + 距離微小消費）を段階導入 */
+/** レーン変更などのイベント負荷を抑え、イベント疲労へ反映する互換フラグ */
 export const USE_SAFE_STAMINA_MODEL = true;
-/** 経路積算ベースのスタミナ消費（走行距離に連動） */
+/** 外回りを走行消費に含めるため、旧コーナーイベント消費を重複させない */
 export const USE_PATH_BASED_STAMINA = true;
-/** 新モデル: 距離起因の微小消費（1m あたり） */
+/** 旧経路モデルの互換計算用。現行走行消費は calcRunningStaminaDrain */
 export const SAFE_BASE_STAMINA_PER_M = 0.0048;
 /** 経路モデル: 1m あたりのスタミナ（初期は SAFE_BASE と同値） */
 export const PATH_STAMINA_PER_M = SAFE_BASE_STAMINA_PER_M;
@@ -69,19 +69,14 @@ export const SIM_X_METERS_DIVISOR = 80;
 export const SAFE_LANE_EVENT_DRAIN_MULT = 0.45;
 /** 新モデル: コーナー外回しイベント消費倍率 */
 export const SAFE_CORNER_EVENT_DRAIN_MULT = 0.35;
-/** 新モデル: 余剰加速イベント消費倍率 */
-export const SAFE_ACCEL_EVENT_DRAIN_MULT = 0.62;
 /** 新モデル: 終盤でイベント疲労を速度へ反映する重み */
 export const SAFE_GOAL_EVENT_FATIGUE_WEIGHT = 0.42;
-/** 新モデル: 終盤の stamina/m 正規化基準 */
-export const SAFE_GOAL_STAMINA_PER_M_REF = 0.030;
-export const SAFE_GOAL_STAMINA_PER_M_RANGE = 0.090;
-/** スタート初速のうちこの倍率までは能力域とみなし、accel スタミナは超過分のみ課金 */
-export const START_BURST_STAMINA_FREE_CAP = 1.14;
 // ゴールシーンは「ゴールラインから 200m 手前〜ゴール」が画面に収まるイメージ。
 // last_3f（最終3ハロン≈600m の通過秒）から intrinsic 速度を出し、スタミナ残量で毎フレーム上限を締める。
 export const GOAL_FURLONG_METERS = 200;
 export const GOAL_TIME_SCALE = 1.0;
+/** ゴール走行の表示テンポ。馬の能力・走破タイムとは別の再生倍率。 */
+export const GOAL_PLAYBACK_RATE = 1.15;
 export const GOAL_DISTANCE_METERS = GOAL_FURLONG_METERS;
 export const GOAL_LAST3F_DISTANCE_M = 600;
 export const GOAL_LAST3F_SEC_CLAMP_MIN = 27;
@@ -205,42 +200,12 @@ export const STAMINA_CORNER_OUTER_PER_LANE = 0.30;
 export const GLOBAL_STAMINA_DRAIN_MULT = 1.11;
 /** career.stamina_efficiency による消費抑制の上限（ベース↑の一部のみ相殺） */
 export const STAMINA_EFFICIENCY_MAX = 0.04;
-export const GOAL_STAMINA_DRAIN_MULT = 1.35;
-/** ゴール: 表示％連動の発揮率レンジ（緑黄赤・毎フレーム） */
-export const GOAL_EXPRESSION_GREEN_MIN = 1.04;
-export const GOAL_EXPRESSION_GREEN_MAX = 1.08;
-export const GOAL_EXPRESSION_YELLOW_MIN = 0.96;
-export const GOAL_EXPRESSION_YELLOW_MAX = 1.00;
-export const GOAL_EXPRESSION_RED_MIN = 0.82;
-export const GOAL_EXPRESSION_RED_MAX = 0.92;
 /** ゴール速度: goal_class_index（G1着順主）による乗算レンジ */
 export const GOAL_EXPRESSION_CAREER_MIN = 0.90;
 export const GOAL_EXPRESSION_CAREER_MAX = 1.14;
 /** ゴール加速: 同上（実績馬の伸び切り） */
 export const GOAL_CAREER_ACCEL_MIN = 0.88;
 export const GOAL_CAREER_ACCEL_MAX = 1.12;
-export const GOAL_ACCEL_MULT_GREEN = 1.0;
-export const GOAL_ACCEL_MULT_YELLOW = 0.88;
-export const GOAL_ACCEL_MULT_RED = 0.72;
-/** ゴールシーン終了時の目標スタミナ残量（initial 比） */
-export const GOAL_STAMINA_BURN_TARGET_RATIO = 0.12;
-/** 残スタミナをゴールまで燃やす燃焼の強さ（距離×mps 式は使わない穏やかな時間ベース） */
-export const GOAL_STAMINA_BURN_RESERVE_MULT = 0.62;
-/** 燃焼が効き始める distRatio（これ未満はほぼ燃やさない） */
-export const GOAL_STAMINA_BURN_DIST_START = 0.18;
-/** 既存 goalDrain に掛けるベース＋高残量補正（穏やか） */
-export const GOAL_STAMINA_DRAIN_RESERVE_BASE = 0.94;
-export const GOAL_STAMINA_DRAIN_RESERVE_STAMINA_GAIN = 0.28;
-/** 先頭グループの末脚開放（staminaUnleash）抑制 — 前が空いているとき */
-export const GOAL_LEADING_UNLEASH_SCALE = 0.28;
-/** 先頭グループの粘りドレイン（initial 比・秒） */
-export const GOAL_LEADING_HOLD_DRAIN_PER_SEC = 0.009;
-/** 1フレームで燃やせる burnable の上限比率（瞬間枯れ防止） */
-export const GOAL_STAMINA_BURN_MAX_FRAME_FRAC = 0.045;
-/** 実行圧: goalDesired と現速度の差・加速から燃焼へ反映する重み */
-export const GOAL_EFFORT_BURN_WEIGHT = 0.58;
-/** 先頭僅差時の粘りドレイン追加倍率 */
-export const GOAL_TIGHT_LEAD_HOLD_MULT = 1.55;
 export const GOAL_AI = {
   horizonSec: 1.0,
   predictStepSec: 0.10,
@@ -261,7 +226,6 @@ export const GOAL_AI = {
   burstCooldownSec: 0.80,
   burstDurationSec: 0.55,
   trafficPenaltyFloor: 0.72,
-  goalDrainSprintCap: 1.45,
   visualLateStartT: 0.62,
   visualLateBoost: 0.34,
   /** 短期軌道予測での接触ペナルティ（進路スコアから減算） */
