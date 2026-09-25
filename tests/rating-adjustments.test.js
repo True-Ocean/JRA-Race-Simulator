@@ -43,7 +43,10 @@ describe('rating-adjustments', () => {
   });
 
   it('applyCarrotBonusToHorse: 🥕10 は主要能力を約8%上げる', () => {
-    const base = calcAllParams(raceData)[0];
+    const base = calcAllParams(raceData).find(
+      h => h.S_cruise > 0 && h.S_sustain > 0 && h.M_maneuv > 0,
+    );
+    expect(base).toBeTruthy();
     const adj = applyCarrotBonusToHorse(base, 10);
     expect(adj.S_cruise / base.S_cruise).toBeCloseTo(1.08, 2);
     expect(adj.S_sustain / base.S_sustain).toBeCloseTo(1.08, 2);

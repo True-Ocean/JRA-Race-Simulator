@@ -1,6 +1,9 @@
 /** レイアウト未確定（0×0）とみなす下限 */
 export const MIN_CANVAS_LAYOUT_PX = 2;
 
+/** これ未満の幅・高さ変化ではビットマップを張り替えない（1px 振動で点滅するため） */
+export const CANVAS_RESIZE_TOLERANCE_PX = 2;
+
 /** バックグラウンド復帰時に 1 フレームへ載せられる最大経過 ms */
 export const MAX_ANIMATION_FRAME_MS = 50;
 
@@ -18,13 +21,13 @@ export function shouldApplyCanvasResize(prev, next) {
   if (!Number.isFinite(w) || !Number.isFinite(h)) return false;
   if (w < MIN_CANVAS_LAYOUT_PX || h < MIN_CANVAS_LAYOUT_PX) return false;
   const dpr = Number(next?.dpr);
-  if (
-    prev
-    && prev.w === w
-    && prev.h === h
-    && prev.dpr === dpr
-  ) {
-    return false;
+  if (prev && prev.dpr === dpr && prev.w >= MIN_CANVAS_LAYOUT_PX && prev.h >= MIN_CANVAS_LAYOUT_PX) {
+    if (
+      Math.abs(prev.w - w) < CANVAS_RESIZE_TOLERANCE_PX
+      && Math.abs(prev.h - h) < CANVAS_RESIZE_TOLERANCE_PX
+    ) {
+      return false;
+    }
   }
   return true;
 }

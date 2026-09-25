@@ -63,6 +63,28 @@ describe('phase-context', () => {
     expect(getPaceIntroBlend(corner4, ctx)).toBeGreaterThan(0);
   });
 
+  it('中山芝1200: launch=スタート+向正面、settle=corner3', () => {
+    const course = courses.courses.find(c => c.id === 'nakayama_turf_1200');
+    const phases = buildPhases(1200, course);
+    const ctx = createPhaseContext(1200, course, phases);
+    const start = phases.find(p => p.segmentId === 'start');
+    const back = phases.find(p => p.segmentId === 'back');
+    const corner3 = phases.find(p => p.segmentId === 'corner3');
+    const corner4 = phases.find(p => p.segmentId === 'corner4');
+    const final = phases.find(p => p.segmentId === 'final');
+
+    expect(getLaunchBlend(start, ctx)).toBe(1);
+    expect(getLaunchBlend(back, ctx)).toBe(1);
+    expect(getLaunchBlend(corner3, ctx)).toBe(0);
+    expect(getSettleBlend(corner3, ctx)).toBe(1);
+    expect(getSettleBlend(corner4, ctx)).toBe(0);
+    expect(getKickBlend(final, ctx)).toBe(1);
+    expect(phases).toHaveLength(5);
+    expect(start.distance).toBeCloseTo(72, 5);
+    expect(back.distance).toBeCloseTo(204, 5);
+    expect(final.distance).toBeCloseTo(312, 5);
+  });
+
   it('東京芝1600: launch=スタート+向正面、settle=corner3', () => {
     const course = courses.courses.find(c => c.id === 'tokyo_turf_1600');
     const phases = buildPhases(1600, course);

@@ -38,5 +38,11 @@ describe('runSimulation', () => {
     expect(result.results).toHaveLength(raceData.entries.length);
     expect(result.snapshots.length).toBeGreaterThan(0);
     expect(result.logs).toBeInstanceOf(Array);
+    for (let i = 1; i < result.snapshots.length; i += 1) {
+      const prevX = new Map(result.snapshots[i - 1].horses.map(h => [h.id, h.x]));
+      for (const horse of result.snapshots[i].horses) {
+        expect(horse.x).toBeGreaterThanOrEqual(prevX.get(horse.id) - 1e-6);
+      }
+    }
   });
 });

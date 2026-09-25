@@ -512,7 +512,6 @@
     .param-bar {
       height: 100%;
       border-radius: 3px;
-      transition: width 0.4s ease;
     }
     .stamina-remain-bar { background: linear-gradient(90deg, #22c55e, #4ade80); }
     .stamina-remain-bar.is-warning { background: linear-gradient(90deg, #f59e0b, #facc15); }
@@ -554,8 +553,8 @@
       gap: 6px;
       pointer-events: auto;
       touch-action: manipulation;
-      -webkit-transform: translateX(-50%) translateZ(0);
-      transform: translateX(-50%) translateZ(0);
+      -webkit-transform: translateX(-50%);
+      transform: translateX(-50%);
     }
     #field-playback-dock .field-playback-row {
       display: grid;
@@ -1876,8 +1875,6 @@
         inset: 0;
         z-index: 2;
         pointer-events: none !important;
-        -webkit-transform: translateZ(0);
-        transform: translateZ(0);
       }
       #placing-panel-overlay {
         pointer-events: auto;

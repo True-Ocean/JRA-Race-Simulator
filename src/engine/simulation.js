@@ -26,7 +26,6 @@ import {
   getSettleBlend,
   getStyleBlend,
   getKickBlend,
-  shouldPreserveForwardX,
   isFormationPhase,
 } from './phase-context.js';
 import { resolvePhaseSpeed } from './phase-speed.js';
@@ -959,9 +958,10 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
       if (horse.stamina < floor) horse.stamina = floor;
     });
 
-    const xBeforeOverlap = shouldPreserveForwardX(phase, phaseCtx)
-      ? horses.map(h => h.x ?? 0)
-      : null;
+    const xBeforeOverlap = horses.map(h => h.x ?? 0);
+    horses.forEach((horse, i) => {
+      horse.xHold = xBeforeOverlap[i];
+    });
 
     if (phase.index > 0 && getStyleBlend(phase, phaseCtx) > 0.01) {
       compressPreCornerToInnerLanes(horses, phase, collisionMetrics);
@@ -1027,11 +1027,9 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
         phase,
       });
     }
-    if (xBeforeOverlap) {
-      horses.forEach((horse, i) => {
-        horse.x = Math.max(horse.x ?? 0, xBeforeOverlap[i] ?? 0);
-      });
-    }
+    horses.forEach((horse, i) => {
+      horse.x = Math.max(horse.x ?? 0, xBeforeOverlap[i] ?? 0);
+    });
     if (isFormationPhase(phase, phaseCtx)) {
       enforceFrontRunnerAheadOfClosers(horses, collisionMetrics.minXGap);
       resolveHorseOverlaps(horses, {
@@ -1039,7 +1037,13 @@ export function runSimulation(raceData, options = {}, carrotsByHorse = {}, rende
         iterations: 1,
         phase,
       });
+      horses.forEach((horse, i) => {
+        horse.x = Math.max(horse.x ?? 0, xBeforeOverlap[i] ?? 0);
+      });
     }
+    horses.forEach(horse => {
+      delete horse.xHold;
+    });
 
     if (phase.ratio <= EARLY_LEAD_RATIO_MAX) {
       const leader = [...horses].sort((a, b) => b.x - a.x)[0];

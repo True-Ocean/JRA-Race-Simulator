@@ -1,13 +1,13 @@
 {
-  "race_id": 20260614,
+  "race_id": 20260927,
   "race_info": {
-    "date": "2026-06-14",
-    "venue": "阪神競馬場",
+    "date": "2026-09-27",
+    "venue": "中山競馬場",
     "grade": "G1",
-    "age_condition": "３歳以上",
-    "race_name": "宝塚記念",
+    "age_condition": "３上",
+    "race_name": "スプリンターズS",
     "track": "芝",
-    "distance": 2200,
+    "distance": 1200,
     "condition": "良"
   }
 }

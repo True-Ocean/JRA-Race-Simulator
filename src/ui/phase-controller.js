@@ -167,22 +167,50 @@ class PhaseController {
     this.indicator = document.getElementById('phase-indicator');
     this.isAnimating = false;
     this.advanceExternallyLocked = false;
-    this.frameCount  = 24; // 1フェーズを細かく刻む
-    this.frameMs     = 70; // 1コマの表示時間
-    this._animTimer = null;
+    this.frameCount  = 24; // 1フェーズの尺を決める刻み
+    this.frameMs     = 70; // 1コマ相当の時間（実描画は rAF）
+    this._animRaf = 0;
     this._trackRailScroll = createTrackRailScrollState();
   }
 
   _clearAnimTimer() {
-    if (this._animTimer) {
-      clearTimeout(this._animTimer);
-      this._animTimer = null;
+    if (this._animRaf) {
+      cancelAnimationFrame(this._animRaf);
+      this._animRaf = 0;
     }
   }
 
-  _scheduleAnimFrame(step) {
+  /**
+   * フェーズ補間を表示更新に合わせて進める。
+   * setTimeout の粗いコマ送りだと馬が飛んで見えるため、経過時間で連続補間する。
+   */
+  _playTween(durationMs, renderAt) {
     this._clearAnimTimer();
-    this._animTimer = setTimeout(step, this.frameMs);
+    let elapsed = 0;
+    let lastTs = null;
+    let logged = false;
+    const step = (ts) => {
+      if (isDocumentHidden()) {
+        lastTs = null;
+        this._animRaf = requestAnimationFrame(step);
+        return;
+      }
+      if (lastTs == null) lastTs = ts;
+      const frameDt = clampAnimationDtMs(ts - lastTs);
+      elapsed += frameDt;
+      lastTs = ts;
+      const progress = Math.min(1, elapsed / Math.max(1, durationMs));
+      renderAt(progress, !logged, frameDt);
+      logged = true;
+      if (progress >= 1) {
+        this._animRaf = 0;
+        this.isAnimating = false;
+        this._syncAdvanceButton();
+        return;
+      }
+      this._animRaf = requestAnimationFrame(step);
+    };
+    this._animRaf = requestAnimationFrame(step);
   }
 
   _resetTrackRailScroll() {
@@ -247,21 +275,17 @@ class PhaseController {
     this.isAnimating      = true;
     this._syncAdvanceButton();
 
+    const fromById = new Map((fromHorses ?? []).map(h => [h.id, h]));
+    const poseOptions = { horseSmoothing: 1 };
+
     // 初回のみスタート演出（スタート隊列→第1フェーズ）
     if (isFirstPhase) {
-      const holdFrames = 8;
-      const moveFrames = this.frameCount;
-      const totalFrames = holdFrames + moveFrames;
-      const fromById = new Map((fromHorses ?? []).map(h => [h.id, h]));
-      let frame = 0;
-      const stepFirst = () => {
-        if (isDocumentHidden()) {
-          this._scheduleAnimFrame(stepFirst);
-          return;
-        }
-        frame++;
-        const holdProgress = Math.min(1, frame / holdFrames);
-        const rawMoveProgress = Math.max(0, Math.min(1, (frame - holdFrames) / moveFrames));
+      const holdMs = 8 * this.frameMs;
+      const moveMs = this.frameCount * this.frameMs;
+      this._playTween(holdMs + moveMs, (progress, isFirstPaint, motionDtMs) => {
+        const elapsed = progress * (holdMs + moveMs);
+        const holdProgress = Math.min(1, elapsed / holdMs);
+        const rawMoveProgress = Math.max(0, Math.min(1, (elapsed - holdMs) / moveMs));
         const moveProgress = applyStartSlowMotion(rawMoveProgress);
         const gateOpenProgress = moveProgress <= 0.12
           ? 0
@@ -292,42 +316,25 @@ class PhaseController {
           phase,
           moveProgress,
           this._railScrollDrawOptions(rendered, {
+            ...poseOptions,
+            motionDtMs,
             forceStartLineup: moveProgress <= 0.02,
-            freezeTrackRailScroll: frame <= holdFrames || moveProgress <= 0.02,
+            freezeTrackRailScroll: elapsed <= holdMs || moveProgress <= 0.02,
             gateOpenProgress: moveProgress <= 0 ? holdProgress * 0.03 : gateOpenProgress,
             gateYOffset: gateSlide * this.renderer.H * 0.22,
             gateOpacity: 1 - gateSlide * 0.95,
           }),
         );
-        this.lastRenderedHorses = rendered.map(h => ({ ...h }));
+        this.lastRenderedHorses = progress >= 1
+          ? toHorses.map(h => ({ ...h }))
+          : rendered.map(h => ({ ...h }));
         updateEntryStaminaBars(rendered);
-        if (frame === 1) {
-          this._enqueuePhaseEventLogs(eventLogs);
-        }
-        if (frame >= totalFrames) {
-          this.lastRenderedHorses = toHorses.map(h => ({ ...h }));
-          this.isAnimating = false;
-          this._animTimer = null;
-          this._syncAdvanceButton();
-          return;
-        }
-        this._scheduleAnimFrame(stepFirst);
-      };
-      this._scheduleAnimFrame(stepFirst);
+        if (isFirstPaint) this._enqueuePhaseEventLogs(eventLogs);
+      });
       return;
     }
 
-    const fromById = new Map((fromHorses ?? []).map(h => [h.id, h]));
-    let frame = 0;
-    const step = () => {
-      if (isDocumentHidden()) {
-        this._scheduleAnimFrame(step);
-        return;
-      }
-      frame++;
-      const progress = Math.min(1, frame / this.frameCount);
-
-      // 前フェーズ位置 -> 今フェーズ位置へ線形補間
+    this._playTween(this.frameCount * this.frameMs, (progress, isFirstPaint, motionDtMs) => {
       const tweened = toHorses.map(to => {
         const from = fromById.get(to.id) ?? to;
         const x = from.x + (to.x - from.x) * progress;
@@ -345,22 +352,18 @@ class PhaseController {
         };
       });
 
-      this.renderer.draw(tweened, phase, 1, this._railScrollDrawOptions(tweened));
-      this.lastRenderedHorses = tweened.map(h => ({ ...h }));
+      this.renderer.draw(
+        tweened,
+        phase,
+        1,
+        this._railScrollDrawOptions(tweened, { ...poseOptions, motionDtMs }),
+      );
+      this.lastRenderedHorses = progress >= 1
+        ? toHorses.map(h => ({ ...h }))
+        : tweened.map(h => ({ ...h }));
       updateEntryStaminaBars(tweened);
-      if (frame === 1) {
-        this._enqueuePhaseEventLogs(eventLogs);
-      }
-      if (progress >= 1) {
-        this.lastRenderedHorses = toHorses.map(h => ({ ...h }));
-        this.isAnimating = false;
-        this._animTimer = null;
-        this._syncAdvanceButton();
-        return;
-      }
-      this._scheduleAnimFrame(step);
-    };
-    this._scheduleAnimFrame(step);
+      if (isFirstPaint) this._enqueuePhaseEventLogs(eventLogs);
+    });
   }
 
   _enqueuePhaseEventLogs(eventLogs) {

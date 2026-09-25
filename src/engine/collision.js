@@ -357,6 +357,12 @@ function getRequiredXGap(frontHorse, backHorse, baseMinXGap, phase, options = {}
   return required;
 }
 
+function holdHorseX(horse) {
+  if (horse.x < 0) horse.x = 0;
+  // xHold がある間は、その地点より後ろへ戻さない（フェーズ補間が逆走して見えるのを防ぐ）。
+  if (Number.isFinite(horse.xHold) && horse.x < horse.xHold) horse.x = horse.xHold;
+}
+
 function resolveHorseOverlaps(horses, options = {}) {
   const minXGap = options.minXGap ?? MIN_FORWARD_GAP;
   const minYGap = options.minYGap ?? COLLISION_MIN_Y_GAP;
@@ -381,40 +387,70 @@ function resolveHorseOverlaps(horses, options = {}) {
         const requiredXGap = getRequiredXGap(front, back, minXGap, options.phase ?? null);
         if (adx >= requiredXGap || ady >= minYGap) continue;
 
-        const pushX = (requiredXGap - adx) / 2;
-        const pushY = freezeY ? 0 : (minYGap - ady) / 2;
-        const sx = dx === 0 ? (i % 2 === 0 ? -1 : 1) : Math.sign(dx);
-        const sy = dy === 0 ? (i % 2 === 0 ? -1 : 1) : Math.sign(dy);
-
-        // 前後方向を優先し、レーン方向で補助的に分離する
-        a.x -= pushX * sx;
-        b.x += pushX * sx;
+        // 前後の巻き戻しより、レーンを空けて並走する方を優先する。
         if (!freezeY) {
-          a.y = clampHorseLaneByPhase(a, a.y - pushY * sy, phase, horses);
-          b.y = clampHorseLaneByPhase(b, b.y + pushY * sy, phase, horses);
+          const pushY = (minYGap - ady) / 2;
+          const sy = dy === 0 ? (i % 2 === 0 ? -1 : 1) : Math.sign(dy);
+          const nextAY = clampHorseLaneByPhase(a, a.y - pushY * sy, phase, horses);
+          const nextBY = clampHorseLaneByPhase(b, b.y + pushY * sy, phase, horses);
+          if (Math.abs(nextAY - nextBY) > ady + 1e-6) {
+            a.y = nextAY;
+            b.y = nextBY;
+            moved = true;
+          }
         }
+
+        const dx2 = b.x - a.x;
+        const dy2 = b.y - a.y;
+        const adx2 = Math.abs(dx2);
+        const ady2 = Math.abs(dy2);
+        const front2 = dx2 >= 0 ? b : a;
+        const back2 = dx2 >= 0 ? a : b;
+        const required2 = getRequiredXGap(front2, back2, minXGap, phase);
+        if (adx2 >= required2 || ady2 >= minYGap) continue;
+
+        const pushX = (required2 - adx2) / 2;
+        const backBefore = back2.x;
+        const frontBefore = front2.x;
+        back2.x = backBefore - pushX;
+        front2.x = frontBefore + pushX;
+        holdHorseX(back2);
+        holdHorseX(front2);
+        const unrestored = back2.x - (backBefore - pushX);
+        if (unrestored > 1e-6) front2.x += unrestored;
         moved = true;
       }
     }
 
-    if (keepOrder) enforceForwardOrder(horses, minXGap);
+    if (keepOrder && enforceForwardOrder(horses, minXGap, minYGap)) moved = true;
     horses.forEach(h => {
       h.y = clampHorseLaneByPhase(h, h.y, phase, horses);
-      if (h.x < 0) h.x = 0;
+      holdHorseX(h);
     });
     if (!moved) break;
   }
 }
 
-function enforceForwardOrder(horses, minXGap) {
-  const byFront = [...horses].sort((a, b) => b.x - a.x);
+function enforceForwardOrder(horses, minXGap, minYGap = COLLISION_MIN_Y_GAP) {
+  const laneLimit = Number.isFinite(minYGap) ? minYGap : COLLISION_MIN_Y_GAP;
+  const byFront = [...horses].sort((a, b) => (b.x - a.x) || (a.id - b.id));
+  let moved = false;
   for (let i = 1; i < byFront.length; i++) {
-    const front = byFront[i - 1];
     const back = byFront[i];
-    const gap = front.x - back.x;
-    if (gap + COLLISION_EPS >= minXGap) continue;
-    back.x = Math.max(0, front.x - minXGap);
+    for (let j = i - 1; j >= 0; j--) {
+      const front = byFront[j];
+      if (Math.abs(front.y - back.y) >= laneLimit) continue;
+      const gap = front.x - back.x;
+      if (gap + COLLISION_EPS >= minXGap) break;
+      const before = back.x;
+      const nextX = Math.max(0, front.x - minXGap);
+      if (nextX < back.x) back.x = nextX;
+      holdHorseX(back);
+      if (Math.abs(back.x - before) > 1e-6) moved = true;
+      break;
+    }
   }
+  return moved;
 }
 
 function resolveForwardMovement(

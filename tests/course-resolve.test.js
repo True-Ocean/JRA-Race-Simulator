@@ -68,7 +68,7 @@ describe('resolveCourseDef', () => {
   it('load-race-fixture と同構成で本番 JSON から解決できる', () => {
     const raceInfo = readJson('src/data/race-info.json');
     const def = resolveCourseDef(raceInfo, courseCatalog);
-    expect(def?.id).toBe('tokyo_turf_1600');
+    expect(def?.id).toBe('nakayama_turf_1200');
   });
 
   it('race-info の venue / track / distance で阪神芝2200（内）を解決する', () => {
@@ -79,6 +79,19 @@ describe('resolveCourseDef', () => {
     expect(def?.id).toBe('hanshin_turf_2200');
     expect(def?.turnDirection).toBe('right');
     expect(def?.segments?.find(s => s.id === 'back')?.label).toBe('向正面');
+  });
+
+  it('race-info の venue / track / distance で中山芝1200（外）を解決する', () => {
+    const def = resolveCourseDef(
+      { race_info: { venue: '中山競馬場', track: '芝', distance: 1200 } },
+      courseCatalog,
+    );
+    expect(def?.id).toBe('nakayama_turf_1200');
+    expect(def?.turnDirection).toBe('right');
+    expect(def?.segments?.find(s => s.id === 'back')?.label).toBe('向正面');
+    expect(def?.segments?.find(s => s.id === 'corner3')?.cornerNo).toBe(3);
+    const ratioSum = def.segments.reduce((acc, s) => acc + s.ratio, 0);
+    expect(ratioSum).toBeCloseTo(1, 5);
   });
 
   it('race-info の venue / track / distance で東京芝1600を解決する', () => {

@@ -16,7 +16,8 @@ describe('canvas-viewport', () => {
   it('幅・高さ・DPR が同じならビットマップを張り替えない', () => {
     const prev = { w: 360, h: 640, dpr: 2 };
     expect(shouldApplyCanvasResize(prev, { w: 360, h: 640, dpr: 2 })).toBe(false);
-    expect(shouldApplyCanvasResize(prev, { w: 360, h: 641, dpr: 2 })).toBe(true);
+    expect(shouldApplyCanvasResize(prev, { w: 360, h: 641, dpr: 2 })).toBe(false);
+    expect(shouldApplyCanvasResize(prev, { w: 360, h: 644, dpr: 2 })).toBe(true);
     expect(shouldApplyCanvasResize(prev, { w: 360, h: 640, dpr: 3 })).toBe(true);
   });
 
