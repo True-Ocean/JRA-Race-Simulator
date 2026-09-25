@@ -82,33 +82,40 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 0.45em;
+      gap: 0;
       flex-wrap: nowrap;
       white-space: nowrap;
       min-width: 0;
       text-align: center;
-      color: #f0c040;
-      /* 1行に収まるよう上限を抑え、ビューポートに追従して縮小 */
-      font-size: clamp(1.1rem, 2.35vw + 0.65rem, 2.85rem);
+      color: #f6f8fb;
+      /* 盤面を主役にし、見出しは中継画面らしく静かなコントラストにする */
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: clamp(1.1rem, 1.8vw + 0.65rem, 2.45rem);
       font-weight: 700;
-      letter-spacing: clamp(0.06em, 0.45vw, 0.2em);
-      margin-bottom: 12px;
-      text-shadow: 0 0 12px rgba(240,192,64,0.5);
-    }
-
-    h1 .title-brand-icon,
-    .app-main-title .title-brand-icon {
-      display: inline-flex;
-      flex-shrink: 0;
-      align-items: center;
-      justify-content: center;
-      line-height: 1;
-      font-size: 1.08em;
+      letter-spacing: clamp(0.04em, 0.22vw, 0.11em);
+      margin-bottom: 8px;
+      text-shadow: none;
     }
 
     h1 .title-text,
     .app-main-title .title-text {
       min-width: 0;
+      color: #f8fafc;
+      font-variant-numeric: tabular-nums;
+    }
+    .title-horse-mark {
+      position: absolute;
+      top: 50%;
+      right: calc(100% + 0.78em);
+      width: 4em;
+      height: 2.05em;
+      object-fit: contain;
+      transform: translateY(-50%);
+      filter: drop-shadow(0 2px 6px rgba(56, 189, 248, 0.18));
+    }
+    .title-lockup {
+      position: relative;
+      display: block;
     }
     .app-subtitle {
       text-align: center;
@@ -231,7 +238,9 @@
       gap: 10px;
       align-items: stretch;
       min-height: 0;
-      width: min(100%, 1660px);
+      /* 横長ブラウザーでも、Cursor の標準表示と同じ密度を保つ。盤面サイズは変えず、
+         余った横幅だけを外側の余白へ逃がす。 */
+      width: min(100%, 1260px);
       margin: 0 auto;
     }
 
@@ -2097,6 +2106,11 @@
         font-size: clamp(0.72rem, 2.6vw + 0.48rem, 2.1rem);
         letter-spacing: clamp(0.02em, 0.12vw, 0.06em);
       }
+      .title-horse-mark {
+        width: 3.1em;
+        height: 1.6em;
+        right: calc(100% + 0.48em);
+      }
       .app-subtitle {
         font-size: clamp(0.82rem, 2.5vw + 0.55rem, 1.05rem);
       }
@@ -2164,8 +2178,7 @@
         </div>
       </div>
       <h1 class="app-main-title">
-        <span class="title-brand-icon" aria-hidden="true">🏇</span>
-        <span class="title-text">Horse Race Simulator</span>
+        <span class="title-lockup"><span class="title-text">Horse Race Simulator</span><img class="title-horse-mark" src="./assets/horse-profile-mark.png" alt="" aria-hidden="true"></span>
       </h1>
       <p class="app-subtitle app-subtitle--pre-race">オリジナル設定</p>
       <div id="pre-race-race-info"></div>
@@ -2208,8 +2221,7 @@
       </div>
       <div class="summary-title-block">
         <h1 class="app-main-title">
-          <span class="title-brand-icon" aria-hidden="true">🏇</span>
-          <span class="title-text">Horse Race Simulator</span>
+          <span class="title-lockup"><span class="title-text">Horse Race Simulator</span><img class="title-horse-mark" src="./assets/horse-profile-mark.png" alt="" aria-hidden="true"></span>
         </h1>
         <p class="app-subtitle app-subtitle--summary">レースサマリー</p>
       </div>
@@ -2236,8 +2248,7 @@
       </div>
     </div>
     <h1>
-      <span class="title-brand-icon" aria-hidden="true">🏇</span>
-      <span class="title-text">Horse Race Simulator</span>
+      <span class="title-lockup"><span class="title-text">Horse Race Simulator</span><img class="title-horse-mark" src="./assets/horse-profile-mark.png" alt="" aria-hidden="true"></span>
     </h1>
     <p id="simulator-subtitle" class="app-subtitle app-subtitle--simulator" aria-live="polite">シミュレーター</p>
   </header>

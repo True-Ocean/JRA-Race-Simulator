@@ -481,6 +481,13 @@ export class Renderer {
           progress += Math.max(0, Math.min(1, options.goalClimb.t ?? 0)) * 0.35 * (0.4 + weight * 0.6);
         }
         progress = Math.max(-0.25, Math.min(0.95, progress * 0.90 + 0.02));
+        if (phase.index === 0) {
+          // 通常走行の下端ではなくゲート内から発進し、区間末で通常の座標式に合流する。
+          // 基準位置の段差をカメラ後退と誤認し、隊列全体を下げていたのを防ぐ。
+          const gateProgress = this.yToProgress(this._getStartInGateCy());
+          progress = Math.max(gateProgress,
+            progress + (gateProgress - 0.02) * Math.max(0, 1 - phaseProgress));
+        }
       }
       const cy = inStartLineup ? this._getStartInGateCy() : this.progressToY(progress);
       return [horse.id, { cx: this.laneToX(lane), cy, baseCy: cy }];
@@ -494,7 +501,7 @@ export class Renderer {
         const prev = this.horseRenderState.get(id);
         return Number.isFinite(prev?.baseCy) ? target.baseCy - prev.baseCy : 0;
       }).sort((a, b) => a - b);
-      cameraShift = Math.max(0, shifts[Math.floor(shifts.length / 2)] ?? 0);
+      cameraShift = phase.index === 0 ? 0 : Math.max(0, shifts[Math.floor(shifts.length / 2)] ?? 0);
       const dt = Math.max(0, Math.min(80, options.motionDtMs ?? 16.7)) / 1000;
       targets.forEach((target, id) => {
         const prev = this.horseRenderState.get(id);
