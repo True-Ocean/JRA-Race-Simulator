@@ -167,6 +167,8 @@ function openInfoPopover(anchor, entry) {
 /**
  * プレレース表の見やすさを保ちつつ、必要時のみ軽く縮小する
  */
+let lastPreRaceFitKey = '';
+
 export function updatePreRaceTableFit() {
   const editor = document.getElementById('pre-race-editor');
   const wrap = document.querySelector('.pre-race-table-wrap');
@@ -174,21 +176,33 @@ export function updatePreRaceTableFit() {
   if (!editor || !wrap || !inner) return;
   if (editor.hidden) return;
 
+  const availH = wrap.clientHeight;
+  if (availH < 8) return;
+
+  const prevTransform = inner.style.transform;
+  const prevMargin = inner.style.marginBottom;
   inner.style.zoom = '';
   inner.style.transform = '';
   inner.style.marginBottom = '';
 
-  const availH = wrap.clientHeight;
   const nh = inner.scrollHeight;
-  if (availH < 8 || nh < 1) return;
+  if (nh < 1) return;
 
   const scaleByHeight = availH / nh;
   const scale = Math.max(0.9, Math.min(1, scaleByHeight));
-  if (scale >= 0.999) return;
+  const nextScale = scale >= 0.999 ? 1 : scale;
+  const fitKey = `${availH}|${nh}|${nextScale.toFixed(4)}`;
+  if (fitKey === lastPreRaceFitKey) {
+    inner.style.transform = prevTransform;
+    inner.style.marginBottom = prevMargin;
+    return;
+  }
+  lastPreRaceFitKey = fitKey;
+  if (nextScale >= 0.999) return;
 
-  inner.style.transform = `scale(${scale})`;
+  inner.style.transform = `scale(${nextScale})`;
   inner.style.transformOrigin = 'top center';
-  inner.style.marginBottom = `${-(nh * (1 - scale))}px`;
+  inner.style.marginBottom = `${-(nh * (1 - nextScale))}px`;
 }
 
 export function schedulePreRaceTableFit() {

@@ -714,12 +714,23 @@ Promise.all([
           syncSimulatorChromeForAutoMode();
           return;
         }
-        if (!controller.isAnimating) {
+        if (!controller.isAnimating && !document.hidden) {
           controller.next(completeRaceAfterGoal);
         }
         autoAdvanceRafId = requestAnimationFrame(tick);
       };
       autoAdvanceRafId = requestAnimationFrame(tick);
+    }
+
+    function refreshCourseAfterViewportChange() {
+      renderer.syncLayout();
+      if (playbackDockMode === 'complete' && Array.isArray(simSnapshots) && simSnapshots.length) {
+        applyRestoredRaceVisuals();
+        return;
+      }
+      if (!renderer.redrawLast() && Array.isArray(initialHorses) && initialHorses.length) {
+        renderer.draw(initialHorses, phases[0], 0);
+      }
     }
 
     function completeRaceAfterGoal() {
@@ -867,10 +878,6 @@ Promise.all([
 
       drawRestoredCourse();
       refreshRaceInfo();
-      // iOS Safari ではレイアウト確定前の draw が待機画面に戻って見えることがある
-      if (window.matchMedia('(max-width: 1024px)').matches) {
-        requestAnimationFrame(() => requestAnimationFrame(drawRestoredCourse));
-      }
     }
 
     function resetSimulatorToIdle() {
@@ -1524,14 +1531,22 @@ Promise.all([
       onReset: resetPreRaceDraftToBaseline,
     });
 
-    // iOS の bfcache 復帰時も完了画面の描画を維持
-    window.addEventListener('pageshow', (ev) => {
-      if (!ev.persisted) return;
-      if (playbackDockMode !== 'complete' || !Array.isArray(simSnapshots) || !simSnapshots.length) {
+    // タブ破棄・GPU スリープ・bfcache・アドレスバー伸縮のあと、消えた Canvas を描き直す
+    const resumeCourseAfterPause = () => {
+      refreshCourseAfterViewportChange();
+      if (autoAdvanceActive && controller && !controller.goalSceneActive) {
+        scheduleAutoAdvanceLoop();
+      }
+      syncSimulatorChromeForAutoMode();
+    };
+
+    window.addEventListener('pageshow', resumeCourseAfterPause);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') {
+        stopAutoAdvanceLoop();
         return;
       }
-      applyRestoredRaceVisuals();
-      syncSimulatorChromeForAutoMode();
+      resumeCourseAfterPause();
     });
 
   })

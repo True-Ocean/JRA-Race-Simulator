@@ -1,6 +1,10 @@
 import { CONFIG } from '../config.js';
 import { calcGateSlotLane } from '../engine/params.js';
 import { getWakuFrameColor } from './colors.js';
+import {
+  scaleHorseRenderPositions,
+  shouldApplyCanvasResize,
+} from './canvas-viewport.js';
 
 const TRACK_BASE_COLOR = {
   '芝':    { h: 120, s: 55, l: 22 },
@@ -37,8 +41,55 @@ export class Renderer {
     this.horseRenderState = new Map();
     /** @type {Map<number, number>} ゴールシーン描画で前フレームに使った progress（後退防止用） */
     this._goalLastDrawProgressById = new Map();
+    /** @type {{ horses: object[], phase: object, phaseProgress: number, options: object } | null} */
+    this._lastDraw = null;
+    this.W = 0;
+    this.H = 0;
+    this._dpr = 0;
+    this._resizeRaf = 0;
     this._resize();
-    window.addEventListener('resize', () => this._resize());
+    this._onViewportResize = () => this._scheduleResize();
+    window.addEventListener('resize', this._onViewportResize);
+    window.visualViewport?.addEventListener('resize', this._onViewportResize);
+    if (typeof ResizeObserver !== 'undefined') {
+      const wrap = this.canvas?.parentElement;
+      if (wrap) {
+        this._resizeObserver = new ResizeObserver(() => this._scheduleResize());
+        this._resizeObserver.observe(wrap);
+      }
+    }
+    this.canvas?.addEventListener('contextlost', (event) => {
+      event.preventDefault();
+    });
+    this.canvas?.addEventListener('contextrestored', () => {
+      this._dpr = 0;
+      this.syncLayout();
+      this.redrawLast();
+    });
+  }
+
+  _scheduleResize() {
+    if (this._resizeRaf) return;
+    this._resizeRaf = requestAnimationFrame(() => {
+      this._resizeRaf = 0;
+      this._resize();
+    });
+  }
+
+  /** タブ復帰・pageshow など、レイアウト確定後に即時同期して再描画する */
+  syncLayout() {
+    if (this._resizeRaf) {
+      cancelAnimationFrame(this._resizeRaf);
+      this._resizeRaf = 0;
+    }
+    this._resize();
+  }
+
+  redrawLast() {
+    if (!this._lastDraw) return false;
+    const { horses, phase, phaseProgress, options } = this._lastDraw;
+    this.draw(horses, phase, phaseProgress, options);
+    return true;
   }
 
   _resolveInnerRailSide(courseDef = null) {
@@ -63,13 +114,24 @@ export class Renderer {
   }
 
   _resize() {
-    const wrap = this.canvas.parentElement;
-    this.W = wrap.clientWidth;
-    this.H = wrap.clientHeight;
+    const wrap = this.canvas?.parentElement;
+    if (!wrap || !this.canvas) return;
+    const nextW = wrap.clientWidth;
+    const nextH = wrap.clientHeight;
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const prevW = this.W;
+    const prevH = this.H;
+    if (!shouldApplyCanvasResize(
+      { w: prevW, h: prevH, dpr: this._dpr },
+      { w: nextW, h: nextH, dpr },
+    )) {
+      return;
+    }
+
+    this.W = nextW;
+    this.H = nextH;
     this._dpr = dpr;
-    this.canvas.style.width = `${this.W}px`;
-    this.canvas.style.height = `${this.H}px`;
+    // 表示サイズは CSS（inset: 0）に任せ、インライン幅指定で 0×0 固定や再フローを起こさない
     this.canvas.width = Math.max(1, Math.round(this.W * dpr));
     this.canvas.height = Math.max(1, Math.round(this.H * dpr));
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -87,7 +149,8 @@ export class Renderer {
     this.cardW = Math.max(14, Math.min(this.laneW * horseToLaneRatio, this.laneW * 0.72));
     // 馬体の長さ/幅 ≒ 4.5m / 1.8m
     this.cardH = this.cardW * (4.5 / 1.8);
-    this.resetHorseRenderState();
+    scaleHorseRenderPositions(this.horseRenderState, prevW, prevH, this.W, this.H);
+    this.redrawLast();
   }
 
   resetHorseRenderState() {
@@ -217,6 +280,8 @@ export class Renderer {
   }
 
   draw(horses, phase, phaseProgress = 1, options = {}) {
+    this._lastDraw = { horses, phase, phaseProgress, options };
+    if (!(this.W > 1 && this.H > 1) || !this.ctx) return;
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.W, this.H);
     this._drawBackground(phase);

@@ -100,6 +100,10 @@ import {
   resetTrackRailScrollState,
   advanceTrackRailScroll,
 } from './track-rail-scroll.js';
+import {
+  clampAnimationDtMs,
+  isDocumentHidden,
+} from './canvas-viewport.js';
 
 function applyStartSlowMotion(progress) {
   const p = Math.max(0, Math.min(1, progress));
@@ -165,7 +169,20 @@ class PhaseController {
     this.advanceExternallyLocked = false;
     this.frameCount  = 24; // 1フェーズを細かく刻む
     this.frameMs     = 70; // 1コマの表示時間
+    this._animTimer = null;
     this._trackRailScroll = createTrackRailScrollState();
+  }
+
+  _clearAnimTimer() {
+    if (this._animTimer) {
+      clearTimeout(this._animTimer);
+      this._animTimer = null;
+    }
+  }
+
+  _scheduleAnimFrame(step) {
+    this._clearAnimTimer();
+    this._animTimer = setTimeout(step, this.frameMs);
   }
 
   _resetTrackRailScroll() {
@@ -238,6 +255,10 @@ class PhaseController {
       const fromById = new Map((fromHorses ?? []).map(h => [h.id, h]));
       let frame = 0;
       const stepFirst = () => {
+        if (isDocumentHidden()) {
+          this._scheduleAnimFrame(stepFirst);
+          return;
+        }
         frame++;
         const holdProgress = Math.min(1, frame / holdFrames);
         const rawMoveProgress = Math.max(0, Math.min(1, (frame - holdFrames) / moveFrames));
@@ -286,18 +307,23 @@ class PhaseController {
         if (frame >= totalFrames) {
           this.lastRenderedHorses = toHorses.map(h => ({ ...h }));
           this.isAnimating = false;
+          this._animTimer = null;
           this._syncAdvanceButton();
           return;
         }
-        setTimeout(stepFirst, this.frameMs);
+        this._scheduleAnimFrame(stepFirst);
       };
-      setTimeout(stepFirst, this.frameMs);
+      this._scheduleAnimFrame(stepFirst);
       return;
     }
 
     const fromById = new Map((fromHorses ?? []).map(h => [h.id, h]));
     let frame = 0;
     const step = () => {
+      if (isDocumentHidden()) {
+        this._scheduleAnimFrame(step);
+        return;
+      }
       frame++;
       const progress = Math.min(1, frame / this.frameCount);
 
@@ -328,12 +354,13 @@ class PhaseController {
       if (progress >= 1) {
         this.lastRenderedHorses = toHorses.map(h => ({ ...h }));
         this.isAnimating = false;
+        this._animTimer = null;
         this._syncAdvanceButton();
         return;
       }
-      setTimeout(step, this.frameMs);
+      this._scheduleAnimFrame(step);
     };
-    setTimeout(step, this.frameMs);
+    this._scheduleAnimFrame(step);
   }
 
   _enqueuePhaseEventLogs(eventLogs) {
@@ -513,7 +540,6 @@ class PhaseController {
 
     const lastIdx = this.snapshots.length - 1;
     const phase = this.phases[lastIdx];
-    const transitionStartedAt = performance.now();
     const lastFrame = frames[frames.length - 1];
     const endElapsedMs =
       (Number.isFinite(lastFrame?.elapsedMs) ? lastFrame.elapsedMs : 0) +
@@ -540,9 +566,18 @@ class PhaseController {
     this.renderer.resetGoalDrawProgress();
     this._resetTrackRailScroll();
     let replayGoalRenderSynced = false;
+    let lastTs = null;
+    let elapsedMs = 0;
 
     const step = (ts) => {
-      const elapsedMs = ts - transitionStartedAt;
+      if (isDocumentHidden()) {
+        lastTs = ts;
+        requestAnimationFrame(step);
+        return;
+      }
+      if (lastTs == null) lastTs = ts;
+      elapsedMs += clampAnimationDtMs(ts - lastTs);
+      lastTs = ts;
       let idx = 0;
       while (idx < frames.length - 1 && frames[idx + 1].elapsedMs <= elapsedMs) {
         idx += 1;
@@ -765,11 +800,11 @@ class PhaseController {
       ) * GOAL_TIME_SCALE;
     const goalRng = createRng((this.raceData?.race_id ?? 1) + 7919);
     const goalBattleProximityLimits = buildGoalBattleProximityLimits();
-    const transitionStartedAt = performance.now();
     const transitionHalfMs = GOAL_SCENE_TRANSITION_MS * 0.5;
     let goalSceneStarted = false;
-    let startedAt = null;
     let lastTs = null;
+    let transitionElapsed = 0;
+    let elapsed = 0;
     let goalFrameIndex = 0;
 
     this.isAnimating = true;
@@ -791,8 +826,17 @@ class PhaseController {
     this._resetTrackRailScroll();
 
     const step = (ts) => {
+      if (isDocumentHidden()) {
+        lastTs = ts;
+        requestAnimationFrame(step);
+        return;
+      }
+      if (lastTs == null) lastTs = ts;
+      const dtMs = clampAnimationDtMs(ts - lastTs);
+      lastTs = ts;
+
       if (!goalSceneStarted) {
-        const transitionElapsed = ts - transitionStartedAt;
+        transitionElapsed += dtMs;
         const transitionT = Math.max(
           0,
           Math.min(1, transitionElapsed / Math.max(1, GOAL_SCENE_TRANSITION_MS)),
@@ -818,8 +862,6 @@ class PhaseController {
         }
 
         goalSceneStarted = true;
-        startedAt = ts;
-        lastTs = ts;
         goalFrameIndex = 0;
         this.indicator.textContent = 'ゴールシーン';
         this._appendSceneHeading('ゴールシーン');
@@ -827,10 +869,9 @@ class PhaseController {
 
       const isFirstGoalFrame = goalFrameIndex === 0;
       goalFrameIndex += 1;
-      const rawDt = Math.max(0.001, Math.min(0.12, (ts - lastTs) / 1000));
+      const rawDt = Math.max(0.001, Math.min(0.12, dtMs / 1000));
       const dt = isFirstGoalFrame ? 0 : rawDt;
-      lastTs = ts;
-      const elapsed = ts - startedAt;
+      elapsed += dt * 1000;
       const rawT = elapsed / durationMs;
       const t = Math.max(0, Math.min(1, rawT));
       this._goalRawT = t;
