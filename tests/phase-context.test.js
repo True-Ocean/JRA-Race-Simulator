@@ -84,6 +84,30 @@ describe('phase-context', () => {
     expect(final.distance).toBeCloseTo(312, 5);
   });
 
+  it('京都芝2000（内）: 1コーナーまでがlaunch、1〜2コーナーがsettle、3コーナーからkick', () => {
+    const course = courses.courses.find(c => c.id === 'kyoto_turf_2000_inner');
+    const phases = buildPhases(2000, course);
+    const ctx = createPhaseContext(2000, course, phases);
+    const start = phases.find(p => p.segmentId === 'start');
+    const stand = phases.find(p => p.segmentId === 'stand');
+    const corner1 = phases.find(p => p.segmentId === 'corner1');
+    const corner2 = phases.find(p => p.segmentId === 'corner2');
+    const back = phases.find(p => p.segmentId === 'back');
+    const corner3 = phases.find(p => p.segmentId === 'corner3');
+    const final = phases.find(p => p.segmentId === 'final');
+
+    expect(getLaunchBlend(start, ctx)).toBe(1);
+    expect(getLaunchBlend(stand, ctx)).toBe(1);
+    expect(getSettleBlend(corner1, ctx)).toBe(1);
+    expect(getSettleBlend(corner2, ctx)).toBe(1);
+    expect(getSettleBlend(back, ctx)).toBe(0);
+    expect(getPaceIntroBlend(back, ctx)).toBeGreaterThan(0);
+    expect(getKickBlend(corner3, ctx)).toBe(1);
+    expect(getKickBlend(final, ctx)).toBe(1);
+    expect(start.distance + stand.distance).toBeCloseTo(308.7, 5);
+    expect(final.distance).toBeCloseTo(328.4, 5);
+  });
+
   it('東京芝1600: launch=スタート+向正面、settle=corner3', () => {
     const course = courses.courses.find(c => c.id === 'tokyo_turf_1600');
     const phases = buildPhases(1600, course);

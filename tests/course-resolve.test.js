@@ -99,7 +99,7 @@ describe('resolveCourseDef', () => {
   it('load-race-fixture と同構成で本番 JSON から解決できる', () => {
     const raceInfo = readJson('src/data/race-info.json');
     const def = resolveCourseDef(raceInfo, courseCatalog);
-    expect(def?.id).toBe('nakayama_turf_1200');
+    expect(def?.id).toBe('kyoto_turf_2000_inner');
   });
 
   it('race-info の venue / track / distance で阪神芝2200（内）を解決する', () => {
@@ -123,6 +123,23 @@ describe('resolveCourseDef', () => {
     expect(def?.segments?.find(s => s.id === 'corner3')?.cornerNo).toBe(3);
     const ratioSum = def.segments.reduce((acc, s) => acc + s.ratio, 0);
     expect(ratioSum).toBeCloseTo(1, 5);
+  });
+
+  it('race-info の venue / track / distance で京都芝2000（内）を解決する', () => {
+    const def = resolveCourseDef(
+      { race_info: { venue: '京都競馬場', track: '芝', distance: 2000 } },
+      courseCatalog,
+    );
+    expect(def?.id).toBe('kyoto_turf_2000_inner');
+    expect(def?.turnDirection).toBe('right');
+    expect(def?.simBoundaries?.kickRemainingMeters).toBe(760);
+    const ratioSum = def.segments.reduce((acc, s) => acc + s.ratio, 0);
+    expect(ratioSum).toBeCloseTo(1, 5);
+    const toFirstCorner = def.segments
+      .filter(s => s.id === 'start' || s.id === 'stand')
+      .reduce((acc, s) => acc + s.ratio, 0);
+    expect(toFirstCorner * 2000).toBeCloseTo(308.7, 5);
+    expect(def.segments.find(s => s.id === 'final').ratio * 2000).toBeCloseTo(328.4, 5);
   });
 
   it('race-info の venue / track / distance で東京芝1600を解決する', () => {
