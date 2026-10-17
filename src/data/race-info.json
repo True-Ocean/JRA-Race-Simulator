@@ -1,13 +1,13 @@
 {
-  "race_id": 20260927,
+  "race_id": 20261018,
   "race_info": {
-    "date": "2026-09-27",
-    "venue": "中山競馬場",
+    "date": "2026-10-18",
+    "venue": "京都競馬場",
     "grade": "G1",
-    "age_condition": "３上",
-    "race_name": "スプリンターズS",
+    "age_condition": "３歳",
+    "race_name": "秋華賞",
     "track": "芝",
-    "distance": 1200,
+    "distance": 2000,
     "condition": "良"
   }
 }
