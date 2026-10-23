@@ -3,6 +3,8 @@
  *（main.js 全体の import を避ける）
  */
 
+import { escapeHtml } from '../ui/race-log.js';
+
 export function formatRaceInfo(raceData) {
   const info = raceData.race_info;
   const formatRaceDate = value => {
@@ -44,17 +46,17 @@ export function formatRaceInfo(raceData) {
   const tail = restParts.join('　');
 
   const headInner = [];
-  if (dateLabel) headInner.push(`<span class="race-info-date">${dateLabel}</span>`);
+  if (dateLabel) headInner.push(`<span class="race-info-date">${escapeHtml(dateLabel)}</span>`);
   if (info.venue) {
     if (headInner.length) {
       headInner.push('<span class="race-info-sep-in-head" aria-hidden="true">　</span>');
     }
-    headInner.push(`<span class="race-info-venue">${info.venue}</span>`);
+    headInner.push(`<span class="race-info-venue">${escapeHtml(String(info.venue))}</span>`);
   }
   const headHtml = headInner.length
     ? `<span class="race-info-head">${headInner.join('')}</span>`
     : '';
-  const tailHtml = tail ? `<span class="race-info-tail">${tail}</span>` : '';
+  const tailHtml = tail ? `<span class="race-info-tail">${escapeHtml(tail)}</span>` : '';
   if (!headHtml && !tailHtml) return '';
   if (!tailHtml) return headHtml;
   if (!headHtml) return tailHtml;
