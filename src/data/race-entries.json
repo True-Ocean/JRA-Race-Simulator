@@ -1,128 +1,124 @@
 {
-  "race_id": 20261018,
+  "race_id": 20261025,
   "entries": [
     {
       "gate": 1,
       "horse": {
-        "name": "ギャラボーグ",
-        "sex_age": "牝3",
-        "weight": 55,
+        "name": "エムズビギン",
+        "sex_age": "牡3",
+        "weight": 57,
         "has_records": true,
-        "records_used": 4,
+        "records_used": 3,
         "style": "差し",
-        "ave_3f": 36.4,
-        "last_3f": 34.2,
-        "last_3f_raw": 34.3,
+        "ave_3f": 37.6,
+        "last_3f": 33.7,
+        "last_3f_raw": 33.8,
         "results": [
-          3,
           2,
           1,
           2
         ],
         "ave_3f_range": {
-          "min": 34.7,
-          "max": 38.1,
-          "avg": 36.4
+          "min": 36.8,
+          "max": 38.6,
+          "avg": 37.6
         },
         "last_3f_range": {
-          "min": 33.7,
-          "max": 34.7,
-          "avg": 34.3
+          "min": 33.5,
+          "max": 34.3,
+          "avg": 33.8
         },
         "career": {
-          "runs_all": 26,
-          "win_rate": 0.192,
-          "top3_rate": 0.462,
+          "runs_all": 6,
+          "win_rate": 0.167,
+          "top3_rate": 0.5,
           "peak_grade": "G1",
-          "class_index": 0.103,
-          "g1_class_score": 0.04,
-          "goal_class_index": 0.058,
-          "stamina_efficiency": 0.481,
+          "class_index": 0.153,
+          "g1_class_score": 0.0,
+          "goal_class_index": 0.043,
+          "stamina_efficiency": 0.364,
           "graded": {
             "G1": {
-              "runs": 5,
-              "wins": 0,
-              "top3": 1,
-              "avg_finish": 8.6
-            },
-            "G2": {
-              "runs": 9,
-              "wins": 1,
-              "top3": 3,
-              "avg_finish": 8.22
-            },
-            "G3": {
-              "runs": 4,
+              "runs": 1,
               "wins": 0,
               "top3": 0,
-              "avg_finish": 7.0
+              "avg_finish": 14.0
             },
-            "OP": {
+            "G2": {
               "runs": 2,
               "wins": 0,
-              "top3": 2,
-              "avg_finish": 2.5
+              "top3": 0,
+              "avg_finish": 6.0
+            },
+            "G3": {
+              "runs": 1,
+              "wins": 0,
+              "top3": 1,
+              "avg_finish": 2.0
+            },
+            "OP": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
             }
           }
         }
       },
       "jockey": {
-        "name": "横山和生",
-        "win_rate": 0.12,
-        "top3_rate": 0.25
+        "name": "岩田望来",
+        "win_rate": 0.0,
+        "top3_rate": 0.17
       }
     },
     {
       "gate": 2,
       "horse": {
-        "name": "テイエムアイラン",
-        "sex_age": "牝3",
-        "weight": 55,
+        "name": "コンジェスタス",
+        "sex_age": "牡3",
+        "weight": 57,
         "has_records": true,
-        "records_used": 6,
+        "records_used": 3,
         "style": "先行",
-        "ave_3f": 35.5,
-        "last_3f": 34.1,
-        "last_3f_raw": 34.6,
+        "ave_3f": 36.5,
+        "last_3f": 35.1,
+        "last_3f_raw": 35.3,
         "results": [
           1,
           1,
-          1,
-          2,
-          3,
-          3
+          1
         ],
         "ave_3f_range": {
-          "min": 34.6,
-          "max": 36.1,
-          "avg": 35.5
+          "min": 35.5,
+          "max": 37.8,
+          "avg": 36.5
         },
         "last_3f_range": {
-          "min": 33.7,
-          "max": 35.5,
-          "avg": 34.6
+          "min": 35.3,
+          "max": 35.4,
+          "avg": 35.3
         },
         "career": {
-          "runs_all": 8,
-          "win_rate": 0.375,
-          "top3_rate": 0.75,
-          "peak_grade": null,
-          "class_index": 0.5,
-          "g1_class_score": null,
-          "goal_class_index": 0.5,
-          "stamina_efficiency": 0.406,
+          "runs_all": 5,
+          "win_rate": 0.6,
+          "top3_rate": 0.6,
+          "peak_grade": "G1",
+          "class_index": 0.235,
+          "g1_class_score": 0.0,
+          "goal_class_index": 0.066,
+          "stamina_efficiency": 0.36,
           "graded": {
             "G1": {
-              "runs": 0,
+              "runs": 1,
               "wins": 0,
               "top3": 0,
-              "avg_finish": null
+              "avg_finish": 9.0
             },
             "G2": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
+              "runs": 2,
+              "wins": 1,
+              "top3": 1,
+              "avg_finish": 3.5
             },
             "G3": {
               "runs": 0,
@@ -140,17 +136,17 @@
         }
       },
       "jockey": {
-        "name": "富田暁",
+        "name": "西村淳也",
         "win_rate": 0.0,
-        "top3_rate": 0.06
+        "top3_rate": 0.0
       }
     },
     {
       "gate": 3,
       "horse": {
-        "name": "マスターソアラ",
-        "sex_age": "牝3",
-        "weight": 55,
+        "name": "アウダーシア",
+        "sex_age": "牡3",
+        "weight": 57,
         "has_records": true,
         "records_used": 2,
         "style": "差し",
@@ -209,286 +205,70 @@
         }
       },
       "jockey": {
-        "name": "武豊",
-        "win_rate": 0.27,
-        "top3_rate": 0.55
+        "name": "津村明秀",
+        "win_rate": 0.0,
+        "top3_rate": 0.2
       }
     },
     {
       "gate": 4,
       "horse": {
-        "name": "エンネ",
-        "sex_age": "牝3",
-        "weight": 55,
+        "name": "ショウナンガルフ",
+        "sex_age": "牡3",
+        "weight": 57,
         "has_records": true,
-        "records_used": 3,
-        "style": "先行",
-        "ave_3f": 36.1,
-        "last_3f": 33.5,
-        "last_3f_raw": 33.8,
-        "results": [
-          2,
-          2,
-          1
-        ],
-        "ave_3f_range": {
-          "min": 35.3,
-          "max": 37.2,
-          "avg": 36.1
-        },
-        "last_3f_range": {
-          "min": 32.8,
-          "max": 34.4,
-          "avg": 33.8
-        },
-        "career": {
-          "runs_all": 4,
-          "win_rate": 0.25,
-          "top3_rate": 0.75,
-          "peak_grade": "G1",
-          "class_index": 0.315,
-          "g1_class_score": 0.1,
-          "goal_class_index": 0.16,
-          "stamina_efficiency": 0.494,
-          "graded": {
-            "G1": {
-              "runs": 1,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": 7.0
-            },
-            "G2": {
-              "runs": 2,
-              "wins": 0,
-              "top3": 2,
-              "avg_finish": 2.0
-            },
-            "G3": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            },
-            "OP": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            }
-          }
-        }
-      },
-      "jockey": {
-        "name": "坂井瑠星",
-        "win_rate": 0.14,
-        "top3_rate": 0.32
-      }
-    },
-    {
-      "gate": 5,
-      "horse": {
-        "name": "タイセイボーグ",
-        "sex_age": "牝3",
-        "weight": 55,
-        "has_records": true,
-        "records_used": 6,
-        "style": "差し",
-        "ave_3f": 36.0,
-        "last_3f": 33.7,
-        "last_3f_raw": 34.0,
+        "records_used": 2,
+        "style": "追込",
+        "ave_3f": 37.8,
+        "last_3f": 35.1,
+        "last_3f_raw": 35.2,
         "results": [
           1,
-          3,
-          3,
-          2,
-          2,
           1
         ],
         "ave_3f_range": {
-          "min": 34.7,
-          "max": 36.7,
-          "avg": 36.0
+          "min": 37.8,
+          "max": 37.9,
+          "avg": 37.8
         },
         "last_3f_range": {
-          "min": 33.1,
-          "max": 35.5,
-          "avg": 34.0
+          "min": 35.0,
+          "max": 35.4,
+          "avg": 35.2
         },
         "career": {
           "runs_all": 7,
           "win_rate": 0.286,
-          "top3_rate": 0.857,
+          "top3_rate": 0.286,
           "peak_grade": "G1",
-          "class_index": 0.356,
-          "g1_class_score": 0.3,
-          "goal_class_index": 0.316,
-          "stamina_efficiency": 0.736,
+          "class_index": 0.068,
+          "g1_class_score": 0.0,
+          "goal_class_index": 0.019,
+          "stamina_efficiency": 0.426,
           "graded": {
             "G1": {
-              "runs": 1,
+              "runs": 2,
               "wins": 0,
-              "top3": 1,
-              "avg_finish": 3.0
+              "top3": 0,
+              "avg_finish": 15.5
             },
             "G2": {
-              "runs": 2,
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            },
+            "G3": {
+              "runs": 3,
               "wins": 1,
               "top3": 1,
-              "avg_finish": 6.5
-            },
-            "G3": {
-              "runs": 2,
-              "wins": 0,
-              "top3": 2,
-              "avg_finish": 2.5
+              "avg_finish": 7.33
             },
             "OP": {
               "runs": 1,
               "wins": 0,
-              "top3": 1,
-              "avg_finish": 2.0
-            }
-          }
-        }
-      },
-      "jockey": {
-        "name": "西村淳也",
-        "win_rate": 0.1,
-        "top3_rate": 0.4
-      }
-    },
-    {
-      "gate": 6,
-      "horse": {
-        "name": "ラベルセーヌ",
-        "sex_age": "牝3",
-        "weight": 55,
-        "has_records": true,
-        "records_used": 3,
-        "style": "差し",
-        "ave_3f": 36.0,
-        "last_3f": 33.7,
-        "last_3f_raw": 33.9,
-        "results": [
-          1,
-          1,
-          1
-        ],
-        "ave_3f_range": {
-          "min": 35.6,
-          "max": 36.4,
-          "avg": 36.0
-        },
-        "last_3f_range": {
-          "min": 32.3,
-          "max": 35.0,
-          "avg": 33.9
-        },
-        "career": {
-          "runs_all": 4,
-          "win_rate": 0.75,
-          "top3_rate": 0.75,
-          "peak_grade": "G2",
-          "class_index": 0.188,
-          "g1_class_score": null,
-          "goal_class_index": 0.188,
-          "stamina_efficiency": 0.119,
-          "graded": {
-            "G1": {
-              "runs": 0,
-              "wins": 0,
               "top3": 0,
-              "avg_finish": null
-            },
-            "G2": {
-              "runs": 1,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": 5.0
-            },
-            "G3": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            },
-            "OP": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            }
-          }
-        }
-      },
-      "jockey": {
-        "name": "荻野極",
-        "win_rate": 0.3,
-        "top3_rate": 0.4
-      }
-    },
-    {
-      "gate": 7,
-      "horse": {
-        "name": "バースデイフライト",
-        "sex_age": "牝3",
-        "weight": 55,
-        "has_records": true,
-        "records_used": 5,
-        "style": "差し",
-        "ave_3f": 36.2,
-        "last_3f": 34.1,
-        "last_3f_raw": 34.1,
-        "results": [
-          3,
-          2,
-          3,
-          1,
-          3
-        ],
-        "ave_3f_range": {
-          "min": 35.7,
-          "max": 37.7,
-          "avg": 36.2
-        },
-        "last_3f_range": {
-          "min": 33.6,
-          "max": 34.7,
-          "avg": 34.1
-        },
-        "career": {
-          "runs_all": 12,
-          "win_rate": 0.083,
-          "top3_rate": 0.417,
-          "peak_grade": "G3",
-          "class_index": 0.047,
-          "g1_class_score": null,
-          "goal_class_index": 0.047,
-          "stamina_efficiency": 0.249,
-          "graded": {
-            "G1": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            },
-            "G2": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            },
-            "G3": {
-              "runs": 2,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": 8.5
-            },
-            "OP": {
-              "runs": 2,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": 5.0
+              "avg_finish": 11.0
             }
           }
         }
@@ -496,48 +276,187 @@
       "jockey": {
         "name": "田山旺佑",
         "win_rate": 0.0,
-        "top3_rate": 0.17
+        "top3_rate": 0.2
       }
     },
     {
-      "gate": 8,
+      "gate": 5,
       "horse": {
-        "name": "モンローウォーク",
-        "sex_age": "牝3",
-        "weight": 55,
+        "name": "ジャスティンシカゴ",
+        "sex_age": "牡3",
+        "weight": 57,
         "has_records": true,
-        "records_used": 6,
-        "style": "先行",
-        "ave_3f": 36.0,
-        "last_3f": 34.9,
-        "last_3f_raw": 35.1,
+        "records_used": 5,
+        "style": "逃げ",
+        "ave_3f": 37.2,
+        "last_3f": 34.1,
+        "last_3f_raw": 34.3,
         "results": [
+          1,
+          1,
           2,
+          2,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 36.2,
+          "max": 38.5,
+          "avg": 37.2
+        },
+        "last_3f_range": {
+          "min": 33.6,
+          "max": 35.6,
+          "avg": 34.3
+        },
+        "career": {
+          "runs_all": 7,
+          "win_rate": 0.429,
+          "top3_rate": 0.714,
+          "peak_grade": "G2",
+          "class_index": 0.257,
+          "g1_class_score": null,
+          "goal_class_index": 0.257,
+          "stamina_efficiency": 0.475,
+          "graded": {
+            "G1": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            },
+            "G2": {
+              "runs": 1,
+              "wins": 1,
+              "top3": 1,
+              "avg_finish": 1.0
+            },
+            "G3": {
+              "runs": 1,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": 12.0
+            },
+            "OP": {
+              "runs": 1,
+              "wins": 0,
+              "top3": 1,
+              "avg_finish": 2.0
+            }
+          }
+        }
+      },
+      "jockey": {
+        "name": "原優介",
+        "win_rate": 0.0,
+        "top3_rate": 0.2
+      }
+    },
+    {
+      "gate": 6,
+      "horse": {
+        "name": "バステール",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 4,
+        "style": "差し",
+        "ave_3f": 36.7,
+        "last_3f": 33.8,
+        "last_3f_raw": 34.0,
+        "results": [
           3,
-          3,
-          2,
-          2,
+          1,
+          1,
           2
         ],
         "ave_3f_range": {
-          "min": 35.5,
-          "max": 36.7,
-          "avg": 36.0
+          "min": 36.3,
+          "max": 37.2,
+          "avg": 36.7
         },
         "last_3f_range": {
-          "min": 33.4,
-          "max": 36.5,
-          "avg": 35.1
+          "min": 33.2,
+          "max": 34.9,
+          "avg": 34.0
         },
         "career": {
-          "runs_all": 34,
-          "win_rate": 0.176,
-          "top3_rate": 0.676,
+          "runs_all": 6,
+          "win_rate": 0.333,
+          "top3_rate": 0.667,
           "peak_grade": "G1",
-          "class_index": 0.168,
+          "class_index": 0.219,
+          "g1_class_score": 0.2,
+          "goal_class_index": 0.205,
+          "stamina_efficiency": 0.467,
+          "graded": {
+            "G1": {
+              "runs": 2,
+              "wins": 0,
+              "top3": 1,
+              "avg_finish": 7.0
+            },
+            "G2": {
+              "runs": 2,
+              "wins": 1,
+              "top3": 1,
+              "avg_finish": 7.0
+            },
+            "G3": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            },
+            "OP": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            }
+          }
+        }
+      },
+      "jockey": {
+        "name": "川田将雅",
+        "win_rate": 0.0,
+        "top3_rate": 0.5
+      }
+    },
+    {
+      "gate": 7,
+      "horse": {
+        "name": "ラージアンサンブル",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 2,
+        "style": "追込",
+        "ave_3f": 37.0,
+        "last_3f": 35.1,
+        "last_3f_raw": 35.2,
+        "results": [
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 36.7,
+          "max": 37.3,
+          "avg": 37.0
+        },
+        "last_3f_range": {
+          "min": 34.5,
+          "max": 35.9,
+          "avg": 35.2
+        },
+        "career": {
+          "runs_all": 7,
+          "win_rate": 0.286,
+          "top3_rate": 0.286,
+          "peak_grade": "G1",
+          "class_index": 0.065,
           "g1_class_score": 0.05,
-          "goal_class_index": 0.083,
-          "stamina_efficiency": 0.583,
+          "goal_class_index": 0.054,
+          "stamina_efficiency": 0.336,
           "graded": {
             "G1": {
               "runs": 1,
@@ -546,74 +465,217 @@
               "avg_finish": 8.0
             },
             "G2": {
+              "runs": 1,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": 7.0
+            },
+            "G3": {
               "runs": 0,
               "wins": 0,
               "top3": 0,
               "avg_finish": null
             },
-            "G3": {
-              "runs": 6,
-              "wins": 1,
-              "top3": 2,
-              "avg_finish": 4.83
-            },
             "OP": {
-              "runs": 13,
+              "runs": 2,
               "wins": 1,
-              "top3": 9,
-              "avg_finish": 3.46
+              "top3": 1,
+              "avg_finish": 3.5
             }
           }
         }
       },
       "jockey": {
-        "name": "戸崎圭太",
-        "win_rate": 0.25,
-        "top3_rate": 0.75
+        "name": "坂井瑠星",
+        "win_rate": 0.2,
+        "top3_rate": 0.2
+      }
+    },
+    {
+      "gate": 8,
+      "horse": {
+        "name": "ロブチェン",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 6,
+        "style": "先行",
+        "ave_3f": 36.7,
+        "last_3f": 33.5,
+        "last_3f_raw": 34.1,
+        "results": [
+          1,
+          1,
+          1,
+          3,
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 35.3,
+          "max": 38.2,
+          "avg": 36.7
+        },
+        "last_3f_range": {
+          "min": 33.2,
+          "max": 35.4,
+          "avg": 34.1
+        },
+        "career": {
+          "runs_all": 6,
+          "win_rate": 0.833,
+          "top3_rate": 1.0,
+          "peak_grade": "G1",
+          "class_index": 0.63,
+          "g1_class_score": 1.0,
+          "goal_class_index": 0.897,
+          "stamina_efficiency": 0.822,
+          "graded": {
+            "G1": {
+              "runs": 3,
+              "wins": 3,
+              "top3": 3,
+              "avg_finish": 1.0
+            },
+            "G2": {
+              "runs": 1,
+              "wins": 1,
+              "top3": 1,
+              "avg_finish": 1.0
+            },
+            "G3": {
+              "runs": 1,
+              "wins": 0,
+              "top3": 1,
+              "avg_finish": 3.0
+            },
+            "OP": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            }
+          }
+        }
+      },
+      "jockey": {
+        "name": "松山弘平",
+        "win_rate": 0.0,
+        "top3_rate": 0.0
       }
     },
     {
       "gate": 9,
       "horse": {
-        "name": "スウィートハピネス",
-        "sex_age": "牝3",
-        "weight": 55,
+        "name": "ゴーイントゥスカイ",
+        "sex_age": "牡3",
+        "weight": 57,
         "has_records": true,
         "records_used": 3,
-        "style": "追込",
-        "ave_3f": 35.8,
-        "last_3f": 34.3,
-        "last_3f_raw": 34.4,
+        "style": "差し",
+        "ave_3f": 36.7,
+        "last_3f": 34.0,
+        "last_3f_raw": 34.3,
         "results": [
           1,
-          2,
+          3,
           1
         ],
         "ave_3f_range": {
-          "min": 35.3,
-          "max": 36.4,
-          "avg": 35.8
+          "min": 36.5,
+          "max": 37.1,
+          "avg": 36.7
         },
         "last_3f_range": {
-          "min": 34.1,
-          "max": 34.8,
-          "avg": 34.4
+          "min": 33.4,
+          "max": 35.2,
+          "avg": 34.3
         },
         "career": {
-          "runs_all": 7,
-          "win_rate": 0.286,
-          "top3_rate": 0.429,
+          "runs_all": 6,
+          "win_rate": 0.333,
+          "top3_rate": 0.5,
           "peak_grade": "G1",
-          "class_index": 0.132,
-          "g1_class_score": 0.167,
-          "goal_class_index": 0.157,
-          "stamina_efficiency": 0.4,
+          "class_index": 0.386,
+          "g1_class_score": 0.25,
+          "goal_class_index": 0.288,
+          "stamina_efficiency": 0.547,
           "graded": {
             "G1": {
-              "runs": 3,
+              "runs": 1,
               "wins": 0,
               "top3": 0,
-              "avg_finish": 7.33
+              "avg_finish": 4.0
+            },
+            "G2": {
+              "runs": 2,
+              "wins": 1,
+              "top3": 1,
+              "avg_finish": 3.5
+            },
+            "G3": {
+              "runs": 2,
+              "wins": 0,
+              "top3": 1,
+              "avg_finish": 4.5
+            },
+            "OP": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            }
+          }
+        }
+      },
+      "jockey": {
+        "name": "武豊",
+        "win_rate": 0.0,
+        "top3_rate": 0.33
+      }
+    },
+    {
+      "gate": 10,
+      "horse": {
+        "name": "ダノンヒストリー",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 3,
+        "style": "先行",
+        "ave_3f": 36.5,
+        "last_3f": 35.3,
+        "last_3f_raw": 35.4,
+        "results": [
+          1,
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 36.0,
+          "max": 37.0,
+          "avg": 36.5
+        },
+        "last_3f_range": {
+          "min": 34.8,
+          "max": 35.7,
+          "avg": 35.4
+        },
+        "career": {
+          "runs_all": 4,
+          "win_rate": 0.75,
+          "top3_rate": 0.75,
+          "peak_grade": "G2",
+          "class_index": 0.094,
+          "g1_class_score": null,
+          "goal_class_index": 0.094,
+          "stamina_efficiency": 0.089,
+          "graded": {
+            "G1": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
             },
             "G2": {
               "runs": 1,
@@ -626,6 +688,78 @@
               "wins": 0,
               "top3": 0,
               "avg_finish": null
+            },
+            "OP": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            }
+          }
+        }
+      },
+      "jockey": {
+        "name": "ルメール",
+        "win_rate": 1.0,
+        "top3_rate": 1.0
+      }
+    },
+    {
+      "gate": 11,
+      "horse": {
+        "name": "アスクエジンバラ",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 5,
+        "style": "先行",
+        "ave_3f": 37.1,
+        "last_3f": 34.6,
+        "last_3f_raw": 35.0,
+        "results": [
+          2,
+          3,
+          2,
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 35.9,
+          "max": 39.1,
+          "avg": 37.1
+        },
+        "last_3f_range": {
+          "min": 34.3,
+          "max": 35.4,
+          "avg": 35.0
+        },
+        "career": {
+          "runs_all": 10,
+          "win_rate": 0.2,
+          "top3_rate": 0.5,
+          "peak_grade": "G1",
+          "class_index": 0.413,
+          "g1_class_score": 0.333,
+          "goal_class_index": 0.355,
+          "stamina_efficiency": 0.647,
+          "graded": {
+            "G1": {
+              "runs": 3,
+              "wins": 0,
+              "top3": 1,
+              "avg_finish": 5.67
+            },
+            "G2": {
+              "runs": 2,
+              "wins": 0,
+              "top3": 1,
+              "avg_finish": 3.0
+            },
+            "G3": {
+              "runs": 2,
+              "wins": 0,
+              "top3": 1,
+              "avg_finish": 4.5
             },
             "OP": {
               "runs": 1,
@@ -637,47 +771,119 @@
         }
       },
       "jockey": {
-        "name": "佐々木大",
-        "win_rate": 0.17,
-        "top3_rate": 0.33
+        "name": "岩田康誠",
+        "win_rate": 0.0,
+        "top3_rate": 0.0
       }
     },
     {
-      "gate": 10,
+      "gate": 12,
       "horse": {
-        "name": "ナイスプレーアスク",
-        "sex_age": "牝3",
-        "weight": 55,
+        "name": "サノノグレーター",
+        "sex_age": "牡3",
+        "weight": 57,
         "has_records": true,
         "records_used": 3,
-        "style": "逃げ",
-        "ave_3f": 35.7,
-        "last_3f": 34.9,
-        "last_3f_raw": 35.0,
+        "style": "追込",
+        "ave_3f": 36.0,
+        "last_3f": 34.0,
+        "last_3f_raw": 34.1,
         "results": [
           1,
           1,
-          2
+          1
         ],
         "ave_3f_range": {
-          "min": 35.2,
-          "max": 36.7,
-          "avg": 35.7
+          "min": 35.6,
+          "max": 36.4,
+          "avg": 36.0
         },
         "last_3f_range": {
-          "min": 34.7,
-          "max": 35.6,
-          "avg": 35.0
+          "min": 33.9,
+          "max": 34.5,
+          "avg": 34.1
         },
         "career": {
           "runs_all": 8,
-          "win_rate": 0.25,
+          "win_rate": 0.375,
           "top3_rate": 0.375,
+          "peak_grade": "G1",
+          "class_index": 0.131,
+          "g1_class_score": 0.0,
+          "goal_class_index": 0.037,
+          "stamina_efficiency": 0.447,
+          "graded": {
+            "G1": {
+              "runs": 1,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": 9.0
+            },
+            "G2": {
+              "runs": 2,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": 8.0
+            },
+            "G3": {
+              "runs": 3,
+              "wins": 1,
+              "top3": 1,
+              "avg_finish": 4.33
+            },
+            "OP": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            }
+          }
+        }
+      },
+      "jockey": {
+        "name": "田辺裕信",
+        "win_rate": 0.0,
+        "top3_rate": 0.0
+      }
+    },
+    {
+      "gate": 13,
+      "horse": {
+        "name": "キンググローリー",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 5,
+        "style": "先行",
+        "ave_3f": 36.5,
+        "last_3f": 35.8,
+        "last_3f_raw": 35.8,
+        "results": [
+          1,
+          2,
+          1,
+          1,
+          3
+        ],
+        "ave_3f_range": {
+          "min": 35.6,
+          "max": 37.3,
+          "avg": 36.5
+        },
+        "last_3f_range": {
+          "min": 34.8,
+          "max": 36.4,
+          "avg": 35.8
+        },
+        "career": {
+          "runs_all": 12,
+          "win_rate": 0.25,
+          "top3_rate": 0.417,
           "peak_grade": "G2",
-          "class_index": 0.141,
+          "class_index": 0.0,
           "g1_class_score": null,
-          "goal_class_index": 0.141,
-          "stamina_efficiency": 0.162,
+          "goal_class_index": 0.0,
+          "stamina_efficiency": 0.117,
           "graded": {
             "G1": {
               "runs": 0,
@@ -689,62 +895,60 @@
               "runs": 1,
               "wins": 0,
               "top3": 0,
-              "avg_finish": 6.0
+              "avg_finish": 13.0
             },
             "G3": {
+              "runs": 1,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": 13.0
+            },
+            "OP": {
               "runs": 0,
               "wins": 0,
               "top3": 0,
               "avg_finish": null
-            },
-            "OP": {
-              "runs": 1,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": 12.0
             }
           }
         }
       },
       "jockey": {
-        "name": "岩田康誠",
-        "win_rate": 0.03,
-        "top3_rate": 0.21
+        "name": "丹内祐次",
+        "win_rate": 0.0,
+        "top3_rate": 0.2
       }
     },
     {
-      "gate": 11,
+      "gate": 14,
       "horse": {
-        "name": "ガーネットフレア",
-        "sex_age": "牝3",
-        "weight": 55,
+        "name": "マジョレルブルー",
+        "sex_age": "牡3",
+        "weight": 57,
         "has_records": true,
-        "records_used": 6,
+        "records_used": 4,
         "style": "先行",
-        "ave_3f": 36.8,
-        "last_3f": 36.6,
-        "last_3f_raw": 37.1,
+        "ave_3f": 36.9,
+        "last_3f": 34.0,
+        "last_3f_raw": 34.5,
         "results": [
           1,
           1,
           1,
-          3,
-          3,
-          3
+          2
         ],
         "ave_3f_range": {
-          "min": 35.5,
-          "max": 37.8,
-          "avg": 36.8
+          "min": 36.6,
+          "max": 37.1,
+          "avg": 36.9
         },
         "last_3f_range": {
-          "min": 34.4,
-          "max": 39.3,
-          "avg": 37.1
+          "min": 34.0,
+          "max": 35.3,
+          "avg": 34.5
         },
         "career": {
-          "runs_all": 9,
-          "win_rate": 0.333,
+          "runs_all": 6,
+          "win_rate": 0.5,
           "top3_rate": 0.667,
           "peak_grade": null,
           "class_index": 0.5,
@@ -780,47 +984,49 @@
         }
       },
       "jockey": {
-        "name": "北村友一",
-        "win_rate": 0.16,
-        "top3_rate": 0.28
+        "name": "戸崎圭太",
+        "win_rate": 0.0,
+        "top3_rate": 0.5
       }
     },
     {
-      "gate": 12,
+      "gate": 15,
       "horse": {
-        "name": "カナルサンマルタン",
-        "sex_age": "牝3",
-        "weight": 55,
+        "name": "シートゥサミット",
+        "sex_age": "牡3",
+        "weight": 57,
         "has_records": true,
-        "records_used": 3,
-        "style": "先行",
-        "ave_3f": 35.7,
+        "records_used": 5,
+        "style": "差し",
+        "ave_3f": 37.4,
         "last_3f": 34.2,
-        "last_3f_raw": 34.7,
+        "last_3f_raw": 34.5,
         "results": [
+          3,
+          2,
           1,
-          1,
-          2
+          2,
+          3
         ],
         "ave_3f_range": {
-          "min": 35.2,
-          "max": 36.1,
-          "avg": 35.7
+          "min": 36.8,
+          "max": 38.9,
+          "avg": 37.4
         },
         "last_3f_range": {
-          "min": 33.4,
-          "max": 35.6,
-          "avg": 34.7
+          "min": 33.7,
+          "max": 35.4,
+          "avg": 34.5
         },
         "career": {
-          "runs_all": 3,
-          "win_rate": 0.667,
-          "top3_rate": 1.0,
-          "peak_grade": "OP",
-          "class_index": 0.5,
+          "runs_all": 9,
+          "win_rate": 0.111,
+          "top3_rate": 0.556,
+          "peak_grade": "G2",
+          "class_index": 0.281,
           "g1_class_score": null,
-          "goal_class_index": 0.5,
-          "stamina_efficiency": 0.546,
+          "goal_class_index": 0.281,
+          "stamina_efficiency": 0.475,
           "graded": {
             "G1": {
               "runs": 0,
@@ -829,10 +1035,79 @@
               "avg_finish": null
             },
             "G2": {
+              "runs": 1,
+              "wins": 0,
+              "top3": 1,
+              "avg_finish": 3.0
+            },
+            "G3": {
               "runs": 0,
               "wins": 0,
               "top3": 0,
               "avg_finish": null
+            },
+            "OP": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            }
+          }
+        }
+      },
+      "jockey": {
+        "name": "酒井学",
+        "win_rate": 0.25,
+        "top3_rate": 0.5
+      }
+    },
+    {
+      "gate": 16,
+      "horse": {
+        "name": "ショウナンハヤナミ",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 2,
+        "style": "差し",
+        "ave_3f": 37.6,
+        "last_3f": 34.1,
+        "last_3f_raw": 34.1,
+        "results": [
+          1,
+          1
+        ],
+        "ave_3f_range": {
+          "min": 37.2,
+          "max": 38.1,
+          "avg": 37.6
+        },
+        "last_3f_range": {
+          "min": 33.7,
+          "max": 34.5,
+          "avg": 34.1
+        },
+        "career": {
+          "runs_all": 3,
+          "win_rate": 0.667,
+          "top3_rate": 0.667,
+          "peak_grade": "G2",
+          "class_index": 0.0,
+          "g1_class_score": null,
+          "goal_class_index": 0.0,
+          "stamina_efficiency": 0.279,
+          "graded": {
+            "G1": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            },
+            "G2": {
+              "runs": 1,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": 10.0
             },
             "G3": {
               "runs": 0,
@@ -850,350 +1125,132 @@
         }
       },
       "jockey": {
-        "name": "岩田望来",
-        "win_rate": 0.19,
-        "top3_rate": 0.37
-      }
-    },
-    {
-      "gate": 13,
-      "horse": {
-        "name": "ドリームコア",
-        "sex_age": "牝3",
-        "weight": 55,
-        "has_records": true,
-        "records_used": 5,
-        "style": "差し",
-        "ave_3f": 34.9,
-        "last_3f": 33.4,
-        "last_3f_raw": 33.9,
-        "results": [
-          2,
-          1,
-          1,
-          1,
-          1
-        ],
-        "ave_3f_range": {
-          "min": 34.3,
-          "max": 35.5,
-          "avg": 34.9
-        },
-        "last_3f_range": {
-          "min": 33.5,
-          "max": 34.2,
-          "avg": 33.9
-        },
-        "career": {
-          "runs_all": 11,
-          "win_rate": 0.364,
-          "top3_rate": 0.455,
-          "peak_grade": "G1",
-          "class_index": 0.54,
-          "g1_class_score": 0.45,
-          "goal_class_index": 0.475,
-          "stamina_efficiency": 0.656,
-          "graded": {
-            "G1": {
-              "runs": 4,
-              "wins": 1,
-              "top3": 1,
-              "avg_finish": 5.5
-            },
-            "G2": {
-              "runs": 2,
-              "wins": 1,
-              "top3": 1,
-              "avg_finish": 3.0
-            },
-            "G3": {
-              "runs": 3,
-              "wins": 1,
-              "top3": 2,
-              "avg_finish": 2.33
-            },
-            "OP": {
-              "runs": 1,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": 5.0
-            }
-          }
-        }
-      },
-      "jockey": {
-        "name": "ルメール",
-        "win_rate": 0.25,
-        "top3_rate": 0.54
-      }
-    },
-    {
-      "gate": 14,
-      "horse": {
-        "name": "サムシングスイート",
-        "sex_age": "牝3",
-        "weight": 55,
-        "has_records": true,
-        "records_used": 6,
-        "style": "差し",
-        "ave_3f": 37.3,
-        "last_3f": 34.3,
-        "last_3f_raw": 34.6,
-        "results": [
-          2,
-          1,
-          1,
-          2,
-          2,
-          3
-        ],
-        "ave_3f_range": {
-          "min": 36.3,
-          "max": 38.5,
-          "avg": 37.3
-        },
-        "last_3f_range": {
-          "min": 33.6,
-          "max": 36.1,
-          "avg": 34.6
-        },
-        "career": {
-          "runs_all": 8,
-          "win_rate": 0.25,
-          "top3_rate": 0.75,
-          "peak_grade": "G2",
-          "class_index": 0.328,
-          "g1_class_score": null,
-          "goal_class_index": 0.328,
-          "stamina_efficiency": 0.386,
-          "graded": {
-            "G1": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            },
-            "G2": {
-              "runs": 1,
-              "wins": 0,
-              "top3": 1,
-              "avg_finish": 2.0
-            },
-            "G3": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            },
-            "OP": {
-              "runs": 1,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": 4.0
-            }
-          }
-        }
-      },
-      "jockey": {
-        "name": "松山弘平",
-        "win_rate": 0.06,
-        "top3_rate": 0.36
-      }
-    },
-    {
-      "gate": 15,
-      "horse": {
-        "name": "フェスティバルヒル",
-        "sex_age": "牝3",
-        "weight": 55,
-        "has_records": true,
-        "records_used": 3,
-        "style": "追込",
-        "ave_3f": 36.8,
-        "last_3f": 33.3,
-        "last_3f_raw": 33.4,
-        "results": [
-          1,
-          3,
-          1
-        ],
-        "ave_3f_range": {
-          "min": 35.9,
-          "max": 37.6,
-          "avg": 36.8
-        },
-        "last_3f_range": {
-          "min": 32.5,
-          "max": 34.5,
-          "avg": 33.4
-        },
-        "career": {
-          "runs_all": 5,
-          "win_rate": 0.4,
-          "top3_rate": 0.6,
-          "peak_grade": "G1",
-          "class_index": 0.103,
-          "g1_class_score": 0.0,
-          "goal_class_index": 0.029,
-          "stamina_efficiency": 0.429,
-          "graded": {
-            "G1": {
-              "runs": 1,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": 17.0
-            },
-            "G2": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            },
-            "G3": {
-              "runs": 3,
-              "wins": 1,
-              "top3": 2,
-              "avg_finish": 6.0
-            },
-            "OP": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            }
-          }
-        }
-      },
-      "jockey": {
-        "name": "浜中俊",
-        "win_rate": 0.14,
-        "top3_rate": 0.25
-      }
-    },
-    {
-      "gate": 16,
-      "horse": {
-        "name": "ハヤブササキチャン",
-        "sex_age": "牝3",
-        "weight": 55,
-        "has_records": true,
-        "records_used": 6,
-        "style": "先行",
-        "ave_3f": 35.9,
-        "last_3f": 34.4,
-        "last_3f_raw": 34.9,
-        "results": [
-          1,
-          1,
-          1,
-          2,
-          3,
-          2
-        ],
-        "ave_3f_range": {
-          "min": 34.7,
-          "max": 36.6,
-          "avg": 35.9
-        },
-        "last_3f_range": {
-          "min": 33.7,
-          "max": 35.8,
-          "avg": 34.9
-        },
-        "career": {
-          "runs_all": 9,
-          "win_rate": 0.333,
-          "top3_rate": 1.0,
-          "peak_grade": null,
-          "class_index": 0.5,
-          "g1_class_score": null,
-          "goal_class_index": 0.5,
-          "stamina_efficiency": 0.488,
-          "graded": {
-            "G1": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            },
-            "G2": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            },
-            "G3": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            },
-            "OP": {
-              "runs": 0,
-              "wins": 0,
-              "top3": 0,
-              "avg_finish": null
-            }
-          }
-        }
-      },
-      "jockey": {
-        "name": "吉田隼人",
-        "win_rate": 0.14,
-        "top3_rate": 0.29
+        "name": "池添謙一",
+        "win_rate": 0.0,
+        "top3_rate": 0.0
       }
     },
     {
       "gate": 17,
       "horse": {
-        "name": "ロザーンジュ",
-        "sex_age": "牝3",
-        "weight": 55,
+        "name": "チャリングクロス",
+        "sex_age": "牡3",
+        "weight": 57,
         "has_records": true,
-        "records_used": 6,
-        "style": "差し",
-        "ave_3f": 36.9,
-        "last_3f": 33.6,
-        "last_3f_raw": 34.2,
+        "records_used": 4,
+        "style": "先行",
+        "ave_3f": 37.0,
+        "last_3f": 34.3,
+        "last_3f_raw": 34.8,
         "results": [
-          1,
-          1,
           1,
           1,
           3,
           1
         ],
         "ave_3f_range": {
-          "min": 36.1,
-          "max": 37.9,
-          "avg": 36.9
+          "min": 36.6,
+          "max": 37.5,
+          "avg": 37.0
         },
         "last_3f_range": {
-          "min": 32.7,
-          "max": 35.0,
-          "avg": 34.2
+          "min": 34.2,
+          "max": 35.8,
+          "avg": 34.8
         },
         "career": {
-          "runs_all": 12,
-          "win_rate": 0.417,
-          "top3_rate": 0.5,
-          "peak_grade": "G1",
-          "class_index": 0.62,
-          "g1_class_score": 0.675,
-          "goal_class_index": 0.66,
-          "stamina_efficiency": 0.699,
+          "runs_all": 7,
+          "win_rate": 0.429,
+          "top3_rate": 0.571,
+          "peak_grade": null,
+          "class_index": 0.5,
+          "g1_class_score": null,
+          "goal_class_index": 0.5,
+          "stamina_efficiency": 0.348,
           "graded": {
             "G1": {
-              "runs": 8,
-              "wins": 3,
-              "top3": 3,
-              "avg_finish": 4.25
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
             },
             "G2": {
-              "runs": 2,
-              "wins": 1,
-              "top3": 1,
-              "avg_finish": 3.0
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            },
+            "G3": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            },
+            "OP": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            }
+          }
+        }
+      },
+      "jockey": {
+        "name": "石川裕紀",
+        "win_rate": 0.0,
+        "top3_rate": 0.2
+      }
+    },
+    {
+      "gate": 18,
+      "horse": {
+        "name": "ナリタエスペランサ",
+        "sex_age": "牡3",
+        "weight": 57,
+        "has_records": true,
+        "records_used": 5,
+        "style": "逃げ",
+        "ave_3f": 37.0,
+        "last_3f": 33.9,
+        "last_3f_raw": 34.4,
+        "results": [
+          1,
+          1,
+          1,
+          3,
+          3
+        ],
+        "ave_3f_range": {
+          "min": 35.8,
+          "max": 38.7,
+          "avg": 37.0
+        },
+        "last_3f_range": {
+          "min": 33.4,
+          "max": 34.9,
+          "avg": 34.4
+        },
+        "career": {
+          "runs_all": 8,
+          "win_rate": 0.375,
+          "top3_rate": 0.625,
+          "peak_grade": "OP",
+          "class_index": 0.5,
+          "g1_class_score": null,
+          "goal_class_index": 0.5,
+          "stamina_efficiency": 0.221,
+          "graded": {
+            "G1": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
+            },
+            "G2": {
+              "runs": 0,
+              "wins": 0,
+              "top3": 0,
+              "avg_finish": null
             },
             "G3": {
               "runs": 0,
@@ -1204,16 +1261,16 @@
             "OP": {
               "runs": 1,
               "wins": 0,
-              "top3": 1,
-              "avg_finish": 3.0
+              "top3": 0,
+              "avg_finish": 7.0
             }
           }
         }
       },
       "jockey": {
-        "name": "今村聖奈",
-        "win_rate": 0.07,
-        "top3_rate": 0.07
+        "name": "北村友一",
+        "win_rate": 0.0,
+        "top3_rate": 0.25
       }
     }
   ]

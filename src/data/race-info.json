@@ -1,13 +1,13 @@
 {
-  "race_id": 20261018,
+  "race_id": 20261025,
   "race_info": {
-    "date": "2026-10-18",
+    "date": "2026-10-25",
     "venue": "京都競馬場",
     "grade": "G1",
     "age_condition": "３歳",
-    "race_name": "秋華賞",
+    "race_name": "菊花賞",
     "track": "芝",
-    "distance": 2000,
+    "distance": 3000,
     "condition": "良"
   }
 }

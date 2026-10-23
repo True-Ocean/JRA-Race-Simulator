@@ -11,6 +11,7 @@ import {
   isRearPelotonForwardExempt,
   isLaunchPhase,
 } from '../src/engine/phase-context.js';
+import { isFourthCornerPhase } from '../src/engine/phase-helpers.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -106,6 +107,39 @@ describe('phase-context', () => {
     expect(getKickBlend(final, ctx)).toBe(1);
     expect(start.distance + stand.distance).toBeCloseTo(308.7, 5);
     expect(final.distance).toBeCloseTo(328.4, 5);
+  });
+
+  it('京都芝3000（外）: 1周目の坂までがlaunch、向正面がpace、最終3コーナーからkick', () => {
+    const course = courses.courses.find(c => c.id === 'kyoto_turf_3000_outer');
+    const phases = buildPhases(3000, course);
+    const ctx = createPhaseContext(3000, course, phases);
+    const start = phases.find(p => p.segmentId === 'start');
+    const hill = phases.find(p => p.segmentId === 'corner3_lap1');
+    const downhill = phases.find(p => p.segmentId === 'corner4_lap1');
+    const stand = phases.find(p => p.segmentId === 'stand');
+    const corner2 = phases.find(p => p.segmentId === 'corner2');
+    const back = phases.find(p => p.segmentId === 'back');
+    const corner3 = phases.find(p => p.segmentId === 'corner3');
+    const corner4 = phases.find(p => p.segmentId === 'corner4');
+    const final = phases.find(p => p.segmentId === 'final');
+
+    expect(getLaunchBlend(start, ctx)).toBe(1);
+    expect(getLaunchBlend(hill, ctx)).toBe(1);
+    expect(getLaunchBlend(downhill, ctx)).toBe(0);
+    expect(getSettleBlend(downhill, ctx)).toBe(1);
+    expect(getSettleBlend(stand, ctx)).toBe(1);
+    expect(getSettleBlend(corner2, ctx)).toBe(1);
+    expect(getSettleBlend(back, ctx)).toBe(0);
+    expect(getPaceIntroBlend(back, ctx)).toBeGreaterThan(0);
+    expect(getKickBlend(back, ctx)).toBe(0);
+    expect(getKickBlend(corner3, ctx)).toBe(1);
+    expect(getKickBlend(corner4, ctx)).toBe(1);
+    expect(getKickBlend(final, ctx)).toBe(1);
+    expect(isFourthCornerPhase(downhill)).toBe(false);
+    expect(isFourthCornerPhase(corner4)).toBe(true);
+    expect(start.distance).toBeCloseTo(217.4, 5);
+    expect(final.distance).toBeCloseTo(403.7, 5);
+    expect(phases).toHaveLength(10);
   });
 
   it('東京芝1600: launch=スタート+向正面、settle=corner3', () => {

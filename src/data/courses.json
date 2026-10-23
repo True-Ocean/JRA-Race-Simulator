@@ -113,6 +113,32 @@
         { "id": "corner4", "label": "第4コーナー",    "kind": "corner",   "simRole": "kick",   "cornerNo": 4, "ratio": 0.117875 },
         { "id": "final",   "label": "最終直線入口",   "kind": "final",    "simRole": "kick",   "ratio": 0.1642 }
       ]
+    },
+    {
+      "id": "kyoto_turf_3000_outer",
+      "name": "京都・芝・3000m（外）",
+      "venueKey": "kyoto",
+      "surface": "turf",
+      "distance": 3000,
+      "turnDirection": "right",
+      "simBoundaries": {
+        "launchThroughSegmentIndex": 1,
+        "settleThroughSegmentIndex": 5,
+        "formationEndRule": "beforeFirstCorner",
+        "kickRemainingMeters": 800
+      },
+      "segments": [
+        { "id": "start",         "label": "スタート",             "kind": "start",    "simRole": "launch", "ratio": 0.0724666667 },
+        { "id": "corner3_lap1",  "label": "第3コーナー（1周目）", "kind": "corner",   "simRole": "launch", "ratio": 0.0807666667 },
+        { "id": "corner4_lap1",  "label": "4コーナー（1周目）",   "kind": "corner",   "simRole": "settle", "ratio": 0.0807666667 },
+        { "id": "stand",         "label": "スタンド前",           "kind": "straight", "simRole": "settle", "ratio": 0.1650666667 },
+        { "id": "corner1",       "label": "第1コーナー",          "kind": "corner",   "simRole": "settle", "cornerNo": 1, "ratio": 0.0785833333 },
+        { "id": "corner2",       "label": "第2コーナー",          "kind": "corner",   "simRole": "settle", "cornerNo": 2, "ratio": 0.0785833333 },
+        { "id": "back",          "label": "向正面",               "kind": "straight", "simRole": "pace",   "ratio": 0.1476666667 },
+        { "id": "corner3",       "label": "第3コーナー",          "kind": "corner",   "simRole": "kick",   "cornerNo": 3, "ratio": 0.0807666667 },
+        { "id": "corner4",       "label": "第4コーナー",          "kind": "corner",   "simRole": "kick",   "cornerNo": 4, "ratio": 0.0807666667 },
+        { "id": "final",         "label": "最終直線入口",         "kind": "final",    "simRole": "kick",   "ratio": 0.1345666667 }
+      ]
     }
   ]
 }

@@ -17,7 +17,7 @@ describe('公開するG1は1レースだけ', () => {
   it('公開中のJSONと一致する実コースを読み、通常のシミュレーションを実行できる', async () => {
     const fetchImpl = fetchFixture();
     const race = await loadPublishedRace(fetchImpl);
-    expect(race.courseDef.id).toBe('kyoto_turf_2000_inner');
+    expect(race.courseDef.id).toBe('kyoto_turf_3000_outer');
     expect(runSimulation(race, { seed: 42 }).results).toHaveLength(race.entries.length);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
     for (const [, options] of fetchImpl.mock.calls) expect(options.cache).toBe('no-store');
@@ -38,7 +38,7 @@ describe('公開するG1は1レースだけ', () => {
 
   it('壊れたレイアウトでは再生を開始しない', async () => {
     const catalog = data('courses');
-    catalog.courses.find(c => c.id === 'kyoto_turf_2000_inner').segments = [];
+    catalog.courses.find(c => c.id === 'kyoto_turf_3000_outer').segments = [];
     await expect(loadPublishedRace(fetchFixture({ courses: catalog })))
       .rejects.toThrow('コースの区間定義');
   });
